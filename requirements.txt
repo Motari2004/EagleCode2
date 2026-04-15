@@ -11,3 +11,9 @@ cloudinary==1.36.0
 sqlalchemy
 asyncpg
 websockets
+authlib
+python-jose[cryptography]
+passlib
+bcrypt
+psycopg2-binary
+aiofiles
