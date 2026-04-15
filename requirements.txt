@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+google-genai
+python-dotenv
+httpx
+beautifulsoup4
+pillow
+requests
+python-multipart
+cloudinary==1.36.0
+sqlalchemy
+asyncpg
+websockets
