@@ -18,3 +18,5 @@ bcrypt
 psycopg2-binary
 aiofiles
 PyJWT
+itsdangerous==2.1.2
+
