@@ -90,8 +90,9 @@ class GeminiModelRouter:
         self.client = client
         # Priority order - try models with highest quotas first
         self.model_order = [
+            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite            
             AVAILABLE_MODELS["flash_25"],            # Gemini 2.5 Flash
-            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite
+
             AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)
             AVAILABLE_MODELS["flash_latest"],        # Latest flash
         ]
@@ -6190,10 +6191,38 @@ async def health_check():
     }
 
 
+
+
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
+    import signal
+    import sys
+    import os
+
+    def force_shutdown(signum, frame):
+        print("\n💀 FORCE KILL initiated!")
+        print("Terminating all processes immediately...")
+        # Force exit without any cleanup
+        os._exit(0)
+
+    # Make Ctrl+C force kill (no graceful shutdown)
+    signal.signal(signal.SIGINT, force_shutdown)
+
+    print("=" * 50)
+    print("🚀 Starting EagleCode Backend Server...")
+    print("📍 Press Ctrl + C to FORCE KILL the server")
+    print("=" * 50)
+
     uvicorn.run(
-        "main:app",  # ✅ Change from 'app' to 'main:app' (string format)
+        "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True  # ✅ This enables auto-reload
+        reload=True
     )
