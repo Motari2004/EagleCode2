@@ -91,11 +91,12 @@ class GeminiModelRouter:
         self.client = client
         # Priority order - try models with highest quotas first
         self.model_order = [
+            AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)            
             AVAILABLE_MODELS["flash_25"],            # Gemini 2.5 Flash
             AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite            
             
 
-            AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)
+
             AVAILABLE_MODELS["flash_latest"],        # Latest flash
         ]
     
@@ -1181,32 +1182,12 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
-    """Generate fully interactive HTML preview using AI after Next.js files are created"""
+    """Generate fully interactive HTML preview using AI"""
     try:
         print(f"🤖 AI generating full equivalent HTML preview for: {project_name}")
 
-        # ========== COLLECT KEY FILES FOR AI ==========
+        # ========== COLLECT NAVIGATION ==========
         nav_content = files.get("components/Navigation.tsx", "")
         if not nav_content:
             for fp, content in files.items():
@@ -1214,101 +1195,293 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     nav_content = content
                     break
 
-        # Extract brand and links
+        # Extract brand and navigation links
         brand_name = project_name
         nav_links = []
+        
         if nav_content:
-            brand_match = re.search(r'bg-gradient-to-r[^>]*>([^<]+)</', nav_content) or \
-                          re.search(r'<Link[^>]*href="/"[^>]*>.*?<[^>]+>([^<]+)</', nav_content, re.DOTALL)
+            brand_match = re.search(r'<Link[^>]*href="/"[^>]*>.*?<[^>]+>([^<]+)</', nav_content, re.DOTALL)
             if brand_match:
                 brand_name = brand_match.group(1).strip()
+            
+            link_pattern = r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>'
+            nav_links = [(href, text.strip()) for href, text in re.findall(link_pattern, nav_content) 
+                        if href != "/" and text.strip() and text.strip() != brand_name]
+        
+        print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
-            link_pattern = r'<Link\s+href="([^"]+)"[^>]*>([^<]+)</Link>'
-            matches = re.findall(link_pattern, nav_content)
-            for href, text in matches:
-                text = text.strip()
-                if href != "/" and text and len(text) < 50 and text != brand_name:
-                    if (href, text) not in nav_links:
-                        nav_links.append((href, text))
-
-        # Prepare pages for AI
+        # ========== PROCESS PAGES AND EXPAND MAP LOOPS ==========
         page_contents = {}
+        
+        def expand_map_loop(content: str) -> str:
+            """Convert JSX .map() loops to static HTML"""
+            import re
+            
+            pattern = r'\{\[([^\]]+)\]\s*\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}'
+            
+            def replace_map(match):
+                array_expr = match.group(1)
+                var_name = match.group(2)
+                template = match.group(3)
+                
+                items = [x.strip() for x in array_expr.split(',') if x.strip()]
+                if not items:
+                    return match.group(0)
+                
+                result = ""
+                for idx, item in enumerate(items):
+                    item_html = template
+                    item_num = int(item) if item.isdigit() else idx + 1
+                    
+                    item_html = item_html.replace(f'{{{var_name}}}', str(item_num))
+                    item_html = item_html.replace(f'{{ {var_name} }}', str(item_num))
+                    item_html = item_html.replace('{i}', str(item_num))
+                    item_html = item_html.replace('{idx}', str(idx + 1))
+                    item_html = item_html.replace('{index}', str(idx + 1))
+                    item_html = re.sub(r'\{[^}]+\}', '', item_html)
+                    item_html = item_html.replace('className=', 'class=')
+                    item_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', item_html)
+                    item_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', item_html)
+                    
+                    result += item_html
+                
+                return result
+            
+            while re.search(pattern, content):
+                content = re.sub(pattern, replace_map, content)
+            
+            return content
+        
         for file_path, content in files.items():
             if file_path.endswith(("page.tsx", "page.jsx")):
                 route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").strip("/")
-                route_name = route if route else "home"
-                # Clean for AI
-                clean = re.sub(r'import .*?from .*?;', '', content, flags=re.DOTALL)
-                clean = re.sub(r'export default function .*?\{', '', clean)
-                page_contents[route_name] = clean[:3500]  # Limit size
+                route_name = route or "home"
+                
+                clean = content
+                clean = re.sub(r'import\s+.*?from\s+["\'][^"\']+["\'];?\s*', '', clean, flags=re.DOTALL)
+                clean = re.sub(r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean)
+                clean = re.sub(r'export\s+default\s+const\s+\w+\s*=\s*\(\)\s*=>\s*{?', '', clean)
+                
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
+                if not match:
+                    match = re.search(r'\(\s*<[\w\s\S]+?>\s*\)', clean, re.DOTALL)
+                
+                if match:
+                    jsx = match.group(1) if match.lastindex else match.group(0)
+                    jsx = expand_map_loop(jsx)
+                    jsx = re.sub(r'^<div\s+className="container\s+mx-auto[^>]*>\s*', '', jsx)
+                    jsx = re.sub(r'\s*</div>\s*$', '', jsx)
+                    jsx = re.sub(r'\{[^}]+\}', '', jsx)
+                    jsx = jsx.replace('className=', 'class=')
+                    
+                    page_contents[route_name] = jsx[:4000]
+                    print(f"📄 {route_name}: {len(jsx)} chars")
+                else:
+                    page_contents[route_name] = clean[:3000]
+                    print(f"⚠️ Could not extract content from {route_name}")
+
+        # Ensure home page exists
+        if "home" not in page_contents:
+            page_contents["home"] = f'<div class="text-center py-20"><h1 class="text-6xl font-bold gradient-text">{brand_name}</h1><p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p></div>'
+
+        # Add missing navigation pages
+        for href, label in nav_links:
+            if href not in page_contents:
+                page_contents[href] = f'<div class="text-center py-20"><h1 class="text-5xl font-bold gradient-text">{label}</h1><p class="text-gray-400 mt-4">Explore our {label.lower()} collection.</p></div>'
 
         # Global CSS
-        global_css = files.get("app/globals.css", "")[:2500]
+        global_css = files.get("app/globals.css", "")[:2000]
 
-        # Build AI prompt
-        prompt = f"""You are an expert frontend developer. Create a **complete, beautiful, fully interactive standalone HTML preview** that is equivalent to this Next.js 14 project.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # Available images
+        available_images = [f for f in files.keys() if f.startswith("public/images/")]
+        image_paths = [f"/{f.replace('public/', '')}" for f in available_images]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # Build image instruction - STRICT
+        image_instruction = ""
+        if image_paths:
+            image_instruction = f"""
+🚨 CRITICAL - IMAGE REQUIREMENT 🚨
+You MUST use ONLY these exact image paths. DO NOT use Unsplash, Pexels, or any external URLs.
+
+AVAILABLE IMAGES (use these EXACT paths):
+{image_paths}
+
+REQUIREMENTS:
+- Use src="/images/image_1.jpg" for the main hero image
+- Use src="/images/image_2.jpg" for secondary images
+- DO NOT generate any other image URLs
+- DO NOT use images.unsplash.com or any external domains
+- If you need multiple images, reuse image_1.jpg and image_2.jpg
+
+Example of CORRECT usage:
+<img src="/images/image_1.jpg" alt="Hero" class="w-full h-96 object-cover rounded-xl" />
+
+Example of WRONG usage (NEVER do this):
+<img src="https://images.unsplash.com/..." />
+"""
+            
+
+
+
+
+
+
+
+
+
+
+
+            
+
+        # ========== LET AI GENERATE PREVIEW ==========
+        prompt = f"""You are an expert frontend developer. Create a STUNNING, MODERN, FULLY INTERACTIVE standalone HTML preview.
 
 Project Name: {brand_name}
 
-Navigation:
-Brand: {brand_name}
-Links: {json.dumps(nav_links)}
+NAVIGATION LINKS: {json.dumps(nav_links, indent=2)}
 
-Pages:
+PAGE CONTENTS (use EXACTLY these):
 {json.dumps(page_contents, indent=2)}
 
-Global CSS (use these styles):
-{global_css}
+{image_instruction}
 
-CRITICAL INSTRUCTIONS:
-- Output ONLY a complete single HTML file starting with <!DOCTYPE html>
-- Use Tailwind CSS via CDN and Inter font
-- Dark premium theme with purple-pink gradients
-- Sticky navigation bar with brand on left and all links
-- Mobile hamburger menu
-- Multiple page sections (one per nav link) with ids like page_home, page_about
-- Home page active by default
-- Use actual content from the pages above (headings, text, buttons, cards)
-- Make all buttons interactive with click feedback
-- Smooth page switching via JavaScript
-- Replace any /images/... paths with base64 if available (see below)
-- Beautiful animations, glassmorphism, hover effects
+DESIGN REQUIREMENTS:
+- Sticky navigation bar at top (z-50, bg-black/80, backdrop-blur-xl)
+- **CRITICAL: Add pt-16 or padding-top: 4rem to the main content so it's not hidden under the fixed navbar**
+- Brand name on left (clickable, goes to home)
+- Navigation links on right
+- Home page visible by default
+- Smooth page transitions
+- Dark theme with purple-pink gradients
+- Mobile responsive with hamburger menu
 
-Available Images (use as src or background):
-{ [f for f in files.keys() if f.startswith("public/images/")] }
+Return ONLY complete HTML. No explanations."""
 
-Return ONLY the full HTML. No explanations."""
-
-        # Generate with AI
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={
-                "temperature": 0.12,
-                "max_output_tokens": 48000,
-            }
+            config={"temperature": 0.15, "max_output_tokens": 48000}
         )
 
         preview_html = clean_html_response(response_text)
 
-        # Ensure proper structure
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
 
         # ========== INJECT BASE64 IMAGES ==========
+        print("🖼️ Injecting images into preview...")
+        
         for file_key, content in files.items():
             if not file_key.startswith("public/images/") or not isinstance(content, str):
                 continue
             if not content.startswith("__binary_base64__"):
                 continue
+            
             public_path = "/" + file_key[len("public/"):]
             raw_b64 = content[len("__binary_base64__"):]
             data_uri = f"data:image/jpeg;base64,{raw_b64}"
+            
+            count = 0
+            preview_html, cnt = re.subn(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
+            count += cnt
+            preview_html, cnt = re.subn(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
+            count += cnt
+            preview_html, cnt = re.subn(public_path, data_uri, preview_html)
+            count += cnt
+            
+            if count > 0:
+                print(f"  ✅ Injected {public_path} ({count} references)")
+            else:
+                print(f"  ⚠️ No references found for {public_path}")
 
-            preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
-            preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
-            preview_html = preview_html.replace(public_path, data_uri)
+        # ========== ENSURE PROPER SPACING (FIX FOR CUTOFF CONTENT) ==========
+        # Add padding-top to main content to account for fixed navbar
+        if '<div class="min-h-screen' in preview_html:
+            preview_html = preview_html.replace(
+                '<div class="min-h-screen',
+                '<div class="min-h-screen pt-16'
+            )
+        elif '<main' in preview_html:
+            preview_html = preview_html.replace(
+                '<main',
+                '<main class="pt-16"'
+            )
+        elif '<div class="container' in preview_html:
+            preview_html = preview_html.replace(
+                '<div class="container',
+                '<div class="container pt-16'
+            )
+        else:
+            # Add style to body
+            if '<body' in preview_html:
+                preview_html = preview_html.replace(
+                    '<body',
+                    '<body class="pt-16"'
+                )
+        
+        # Add CSS to ensure navbar doesn't overlap content
+        if '</style>' in preview_html:
+            preview_html = preview_html.replace(
+                '</style>',
+                'body { padding-top: 64px; } .page { padding-top: 0; }</style>'
+            )
+        else:
+            preview_html = preview_html.replace(
+                '</head>',
+                '<style>body { padding-top: 64px; } .page { padding-top: 0; }</style></head>'
+            )
 
-        print(f"✅ AI full preview generated! Length: {len(preview_html):,} chars")
+        print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
 
     except Exception as e:
@@ -1316,36 +1489,41 @@ Return ONLY the full HTML. No explanations."""
         import traceback
         traceback.print_exc()
 
-        # Fallback to old rule-based preview if AI fails
-        print("Falling back to rule-based preview...")
-        # You can keep your original rule-based code here as fallback
-        # For now, returning a simple fallback
         fallback = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{project_name} - Preview</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{project_name}</title><script src="https://cdn.tailwindcss.com"></script>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:radial-gradient(ellipse at top,#0a0212,#1a052a); color:#e2e8f0; font-family:'Inter',sans-serif; padding-top: 64px; }}
+.gradient-text {{ background:linear-gradient(135deg,#a855f7,#ec4899); -webkit-background-clip:text; background-clip:text; color:transparent; }}
+.page {{ display:none; animation:fadeIn .3s; }}
+.page.active {{ display:block; }}
+@keyframes fadeIn {{ from{{opacity:0;transform:translateY(10px);}} to{{opacity:1;transform:translateY(0);}} }}
+nav {{ position: fixed; top: 0; left: 0; right: 0; z-index: 50; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.1); }}
+</style>
 </head>
-<body class="bg-zinc-950 text-white min-h-screen flex items-center justify-center">
-    <div class="text-center">
-        <h1 class="text-5xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            {project_name}
-        </h1>
-        <p class="mt-6 text-gray-400">Interactive preview generated successfully.</p>
+<body>
+<nav>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+            <div class="text-2xl font-bold gradient-text cursor-pointer" onclick="showPage('/')">{brand_name}</div>
+        </div>
     </div>
+</nav>
+<div class="min-h-screen">
+    <div id="page_home" class="page active"><div class="container mx-auto px-4 py-20 text-center"><h1 class="text-6xl font-bold gradient-text">{brand_name}</h1><p class="text-gray-400 mt-4">Welcome to EagleCode</p></div></div>
+</div>
+<script>
+function showPage(p) {{
+    document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+    document.getElementById('page_home')?.classList.add('active');
+    window.history.pushState({{}}, '', p);
+}}
+</script>
 </body>
 </html>"""
         return {"success": True, "preview_html": fallback, "preview_type": "fallback"}
-
-
-
-
-
-
-
-
 
 
 
@@ -1658,11 +1836,6 @@ def clean_html_response(text: str) -> str:
     text = re.sub(r'^\s*"html"\s*[\n\r]', '', text, flags=re.IGNORECASE)
     
     return text.strip()
-
-
-
-
-
 
 
 
@@ -2572,6 +2745,136 @@ components/
 
 lib/
   utils.ts                  # cn utility function
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: GENERATE UNIQUE CONTENT FOR EACH ARRAY ITEM 🚨🚨🚨
+================================================================================
+
+When you use array mapping like {[1, 2, 3].map(...)}, you MUST generate DIFFERENT content for EACH item.
+
+NEVER repeat the same text for all items. ALWAYS vary:
+
+1. **Titles**: Use different names (e.g., "Project Alpha", "Project Beta", "Project Gamma")
+2. **Descriptions**: Write unique descriptions for each item (different features, different benefits)
+3. **Images**: Use different image paths (/images/image_1.jpg, /images/image_2.jpg, /images/image_3.jpg)
+4. **Tags/Skills**: Use different technology stacks for each item
+
+Example - GOOD (different content for each):
+```jsx
+{[1, 2, 3].map((i) => {
+  const items = [
+    { title: "EagleCode AI", desc: "AI-powered development platform", img: "/images/image_1.jpg", tags: ["Next.js", "AI"] },
+    { title: "Portfolio Pro", desc: "High-end developer portfolio", img: "/images/image_2.jpg", tags: ["React", "Tailwind"] },
+    { title: "E-Commerce Store", desc: "Full-featured online store", img: "/images/image_3.jpg", tags: ["Stripe", "PostgreSQL"] }
+  ];
+  const item = items[i-1];
+  return (
+    <div>
+      <img src={item.img} alt={item.title} />
+      <h3>{item.title}</h3>
+      <p>{item.desc}</p>
+      <div>{item.tags.map(tag => <span>{tag}</span>)}</div>
+    </div>
+  );
+})}
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: NAVIGATION LINKS REQUIRE CORRESPONDING PAGES 🚨🚨🚨
+================================================================================
+
+**For EVERY link in Navigation.tsx, you MUST create a corresponding page file.**
+
+If Navigation.tsx has:
+<Link href="/classes">Classes</Link>
+<Link href="/trainers">Trainers</Link>
+<Link href="/membership">Membership</Link>
+
+Then you MUST create:
+- app/classes/page.tsx
+- app/trainers/page.tsx
+- app/membership/page.tsx
+
+**FAILURE TO CREATE THESE PAGES WILL CAUSE 404 ERRORS!**
+
+Each page MUST have MEANINGFUL content based on its name:
+
+For "/classes" page (Gym website):
+- Hero section about classes
+- Grid of class cards (Yoga, HIIT, Strength, Pilates, etc.)
+- Class schedule or timetable
+- Instructor names and times
+
+For "/trainers" page:
+- Trainer profiles with images, names, specialties
+- Bio descriptions
+- Social links or certifications
+
+For "/membership" page:
+- Pricing plans (Basic, Pro, Premium)
+- Feature comparison table
+- Sign up CTA buttons
+
+For "/contact" page:
+- Contact form (name, email, message)
+- Location map or address
+- Hours of operation
+- Phone/email information
+
+**NEVER create empty or placeholder pages. Each page must have rich, meaningful content.**
+
+================================================================================
+EXAMPLE - CORRECT IMPLEMENTATION:
+================================================================================
+
+Navigation.tsx links:
+- /classes → app/classes/page.tsx (rich content with class grid and schedule)
+- /trainers → app/trainers/page.tsx (trainer profiles with images and bios)
+- /membership → app/membership/page.tsx (pricing plans and benefits)
+- /contact → app/contact/page.tsx (contact form and information)
+
+================================================================================
+EXAMPLE - WRONG (NEVER DO THIS):
+================================================================================
+
+❌ Creating empty pages:
+app/classes/page.tsx = "export default function Classes() { return <div>Classes</div>; }"
+
+❌ Missing pages for navigation links
+❌ Using the same content for all pages
+❌ Pages without images, cards, or interactive elements
+
+
+
+
+
+
+
+
 
 
 
