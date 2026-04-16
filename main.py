@@ -2,6 +2,7 @@ import json
 import os
 import re
 import io
+import jwt  # noqa
 import asyncio
 
 # Then import and initialize auth router
@@ -90,8 +91,9 @@ class GeminiModelRouter:
         self.client = client
         # Priority order - try models with highest quotas first
         self.model_order = [
-            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite            
             AVAILABLE_MODELS["flash_25"],            # Gemini 2.5 Flash
+            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite            
+            
 
             AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)
             AVAILABLE_MODELS["flash_latest"],        # Latest flash
@@ -264,6 +266,27 @@ class GeminiModelRouter:
 
 
 load_dotenv()
+
+
+
+
+
+
+# ========== CONFIGURATION ==========
+SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-change-this")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "session-secret-key-change-this-too")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+
+
+
+
+
+
+
 
 
 
@@ -5755,54 +5778,69 @@ async def name_stats():
 
 
 
-
-
-
-
 @app.post("/api/save-project")
-async def save_project(request: Dict[str, Any]):
+async def save_project(request: Request):
     try:
-        name = request.get("name", "")
-        prompt = request.get("prompt", "")
-        files = request.get("files", {})
-        preview_html = request.get("preview_html", "")
-        user_id = request.get("user_id", "default")
+        body = await request.json()
+        name = body.get("name", "")
+        prompt = body.get("prompt", "")
+        files = body.get("files", {})
+        preview_html = body.get("preview_html", "")
         
-        print(f"💾 Saving project: {name}")
-        print(f"   Files count: {len(files)}")
+        # Get user info from token
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.replace("Bearer ", "")
         
-        # Handle timestamp safely
-        timestamp_raw = request.get("timestamp")
-        if timestamp_raw and isinstance(timestamp_raw, str):
-            # Parse ISO format string
-            from datetime import datetime
-            # Remove timezone info if present
-            if '+' in timestamp_raw or timestamp_raw.endswith('Z'):
-                timestamp_raw = timestamp_raw.replace('Z', '').split('+')[0]
-            timestamp = datetime.fromisoformat(timestamp_raw)
-        else:
-            # Use current time
-            timestamp = datetime.now()
+        if not token:
+            print("⚠️ No token provided")
+            return {"success": False, "message": "Authentication required"}
         
-        print(f"   Timestamp: {timestamp}")
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            user_email = payload.get('email')
+            print(f"💾 Saving project for email: {user_email}")
+        except Exception as e:
+            print(f"⚠️ Token decode error: {e}")
+            return {"success": False, "message": "Invalid token"}
         
-        # Detect project type
-        prompt_lower = prompt.lower()
-        if any(w in prompt_lower for w in ['school', 'academy', 'university', 'college']):
-            project_type = "school"
-        elif any(w in prompt_lower for w in ['coffee', 'roastery', 'cafe', 'brew']):
-            project_type = "coffee"
-        elif any(w in prompt_lower for w in ['hotel', 'resort', 'lodge', 'inn']):
-            project_type = "hotel"
-        elif any(w in prompt_lower for w in ['gym', 'fitness', 'workout']):
-            project_type = "gym"
-        elif any(w in prompt_lower for w in ['restaurant', 'bistro', 'dining']):
-            project_type = "restaurant"
-        else:
-            project_type = "general"
-        
+        # Find user by email to get user_id
         async with AsyncSessionLocal() as session:
-            # Create project metadata
+            user_stmt = select(User).where(User.email == user_email)
+            user_result = await session.execute(user_stmt)
+            db_user = user_result.scalar_one_or_none()
+            
+            if db_user:
+                user_id = db_user.id
+                print(f"✅ Found user: {user_email} -> {user_id}")
+            else:
+                print(f"❌ User not found: {user_email}")
+                return {"success": False, "message": "User not found"}
+            
+            # Handle timestamp
+            timestamp_raw = body.get("timestamp")
+            if timestamp_raw and isinstance(timestamp_raw, str):
+                if '+' in timestamp_raw or timestamp_raw.endswith('Z'):
+                    timestamp_raw = timestamp_raw.replace('Z', '').split('+')[0]
+                timestamp = datetime.fromisoformat(timestamp_raw)
+            else:
+                timestamp = datetime.now()
+            
+            # Detect project type
+            prompt_lower = prompt.lower()
+            if any(w in prompt_lower for w in ['school', 'academy', 'university', 'college']):
+                project_type = "school"
+            elif any(w in prompt_lower for w in ['coffee', 'roastery', 'cafe', 'brew']):
+                project_type = "coffee"
+            elif any(w in prompt_lower for w in ['hotel', 'resort', 'lodge', 'inn']):
+                project_type = "hotel"
+            elif any(w in prompt_lower for w in ['gym', 'fitness', 'workout']):
+                project_type = "gym"
+            elif any(w in prompt_lower for w in ['restaurant', 'bistro', 'dining']):
+                project_type = "restaurant"
+            else:
+                project_type = "general"
+            
+            # Create project
             project = Project(
                 name=name,
                 prompt=prompt,
@@ -5816,16 +5854,15 @@ async def save_project(request: Dict[str, Any]):
                 version=1
             )
             session.add(project)
-            await session.flush()  # Get the project ID without committing yet
+            await session.flush()
             
-            # Save each file separately
+            # Save files
             file_saved_count = 0
             for file_path, content in files.items():
-                # Skip preview_html as it's stored separately
                 if file_path == "preview_html":
                     continue
                 
-                # Determine file type from extension
+                # Determine file type
                 file_type = None
                 if '.' in file_path:
                     ext = file_path.split('.')[-1].lower()
@@ -5839,21 +5876,21 @@ async def save_project(request: Dict[str, Any]):
                     }
                     file_type = file_type_map.get(ext, 'text')
                 
-                # Convert content to string if needed
+                # Convert content to string
                 if isinstance(content, dict):
                     content = json.dumps(content, indent=2)
                 elif not isinstance(content, str):
                     content = str(content)
                 
-                # Skip very large binary content (images)
+                # Skip large images
                 if file_type == 'image' and len(content) > 100000:
-                    print(f"   ⚠️ Skipping large image: {file_path} ({len(content)} bytes)")
+                    print(f"   ⚠️ Skipping large image: {file_path}")
                     continue
                 
                 project_file = ProjectFile(
                     project_id=project.id,
                     file_path=file_path,
-                    content=content[:1000000],  # Limit to 1MB per file
+                    content=content[:1000000],
                     file_type=file_type,
                     size_bytes=len(content)
                 )
@@ -5861,24 +5898,64 @@ async def save_project(request: Dict[str, Any]):
                 file_saved_count += 1
             
             await session.commit()
-            await session.refresh(project)
             
-            print(f"✅ Saved project: {name} with ID: {project.id}")
-            print(f"   Files saved: {file_saved_count}/{len(files)}")
+            print(f"✅ Saved project '{name}' for user {user_email}")
             
             return {
-                "success": True, 
-                "id": project.id, 
+                "success": True,
+                "id": project.id,
                 "name": name,
-                "file_count": file_saved_count,
-                "message": "Project saved successfully"
+                "user_email": user_email,
+                "file_count": file_saved_count
             }
             
     except Exception as e:
         print(f"❌ Save failed: {e}")
         import traceback
         traceback.print_exc()
+        return {"success": False, "message": str(e)}
+
+
+
+
+
+
+
+
+
+    except Exception as e:
+        print(f"❌ Save failed: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5971,19 +6048,78 @@ async def delete_project(project_id: str):
 
 
 
-
-
 @app.get("/api/get-projects")
-async def get_projects(user_id: str = "default", limit: int = 50, offset: int = 0):
+async def get_projects(request: Request, limit: int = 50, offset: int = 0):
+    """Get projects for the authenticated user only"""
+    
+    # Get user info from JWT token
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "")
+    
+    if not token:
+        print("⚠️ No token provided")
+        return {
+            "success": True,
+            "projects": [],
+            "count": 0,
+            "total": 0,
+            "has_more": False
+        }
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        user_email = payload.get('email')  # Get email from token
+        user_id = payload.get('user_id')
+        
+        print(f"📚 Getting projects for email: {user_email}")
+        print(f"   User ID from token: {user_id}")
+        
+    except jwt.ExpiredSignatureError:
+        print("⚠️ Token expired")
+        return {
+            "success": True,
+            "projects": [],
+            "count": 0,
+            "total": 0,
+            "has_more": False
+        }
+    except jwt.InvalidTokenError as e:
+        print(f"⚠️ Invalid token: {e}")
+        return {
+            "success": True,
+            "projects": [],
+            "count": 0,
+            "total": 0,
+            "has_more": False
+        }
+    
     try:
         async with AsyncSessionLocal() as session:
+            # First, find the user by email to get the correct user_id
+            user_stmt = select(User).where(User.email == user_email)
+            user_result = await session.execute(user_stmt)
+            db_user = user_result.scalar_one_or_none()
+            
+            if db_user:
+                actual_user_id = db_user.id
+                print(f"✅ Found user in DB: {user_email} -> {actual_user_id}")
+            else:
+                print(f"⚠️ User not found in DB: {user_email}")
+                return {
+                    "success": True,
+                    "projects": [],
+                    "count": 0,
+                    "total": 0,
+                    "has_more": False
+                }
+            
             # Get total count for pagination
-            count_stmt = select(func.count()).select_from(Project).where(Project.user_id == user_id)
+            count_stmt = select(func.count()).select_from(Project).where(Project.user_id == actual_user_id)
             count_result = await session.execute(count_stmt)
             total_count = count_result.scalar() or 0
             
-            # Get paginated projects with offset
-            stmt = select(Project).where(Project.user_id == user_id).order_by(desc(Project.timestamp)).offset(offset).limit(limit)
+            # Get paginated projects for this user only
+            stmt = select(Project).where(Project.user_id == actual_user_id).order_by(desc(Project.timestamp)).offset(offset).limit(limit)
             result = await session.execute(stmt)
             projects = result.scalars().all()
             
@@ -6001,19 +6137,20 @@ async def get_projects(user_id: str = "default", limit: int = 50, offset: int = 
             
             has_more = (offset + len(project_list)) < total_count
             
-            print(f"📚 Loaded {len(project_list)} projects (offset={offset}, total={total_count}, has_more={has_more})")
+            print(f"📚 Loaded {len(project_list)} projects for {user_email}")
             
             return {
                 "success": True,
                 "projects": project_list,
                 "count": len(project_list),
                 "total": total_count,
-                "has_more": has_more
+                "has_more": has_more,
+                "user_email": user_email
             }
-            
     except Exception as e:
-        print(f"❌ Load failed: {e}")
-        # Return empty list instead of throwing error to prevent frontend crashes
+        print(f"❌ Error loading projects: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": True,
             "projects": [],
@@ -6021,9 +6158,6 @@ async def get_projects(user_id: str = "default", limit: int = 50, offset: int = 
             "total": 0,
             "has_more": False
         }
-
-
-
 
 
 
@@ -6158,6 +6292,77 @@ async def deduct_credits(request: Request):
 
 
 
+@app.post("/api/admin/upgrade")
+async def admin_upgrade_user(request: Request):
+    """Admin endpoint to upgrade user plan (development only)"""
+    try:
+        data = await request.json()
+        user_id = data.get("userId")
+        plan = data.get("plan")
+        
+        if not user_id or not plan:
+            raise HTTPException(status_code=400, detail="Missing userId or plan")
+        
+        if plan not in ["free", "pro", "business"]:
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        
+        async with AsyncSessionLocal() as session:
+            # Update user credits
+            stmt = select(UserCredits).where(UserCredits.user_id == user_id)
+            result = await session.execute(stmt)
+            user_credits = result.scalar_one_or_none()
+            
+            if not user_credits:
+                # Create if doesn't exist
+                today = date.today()
+                user_credits = UserCredits(
+                    user_id=user_id,
+                    plan=plan,
+                    daily_credits_used=0,
+                    daily_reset_date=today,
+                    monthly_credits_used=0,
+                    monthly_reset_date=today
+                )
+                session.add(user_credits)
+            else:
+                user_credits.plan = plan
+            
+            await session.commit()
+            
+            return {"success": True, "plan": plan}
+    except Exception as e:
+        print(f"❌ Admin upgrade error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "EagleCode API is running",
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": [
+            "/health",
+            "/api/auth/google/signin",
+            "/api/auth/google/signup",
+            "/ws/build"
+        ]
+    }
+
+
+
+
 
 
 
@@ -6189,6 +6394,7 @@ async def health_check():
             "/health"
         ]
     }
+
 
 
 
