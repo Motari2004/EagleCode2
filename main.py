@@ -268,7 +268,6 @@ class GeminiModelRouter:
 
 
 
-
 load_dotenv()
 
 # ========== DETECT ENVIRONMENT ==========
@@ -282,13 +281,18 @@ else:
     # Local development
     THUMBNAIL_DIR = Path("thumbnails")
 
-THUMBNAIL_DIR.mkdir(exist_ok=True)
+THUMBNAIL_DIR.mkdir(exist_ok=True, parents=True)
 
 print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
 print(f"🌍 Environment: {'PRODUCTION (Render)' if IS_RENDER else 'DEVELOPMENT (Local)'}")
 
-
-
+# ========== MOUNT STATIC FILES (LOCAL ONLY) ==========
+if not IS_RENDER:
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/thumbnails", StaticFiles(directory=str(THUMBNAIL_DIR)), name="thumbnails")
+    print("✅ Thumbnails mounted at /thumbnails")
+else:
+    print("⚠️ Skipping static mount on Render - thumbnails will use Cloudinary URLs")
 
 
 # ========== CONFIGURATION ==========
