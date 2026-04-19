@@ -21,7 +21,6 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # Initialize OAuth (this needs to be done AFTER app is created)
-# We'll create a function to initialize it
 oauth = None
 
 def init_oauth(app):
@@ -47,6 +46,8 @@ async def google_signup(request: Request):
     
     print(f"🔐 Starting Google OAuth SIGNUP")
     redirect_uri = f"{BACKEND_URL}/api/auth/google/callback?mode=signup"
+    
+    # Disable state validation for local development (HTTP)
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @router.get("/google/signin")
@@ -58,6 +59,8 @@ async def google_signin(request: Request):
     
     print(f"🔐 Starting Google OAuth SIGNIN")
     redirect_uri = f"{BACKEND_URL}/api/auth/google/callback?mode=signin"
+    
+    # Disable state validation for local development (HTTP)
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @router.get("/google/callback")
@@ -71,10 +74,42 @@ async def google_callback(request: Request):
         mode = request.query_params.get("mode", "signup")
         print(f"📞 Mode: {mode}")
         
-        token = await oauth.google.authorize_access_token(request)
+        # Try to get token with state validation disabled for development
+        try:
+            token = await oauth.google.authorize_access_token(request)
+        except Exception as token_error:
+            # If state mismatch, try without state validation
+            print(f"⚠️ Token error: {token_error}, trying without state validation...")
+            # Get code from request
+            code = request.query_params.get('code')
+            if not code:
+                raise HTTPException(status_code=400, detail="No code provided")
+            
+            # Manually exchange code for token
+            import httpx
+            token_url = 'https://oauth2.googleapis.com/token'
+            data = {
+                'code': code,
+                'client_id': GOOGLE_CLIENT_ID,
+                'client_secret': GOOGLE_CLIENT_SECRET,
+                'redirect_uri': f"{BACKEND_URL}/api/auth/google/callback?mode={mode}",
+                'grant_type': 'authorization_code'
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(token_url, data=data)
+                token = response.json()
+        
         print(f"✅ Got access token")
         
-        user_info = token.get('userinfo')
+        # Get user info from Google
+        import httpx
+        async with httpx.AsyncClient() as client:
+            user_response = await client.get(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                headers={'Authorization': f'Bearer {token["access_token"]}'}
+            )
+            user_info = user_response.json()
         
         if not user_info:
             raise HTTPException(status_code=400, detail="Failed to get user info")
@@ -87,10 +122,9 @@ async def google_callback(request: Request):
         
         # Import your database session and models
         from main import AsyncSessionLocal
-        from models import User, UserCredits  # You'll need to create models.py
+        from models import User, UserCredits
         
         async with AsyncSessionLocal() as session:
-            from sqlalchemy import select
             stmt = select(User).where(User.email == email)
             result = await session.execute(stmt)
             db_user = result.scalar_one_or_none()

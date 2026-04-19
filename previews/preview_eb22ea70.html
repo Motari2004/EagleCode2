@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanctuary Sanctuary College Prep</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-text {
+            background: linear-gradient(to right, #e879f9, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .card-hover:hover { transform: translateY(-5px); transition: all 0.3s ease; }
+        .grid-pattern { background-image: radial-gradient(circle, #ffffff 1px, transparent 1px); background-size: 40px 40px; }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="relative w-full py-6 px-8 flex justify-between items-center z-50">
+        <a href="#" onclick="renderPage('home')" class="text-2xl font-bold tracking-tighter">Sanctuary Sanctuary College Prep</a>
+        <div class="hidden md:flex space-x-8">
+            <button onclick="renderPage('features')" class="hover:text-purple-400 transition">Features</button>
+            <button onclick="renderPage('pricing')" class="hover:text-purple-400 transition">Pricing</button>
+            <button onclick="renderPage('solutions')" class="hover:text-purple-400 transition">Solutions</button>
+            <button onclick="renderPage('blog')" class="hover:text-purple-400 transition">Blog</button>
+            <button onclick="renderPage('contact')" class="hover:text-purple-400 transition">Contact</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="app" class="min-h-screen">
+        <!-- Default Home Content -->
+        <div class="text-center py-20">
+            <h1 class="text-6xl font-bold gradient-text">Sanctuary Sanctuary College Prep</h1>
+            <p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-12 px-8 border-t border-white/10 bg-zinc-950">
+        <div class="container mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div><h4 class="font-bold mb-4">Sanctuary Sanctuary College Prep</h4></div>
+            <div><h4 class="font-bold mb-4">Quick Links</h4><ul class="text-gray-400 space-y-2"><li>Features</li><li>Pricing</li></ul></div>
+            <div><h4 class="font-bold mb-4">Contact</h4><p class="text-gray-400">info@sanctuary.edu</p></div>
+            <div><h4 class="font-bold mb-4">Social</h4><p class="text-gray-400">Follow us online</p></div>
+        </div>
+        <div class="text-center mt-12 text-gray-600 text-sm">© 2024 Sanctuary Sanctuary College Prep. All rights reserved.</div>
+    </footer>
+
+    <script>
+        const pages = {
+            home: `<div class="text-center py-20"><h1 class="text-6xl font-bold gradient-text">Sanctuary Sanctuary College Prep</h1><p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p></div>`,
+            features: document.getElementById('features')?.innerHTML || '<div class="p-20 text-center">Features Page Content</div>',
+            pricing: document.getElementById('pricing')?.innerHTML || '<div class="p-20 text-center">Pricing Page Content</div>',
+            solutions: document.getElementById('solutions')?.innerHTML || '<div class="p-20 text-center">Solutions Page Content</div>',
+            blog: document.getElementById('blog')?.innerHTML || '<div class="p-20 text-center">Blog Page Content</div>',
+            contact: document.getElementById('contact')?.innerHTML || '<div class="p-20 text-center">Contact Page Content</div>'
+        };
+
+        function renderPage(page) {
+            const app = document.getElementById('app');
+            app.style.opacity = 0;
+            setTimeout(() => {
+                app.innerHTML = pages[page] || pages.home;
+                app.style.opacity = 1;
+            }, 200);
+        }
+    </script>
+</body>
+</html>

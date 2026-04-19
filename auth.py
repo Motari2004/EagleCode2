@@ -17,10 +17,24 @@ from datetime import datetime, date
 import uuid
 
 
+
+
+
+
+
+
+
 # Load environment variables
 load_dotenv()
 
+
+
+
+
 app = FastAPI()
+
+
+
 
 # Add SessionMiddleware (REQUIRED for OAuth)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", "session-secret-key-change-this"))

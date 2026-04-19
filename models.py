@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Integer, DateTime, Boolean, Index, Date as SQLDate
+from sqlalchemy import Column, String, Text, Integer, DateTime, Boolean, Index, Date as SQLDate, BigInteger, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 import uuid

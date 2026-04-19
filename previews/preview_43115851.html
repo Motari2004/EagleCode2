@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanctuary Cabin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-text {
+            background: linear-gradient(to right, #c084fc, #db2777);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        body { background-color: #09090b; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav class="container mx-auto px-4 py-6 flex justify-between items-center">
+        <a href="#" onclick="loadPage('home')" class="text-2xl font-bold">Sanctuary Cabin</a>
+        <div class="hidden md:flex space-x-8">
+            <a href="#" onclick="loadPage('features')" class="hover:text-purple-400 transition">Features</a>
+            <a href="#" onclick="loadPage('pricing')" class="hover:text-purple-400 transition">Pricing</a>
+            <a href="#" onclick="loadPage('about')" class="hover:text-purple-400 transition">About</a>
+            <a href="#" onclick="loadPage('contact')" class="hover:text-purple-400 transition">Contact</a>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="content" class="container mx-auto px-4 py-12">
+        <!-- Default Home Content -->
+        <section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-purple-950/70 via-zinc-950/50 to-pink-950/70 z-0" />
+            <div class="relative z-10 container mx-auto px-4 text-center">
+                <h1 class="text-6xl md:text-7xl font-bold gradient-text mb-6">Sanctuary Cabin</h1>
+                <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">The ultimate SaaS platform for modern teams to collaborate and scale effortlessly.</p>
+                <button class="px-8 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold">Get Started</button>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const pages = {
+            "home": `<div class="text-center py-20"><h1 class="text-6xl font-bold gradient-text">Sanctuary Cabin</h1><p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p></div>`,
+            "features": `<h2 class="text-4xl font-bold text-center mb-12">Powerful Features</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="p-6 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/50 transition-all">
+                        <h3 class="text-xl font-semibold mb-2">Feature 1</h3>
+                        <p class="text-gray-400">Advanced tools designed to streamline your workflow and boost productivity.</p>
+                    </div>
+                    <div class="p-6 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/50 transition-all">
+                        <h3 class="text-xl font-semibold mb-2">Feature 2</h3>
+                        <p class="text-gray-400">Advanced tools designed to streamline your workflow and boost productivity.</p>
+                    </div>
+                    <div class="p-6 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/50 transition-all">
+                        <h3 class="text-xl font-semibold mb-2">Feature 3</h3>
+                        <p class="text-gray-400">Advanced tools designed to streamline your workflow and boost productivity.</p>
+                    </div>
+                </div>`,
+            "pricing": `<h2 class="text-4xl font-bold text-center mb-12">Simple Pricing</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="p-8 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-white/10 text-center">
+                        <h3 class="text-2xl font-bold mb-4">1</h3>
+                        <p class="text-4xl font-bold mb-6">$99</p>
+                        <button class="w-full py-2 rounded-lg bg-white/10 hover:bg-white/20">Select Plan</button>
+                    </div>
+                    <div class="p-8 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-white/10 text-center">
+                        <h3 class="text-2xl font-bold mb-4">2</h3>
+                        <p class="text-4xl font-bold mb-6">$99</p>
+                        <button class="w-full py-2 rounded-lg bg-white/10 hover:bg-white/20">Select Plan</button>
+                    </div>
+                    <div class="p-8 rounded-xl bg-gradient-to-br from-purple-600/20 to-pink-600/20 border border-white/10 text-center">
+                        <h3 class="text-2xl font-bold mb-4">3</h3>
+                        <p class="text-4xl font-bold mb-6">$99</p>
+                        <button class="w-full py-2 rounded-lg bg-white/10 hover:bg-white/20">Select Plan</button>
+                    </div>
+                </div>`,
+            "about": `<h2 class="text-4xl font-bold mb-8">Our Mission</h2>
+                <p class="text-lg text-gray-300 max-w-3xl">Sanctuary Cabin is dedicated to building the future of digital collaboration. We believe in simplicity, performance, and user-centric design.</p>`,
+            "contact": `<h2 class="text-4xl font-bold mb-8">Get in Touch</h2>
+                <form class="max-w-lg space-y-4">
+                    <input type="text" placeholder="Name" class="w-full p-3 rounded-lg bg-white/5 border border-white/10" />
+                    <input type="email" placeholder="Email" class="w-full p-3 rounded-lg bg-white/5 border border-white/10" />
+                    <textarea placeholder="Message" class="w-full p-3 rounded-lg bg-white/5 border border-white/10 h-32"></textarea>
+                    <button class="px-6 py-3 bg-purple-600 rounded-lg">Send Message</button>
+                </form>`
+        };
+
+        function loadPage(page) {
+            const content = document.getElementById('content');
+            content.style.opacity = 0;
+            setTimeout(() => {
+                content.innerHTML = pages[page] || pages['home'];
+                content.style.opacity = 1;
+            }, 200);
+        }
+    </script>
+</body>
+</html>

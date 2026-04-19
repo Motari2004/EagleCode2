@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Violet Studio Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-text { background: linear-gradient(to right, #c084fc, #db2777); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .grid-pattern { background-image: radial-gradient(circle, #ffffff 1px, transparent 1px); background-size: 40px 40px; }
+        body { background-color: #09090b; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav class="relative container mx-auto px-6 py-6 flex justify-between items-center">
+        <a href="#" onclick="renderPage('home')" class="text-2xl font-bold tracking-tighter">Violet Studio Store</a>
+        <div class="hidden md:flex gap-8">
+            <a href="#" onclick="renderPage('shop')" class="hover:text-purple-400 transition">Shop</a>
+            <a href="#" onclick="renderPage('catalog')" class="hover:text-purple-400 transition">Catalog</a>
+            <a href="#" onclick="renderPage('cart')" class="hover:text-purple-400 transition">Cart</a>
+            <a href="#" onclick="renderPage('checkout')" class="hover:text-purple-400 transition">Checkout</a>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="app" class="min-h-[60vh]">
+        <!-- Default Home Page -->
+        <div class="text-center py-20">
+            <h1 class="text-6xl font-bold gradient-text">Violet Studio Store</h1>
+            <p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-white/10 mt-20">
+        <div class="container mx-auto px-6 text-center">
+            <p class="text-gray-500">&copy; 2024 Violet Studio Store. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        const pages = {
+            home: `<div class="text-center py-20"><h1 class="text-6xl font-bold gradient-text">Violet Studio Store</h1><p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p></div>`,
+            shop: `<div class="bg-zinc-950 text-white"><section class="py-24 bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 relative overflow-hidden"><div class="absolute inset-0 grid-pattern opacity-10" /><div class="container mx-auto px-4 text-center relative z-10"><h1 class="text-5xl font-bold gradient-text mb-4">Our Shop</h1><p class="text-xl text-gray-300 max-w-2xl mx-auto">Explore our curated collection of unique and stylish products designed to inspire.</p></div></section></div>`,
+            catalog: `<div class="bg-zinc-950 text-white"><section class="py-24 bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 relative overflow-hidden"><div class="absolute inset-0 grid-pattern opacity-10" /><div class="container mx-auto px-4 text-center relative z-10"><h1 class="text-5xl font-bold gradient-text mb-4">Our Product Catalog</h1><p class="text-xl text-gray-300 max-w-2xl mx-auto">Browse through our diverse range of categories and discover something special.</p></div></section></div>`,
+            cart: `<div class="bg-zinc-950 text-white"><section class="py-24 bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 relative overflow-hidden"><div class="absolute inset-0 grid-pattern opacity-10" /><div class="container mx-auto px-4 text-center relative z-10"><h1 class="text-5xl font-bold gradient-text mb-4">Your Shopping Cart</h1><p class="text-xl text-gray-300 max-w-2xl mx-auto">Review your selected items before proceeding to checkout.</p></div></section></div>`,
+            checkout: `<div class="min-h-[50vh] flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 text-white"><div class="glass p-10 rounded-xl shadow-lg text-center max-w-md mx-auto"><h1 class="text-4xl font-bold gradient-text mb-4">Order Confirmed!</h1><p class="text-lg text-gray-300 mb-6">Thank you for your purchase. Your order has been successfully placed.</p></div></div>`
+        };
+
+        function renderPage(page) {
+            document.getElementById('app').innerHTML = pages[page] || pages.home;
+            window.scrollTo(0, 0);
+        }
+    </script>
+</body>
+</html>

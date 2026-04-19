@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Oasis Learning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-text { background: linear-gradient(to right, #d946ef, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .bg-gradient-custom { background: linear-gradient(to bottom right, #3b0764, #09090b, #500724); }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen flex flex-col">
+
+    <!-- Navigation -->
+    <nav class="w-full p-6 flex justify-between items-center bg-zinc-950">
+        <button onclick="renderPage('home')" class="text-2xl font-bold tracking-tighter">Modern Oasis Learning</button>
+        <div class="hidden md:flex gap-8">
+            <button onclick="renderPage('programs')" class="hover:text-purple-400 transition">Programs</button>
+            <button onclick="renderPage('admissions')" class="hover:text-purple-400 transition">Admissions</button>
+            <button onclick="renderPage('faculty')" class="hover:text-purple-400 transition">Faculty</button>
+            <button onclick="renderPage('events')" class="hover:text-purple-400 transition">Events</button>
+            <button onclick="renderPage('contact')" class="hover:text-purple-400 transition">Contact</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="app" class="flex-grow">
+        <!-- Default Home Content -->
+        <div class="text-center py-20">
+            <h1 class="text-6xl font-bold gradient-text">Modern Oasis Learning</h1>
+            <p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-zinc-800 mt-auto">
+        <div class="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 text-sm text-gray-400">
+            <div><h4 class="text-white font-bold mb-4">Quick Links</h4><p>Programs | Admissions | Faculty</p></div>
+            <div><h4 class="text-white font-bold mb-4">Contact</h4><p>info@modernoasis.edu</p></div>
+            <div><h4 class="text-white font-bold mb-4">Copyright</h4><p>&copy; 2024 Modern Oasis Learning</p></div>
+        </div>
+    </footer>
+
+    <script>
+        const pages = {
+            home: `<div class="text-center py-20"><h1 class="text-6xl font-bold gradient-text">Modern Oasis Learning</h1><p class="text-gray-400 mt-4 text-lg">Welcome to our digital space.</p></div>`,
+            programs: `<section class="relative h-96 flex items-center justify-center overflow-hidden"><div class="absolute inset-0 z-0"><img src="/images/programs-hero.jpg" alt="Programs background" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('bg-gradient-custom')"></div><h2 class="relative z-10 text-5xl font-bold">Programs</h2></section>`,
+            admissions: `<section class="relative h-96 flex items-center justify-center overflow-hidden"><div class="absolute inset-0 z-0"><img src="/images/admissions-hero.jpg" alt="Admissions background" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('bg-gradient-custom')"></div><h2 class="relative z-10 text-5xl font-bold">Admissions</h2></section>`,
+            faculty: `<section class="relative h-96 flex items-center justify-center overflow-hidden"><div class="absolute inset-0 z-0"><img src="/images/faculty-hero.jpg" alt="Faculty background" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('bg-gradient-custom')"></div><h2 class="relative z-10 text-5xl font-bold">Faculty</h2></section>`,
+            events: `<section class="relative h-96 flex items-center justify-center overflow-hidden"><div class="absolute inset-0 z-0"><img src="/images/events-hero.jpg" alt="Events background" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('bg-gradient-custom')"></div><h2 class="relative z-10 text-5xl font-bold">Events</h2></section>`,
+            contact: `<section class="relative h-96 flex items-center justify-center overflow-hidden"><div class="absolute inset-0 z-0"><img src="/images/contact-hero.jpg" alt="Contact background" class="w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('bg-gradient-custom')"></div><h2 class="relative z-10 text-5xl font-bold">Contact</h2></section>`
+        };
+
+        function renderPage(page) {
+            const app = document.getElementById('app');
+            app.style.opacity = 0;
+            setTimeout(() => {
+                app.innerHTML = pages[page] || pages.home;
+                app.style.opacity = 1;
+            }, 200);
+        }
+        document.getElementById('app').style.transition = 'opacity 0.3s ease';
+    </script>
+</body>
+</html>

@@ -7,8 +7,6 @@ import asyncio
 from html2image import Html2Image
 from pathlib import Path
 
-from fastapi.staticfiles import StaticFiles
-
 # Then import and initialize auth router
 from routes.auth import router as auth_router, init_oauth
 
@@ -269,23 +267,9 @@ class GeminiModelRouter:
 
 
 
+
 load_dotenv()
 
-# ========== DETECT ENVIRONMENT ==========
-IS_RENDER = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
-
-# ========== CREATE THUMBNAILS DIRECTORY ==========
-if IS_RENDER:
-    # On Render, use /tmp directory (ephemeral, but we upload to Cloudinary anyway)
-    THUMBNAIL_DIR = Path("/tmp/thumbnails")
-else:
-    # Local development
-    THUMBNAIL_DIR = Path("thumbnails")
-
-THUMBNAIL_DIR.mkdir(exist_ok=True)
-
-print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
-print(f"🌍 Environment: {'PRODUCTION (Render)' if IS_RENDER else 'DEVELOPMENT (Local)'}")
 
 
 
@@ -426,11 +410,8 @@ if DATABASE_URL:
             is_public = Column(Boolean, default=False)
             version = Column(Integer, default=1)
             thumbnail_url = Column(String(500), nullable=True)  # Store thumbnail URL
-            thumbnail_path = Column(String(500), nullable=True)  # Store file path
+            thumbnail_base64 = Column(Text, nullable=True)      # Or store base64 for fast loading
         
-
-
-
         # Project Files table (stores individual files separately)
         class ProjectFile(Base):
             __tablename__ = "project_files"
@@ -1013,30 +994,8 @@ async def lifespan(app: FastAPI):
         await engine.dispose()
         print("👋 Database connection closed")
 
-
-
-
-
 # Update your app initialization:
 app = FastAPI(title="Scorpio Architecture Engine", lifespan=lifespan)
-
-
-
-
-
-
-
-
-
-# Mount the directory
-app.mount("/thumbnails", StaticFiles(directory="thumbnails"), name="thumbnails")
-# ========================================
-
-
-
-
-
-
 
 
 
@@ -7444,86 +7403,78 @@ async def name_stats():
 
 
 
-async def generate_thumbnail_from_html(html_content: str, project_id: str) -> str:
-    """Generate thumbnail - local: saves to disk, production: uploads to Cloudinary"""
+
+
+
+
+
+async def generate_thumbnail_from_html(html_content: str, project_name: str) -> str:
+    """Generate thumbnail from HTML content using local Chrome - UNLIMITED"""
+    
     try:
         if not html_content:
             return None
         
-        # Check if running on Render (production)
-        is_render = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
-        
-        # Create temp directory for generation
+        # Create temp directory
         temp_dir = Path("temp_thumbnails")
         temp_dir.mkdir(exist_ok=True)
         
         # Save HTML to temp file
-        temp_html = temp_dir / f"{project_id}.html"
+        safe_name = "".join(c for c in project_name[:50] if c.isalnum() or c in (' ', '-', '_')).replace(' ', '_')
+        temp_html = temp_dir / f"{safe_name}.html"
+        
         with open(temp_html, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        # Generate screenshot
-        from html2image import Html2Image
+        print(f"📸 Generating thumbnail for: {project_name}")
+        
+        # Initialize Html2Image
         hti = Html2Image(
             output_path=str(temp_dir),
-            size=(400, 225),  # Small size for fast loading
+            size=(1280, 720),
             browser='chrome',
         )
         
-        output_file = f"{project_id}.png"
+        # Generate screenshot
+        output_file = f"{safe_name}_thumbnail.png"
         hti.screenshot(
             html_file=str(temp_html),
             save_as=output_file
         )
         
-        temp_thumbnail = temp_dir / output_file
+        # Read and convert to base64
+        thumbnail_path = temp_dir / output_file
+        if not thumbnail_path.exists():
+            return None
         
-        if temp_thumbnail.exists():
-            if is_render:
-                # ========== PRODUCTION (Render) - Upload to Cloudinary ==========
-                import cloudinary.uploader
-                import shutil
-                
-                # Upload to Cloudinary
-                upload_result = cloudinary.uploader.upload(
-                    str(temp_thumbnail),
-                    folder="project_thumbnails",
-                    public_id=project_id,
-                    overwrite=True
-                )
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                shutil.rmtree(temp_dir)
-                
-                # Return Cloudinary URL
-                cloudinary_url = upload_result['secure_url']
-                print(f"✅ Thumbnail uploaded to Cloudinary: {cloudinary_url}")
-                return cloudinary_url
-            else:
-                # ========== DEVELOPMENT (Local) - Save to disk ==========
-                import shutil
-                
-                # Create thumbnails directory if it doesn't exist
-                THUMBNAIL_DIR.mkdir(exist_ok=True)
-                
-                final_thumbnail = THUMBNAIL_DIR / output_file
-                shutil.move(str(temp_thumbnail), str(final_thumbnail))
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                os.rmdir(temp_dir)
-                
-                # Return local URL path
-                return f"/thumbnails/{output_file}"
+        with open(thumbnail_path, 'rb') as f:
+            thumbnail_base64 = base64.b64encode(f.read()).decode('utf-8')
         
-        return None
+        # Cleanup
+        os.remove(temp_html)
+        os.remove(thumbnail_path)
+        os.rmdir(temp_dir)
+        
+        print(f"✅ Thumbnail generated for {project_name}")
+        return f"data:image/png;base64,{thumbnail_base64}"
         
     except Exception as e:
         print(f"❌ Thumbnail generation failed: {e}")
-        import traceback
-        traceback.print_exc()
         return None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7627,16 +7578,19 @@ async def save_project(request: Request):
             else:
                 project_type = "general"
             
-            # Create project FIRST (without thumbnail)
-            import uuid
-            project_id = str(uuid.uuid4())
+            # Generate thumbnail from preview_html
+            thumbnail_base64 = None
+            if preview_html:
+                thumbnail_base64 = await generate_thumbnail_from_html(preview_html, name)
+                if thumbnail_base64:
+                    print(f"✅ Thumbnail generated for project: {name}")
             
+            # Create project with thumbnail
             project = Project(
-                id=project_id,  # Set ID explicitly
                 name=name,
                 prompt=prompt,
                 preview_html=preview_html,
-                thumbnail_url=None,  # Will update after generation
+                thumbnail_base64=thumbnail_base64,
                 timestamp=timestamp,
                 user_id=user_id,
                 project_type=project_type,
@@ -7647,15 +7601,6 @@ async def save_project(request: Request):
             )
             session.add(project)
             await session.flush()
-            
-            # ========== GENERATE THUMBNAIL AFTER PROJECT CREATION ==========
-            thumbnail_url = None
-            if preview_html:
-                thumbnail_url = await generate_thumbnail_from_html(preview_html, project_id)
-                if thumbnail_url:
-                    project.thumbnail_url = thumbnail_url
-                    print(f"✅ Thumbnail saved to disk: {thumbnail_url}")
-            # ==============================================================
             
             # Save files
             file_saved_count = 0
@@ -7708,8 +7653,7 @@ async def save_project(request: Request):
                 "name": name,
                 "user_email": user_email,
                 "file_count": file_saved_count,
-                "has_thumbnail": thumbnail_url is not None,
-                "thumbnail_url": thumbnail_url
+                "has_thumbnail": thumbnail_base64 is not None
             }
             
     except Exception as e:
@@ -7717,6 +7661,14 @@ async def save_project(request: Request):
         import traceback
         traceback.print_exc()
         return {"success": False, "message": str(e)}
+
+
+
+
+
+
+
+
 
 
 
@@ -7770,7 +7722,7 @@ async def get_project(project_id: str):
                     "name": project.name,
                     "prompt": project.prompt,
                     "preview_html": project.preview_html,
-                    "thumbnail_url": project.thumbnail_url,  # ← Changed from thumbnail_base64
+                    "thumbnail_base64": project.thumbnail_base64,  # ADD THIS LINE
                     "timestamp": project.timestamp.isoformat(),
                     "project_type": project.project_type,
                     "file_count": project.file_count
@@ -7782,6 +7734,7 @@ async def get_project(project_id: str):
     except Exception as e:
         print(f"❌ Get project failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
@@ -7812,6 +7765,7 @@ async def delete_project(project_id: str):
     except Exception as e:
         print(f"❌ Delete failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
@@ -7874,7 +7828,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
             total_count = await session.execute(count_stmt)
             total_count = total_count.scalar() or 0
             
-            # Get metadata including thumbnail_url (NOT base64)
+            # Get metadata including thumbnail_base64
             stmt = select(
                 Project.id,
                 Project.name,
@@ -7882,7 +7836,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                 Project.timestamp,
                 Project.project_type,
                 Project.file_count,
-                Project.thumbnail_url  # ← Changed from thumbnail_base64 to thumbnail_url
+                Project.thumbnail_base64  # ADD THIS LINE
             ).where(
                 Project.user_id == actual_user_id
             ).order_by(
@@ -7900,7 +7854,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                     "timestamp": row[3].isoformat(),
                     "project_type": row[4],
                     "file_count": row[5],
-                    "thumbnail_url": row[6]  # ← Changed from thumbnail_base64 to thumbnail_url
+                    "thumbnail_base64": row[6]  # ADD THIS LINE
                 }
                 for row in rows
             ]
@@ -7924,6 +7878,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
             "total": 0,
             "has_more": False
         }
+
 
 
 

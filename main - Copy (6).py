@@ -269,23 +269,19 @@ class GeminiModelRouter:
 
 
 
+
 load_dotenv()
 
-# ========== DETECT ENVIRONMENT ==========
-IS_RENDER = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
 
-# ========== CREATE THUMBNAILS DIRECTORY ==========
-if IS_RENDER:
-    # On Render, use /tmp directory (ephemeral, but we upload to Cloudinary anyway)
-    THUMBNAIL_DIR = Path("/tmp/thumbnails")
-else:
-    # Local development
-    THUMBNAIL_DIR = Path("thumbnails")
 
+
+
+# Create thumbnails directory
+THUMBNAIL_DIR = Path("thumbnails")
 THUMBNAIL_DIR.mkdir(exist_ok=True)
 
-print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
-print(f"🌍 Environment: {'PRODUCTION (Render)' if IS_RENDER else 'DEVELOPMENT (Local)'}")
+
+
 
 
 
@@ -7444,14 +7440,15 @@ async def name_stats():
 
 
 
+
+
+
+
 async def generate_thumbnail_from_html(html_content: str, project_id: str) -> str:
-    """Generate thumbnail - local: saves to disk, production: uploads to Cloudinary"""
+    """Generate thumbnail and save to disk, return file path"""
     try:
         if not html_content:
             return None
-        
-        # Check if running on Render (production)
-        is_render = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
         
         # Create temp directory for generation
         temp_dir = Path("temp_thumbnails")
@@ -7463,7 +7460,6 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
             f.write(html_content)
         
         # Generate screenshot
-        from html2image import Html2Image
         hti = Html2Image(
             output_path=str(temp_dir),
             size=(400, 225),  # Small size for fast loading
@@ -7476,54 +7472,32 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
             save_as=output_file
         )
         
+        # Move to final thumbnails directory
         temp_thumbnail = temp_dir / output_file
+        final_thumbnail = THUMBNAIL_DIR / output_file
         
         if temp_thumbnail.exists():
-            if is_render:
-                # ========== PRODUCTION (Render) - Upload to Cloudinary ==========
-                import cloudinary.uploader
-                import shutil
-                
-                # Upload to Cloudinary
-                upload_result = cloudinary.uploader.upload(
-                    str(temp_thumbnail),
-                    folder="project_thumbnails",
-                    public_id=project_id,
-                    overwrite=True
-                )
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                shutil.rmtree(temp_dir)
-                
-                # Return Cloudinary URL
-                cloudinary_url = upload_result['secure_url']
-                print(f"✅ Thumbnail uploaded to Cloudinary: {cloudinary_url}")
-                return cloudinary_url
-            else:
-                # ========== DEVELOPMENT (Local) - Save to disk ==========
-                import shutil
-                
-                # Create thumbnails directory if it doesn't exist
-                THUMBNAIL_DIR.mkdir(exist_ok=True)
-                
-                final_thumbnail = THUMBNAIL_DIR / output_file
-                shutil.move(str(temp_thumbnail), str(final_thumbnail))
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                os.rmdir(temp_dir)
-                
-                # Return local URL path
-                return f"/thumbnails/{output_file}"
+            # Move file
+            import shutil
+            shutil.move(str(temp_thumbnail), str(final_thumbnail))
+            
+            # Cleanup temp files
+            os.remove(temp_html)
+            os.rmdir(temp_dir)
+            
+            # Return URL path
+            return f"/thumbnails/{output_file}"
         
         return None
         
     except Exception as e:
         print(f"❌ Thumbnail generation failed: {e}")
-        import traceback
-        traceback.print_exc()
         return None
+
+
+
+
+
 
 
 

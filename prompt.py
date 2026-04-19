@@ -4,10 +4,6 @@ import re
 import io
 import jwt  # noqa
 import asyncio
-from html2image import Html2Image
-from pathlib import Path
-
-from fastapi.staticfiles import StaticFiles
 
 # Then import and initialize auth router
 from routes.auth import router as auth_router, init_oauth
@@ -269,23 +265,9 @@ class GeminiModelRouter:
 
 
 
+
 load_dotenv()
 
-# ========== DETECT ENVIRONMENT ==========
-IS_RENDER = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
-
-# ========== CREATE THUMBNAILS DIRECTORY ==========
-if IS_RENDER:
-    # On Render, use /tmp directory (ephemeral, but we upload to Cloudinary anyway)
-    THUMBNAIL_DIR = Path("/tmp/thumbnails")
-else:
-    # Local development
-    THUMBNAIL_DIR = Path("thumbnails")
-
-THUMBNAIL_DIR.mkdir(exist_ok=True)
-
-print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
-print(f"🌍 Environment: {'PRODUCTION (Render)' if IS_RENDER else 'DEVELOPMENT (Local)'}")
 
 
 
@@ -425,12 +407,7 @@ if DATABASE_URL:
             size_bytes = Column(Integer, default=0)
             is_public = Column(Boolean, default=False)
             version = Column(Integer, default=1)
-            thumbnail_url = Column(String(500), nullable=True)  # Store thumbnail URL
-            thumbnail_path = Column(String(500), nullable=True)  # Store file path
         
-
-
-
         # Project Files table (stores individual files separately)
         class ProjectFile(Base):
             __tablename__ = "project_files"
@@ -658,48 +635,6 @@ def create_deployment_files(original_files: Dict[str, Any], image_urls: Dict[str
     
     print(f"📦 Created {len(deployment_files)} deployment files (original files unchanged)")
     return deployment_files
-
-
-
-
-
-
-
-
-
-
-
-
-
-def extract_brand_name(files: dict) -> str:
-    """Extract brand name from Navigation.tsx"""
-    nav_content = files.get("components/Navigation.tsx", "")
-    
-    if not nav_content:
-        return None
-    
-    # Pattern for: <Link ...> <Icon /> Brand Name </Link>
-    match = re.search(r'<Link[^>]*href=["\']/["\'][^>]*>.*?>(.*?)</Link>', nav_content, re.DOTALL)
-    if match:
-        content = match.group(1)
-        # Remove the icon/SVG part
-        content = re.sub(r'<[^>]+>', '', content)  # Remove any HTML tags
-        content = content.strip()
-        # Brand name should be the last part after the icon
-        words = content.split()
-        if words:
-            # Take the last 1-3 words as brand name
-            brand = ' '.join(words[-3:])
-            if brand and len(brand) > 1 and len(brand) < 50:
-                print(f"🏷️ Extracted brand name: {brand}")
-                return brand
-    
-    return None
-
-
-
-
-
 
 
 
@@ -1013,30 +948,8 @@ async def lifespan(app: FastAPI):
         await engine.dispose()
         print("👋 Database connection closed")
 
-
-
-
-
 # Update your app initialization:
 app = FastAPI(title="Scorpio Architecture Engine", lifespan=lifespan)
-
-
-
-
-
-
-
-
-
-# Mount the directory
-app.mount("/thumbnails", StaticFiles(directory="thumbnails"), name="thumbnails")
-# ========================================
-
-
-
-
-
-
 
 
 
@@ -1083,261 +996,53 @@ IMAGE_CACHE = {}
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async def search_free_images(query: str, count: int = 2, previous_terms: List[str] = None, search_type: str = "general") -> List[Dict]:
+async def search_free_images(query: str, count: int = 3) -> List[Dict]:
     """
-    Search for free-to-use images using Pexels API with varied search terms.
-    Returns maximum 2 images for faster performance and smaller project size.
-    
-    search_type: "general", "person", "portrait", "team"
+    Search for free-to-use images using Pexels API (primary) with fallback to web scraping
+    Returns a list of image URLs with attribution information
     """
-    previous_terms = previous_terms or []
-    
-    # Generate varied search terms based on query AND search_type
-    search_terms = generate_varied_search_terms(query, previous_terms, search_type)
-    
-    print(f"🔍 Generated search terms for {search_type}: {search_terms[:3]}")
-    
     # Try Pexels API first
     api_key = os.environ.get("PEXELS_API_KEY")
-    all_results = []
-    used_terms = []
-    
-    for search_term in search_terms[:4]:  # Try up to 4 different terms
-        if len(all_results) >= count:
-            break
+    if api_key:
+        try:
+            headers = {"Authorization": api_key}
+            params = {"query": query, "per_page": count, "page": 1}
             
-        if api_key:
-            try:
-                headers = {"Authorization": api_key}
-                random_page = random.randint(1, 2)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.pexels.com/v1/search",
+                    headers=headers,
+                    params=params,
+                    timeout=10
+                )
                 
-                # Build params based on search_type
-                params = {
-                    "query": search_term, 
-                    "per_page": count, 
-                    "page": random_page
-                }
-                
-                # Add orientation for person searches
-                if search_type in ["person", "portrait", "team"]:
-                    params["orientation"] = "portrait"
-                    params["size"] = "large"
-                    print(f"👤 Person search mode - using portrait orientation")
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        "https://api.pexels.com/v1/search",
-                        headers=headers,
-                        params=params,
-                        timeout=10
-                    )
+                if response.status_code == 200:
+                    data = response.json()
+                    results = []
                     
-                    if response.status_code == 200:
-                        data = response.json()
+                    for photo in data.get("photos", []):
+                        # Use large2x image for high quality
+                        img_url = photo.get("src", {}).get("large2x") or photo.get("src", {}).get("large")
                         
-                        for photo in data.get("photos", []):
-                            img_url = photo.get("src", {}).get("large2x") or photo.get("src", {}).get("large")
-                            
-                            if len(all_results) >= count:
-                                break
-                            
-                            # For person searches, verify photo contains people
-                            if search_type in ["person", "portrait", "team"]:
-                                # Check if photo likely contains people
-                                alt_text = photo.get("alt", "").lower()
-                                photographer = photo.get("photographer", "").lower()
-                                
-                                people_keywords = ["person", "people", "man", "woman", "face", "portrait", "trainer", "coach", "athlete"]
-                                has_people = any(keyword in alt_text or keyword in photographer for keyword in people_keywords)
-                                
-                                if not has_people and search_type == "person":
-                                    print(f"  ⏭️ Skipping non-person photo for '{search_term}'")
-                                    continue
-                            
-                            all_results.append({
-                                "url": img_url,
-                                "source": "Pexels",
-                                "attribution": f"Photo by {photo.get('photographer', 'Unknown')} on Pexels",
-                                "license": "Free to use under Pexels License",
-                                "photographer_url": photo.get("photographer_url"),
-                                "alt": photo.get("alt", search_term),
-                                "search_term": search_term,
-                                "type": search_type
-                            })
-                            used_terms.append(search_term)
+                        results.append({
+                            "url": img_url,
+                            "source": "Pexels",
+                            "attribution": f"Photo by {photo.get('photographer', 'Unknown')} on Pexels",
+                            "license": "Free to use under Pexels License",
+                            "photographer_url": photo.get("photographer_url"),
+                            "alt": photo.get("alt", query)
+                        })
+                    
+                    if results:
+                        print(f"✅ Found {len(results)} images via Pexels API for '{query}'")
+                        return results[:count]
                         
-                        if all_results:
-                            print(f"✅ Found {len(all_results)} images via Pexels API for {search_type}")
-                                    
-            except Exception as e:
-                print(f"⚠️ Pexels API error for '{search_term}': {e}")
-                continue
+        except Exception as e:
+            print(f"⚠️ Pexels API error: {e}, falling back to web scraping")
     
-    if all_results:
-        random.shuffle(all_results)
-        print(f"✅ Total {len(all_results[:count])} {search_type} images found")
-        return all_results[:count]
-    
+    # Fallback to web scraping if API fails or no API key
     print(f"🔍 Falling back to web scraping for '{query}'")
-    fallback_results = await search_free_images_fallback(query, count)
-    
-    if not fallback_results:
-        print(f"⚠️ No images found for '{query}', will use styled gradient cards instead")
-        return []
-    
-    return fallback_results[:count]
-
-
-def generate_varied_search_terms(query: str, previous_terms: List[str] = None, search_type: str = "general") -> List[str]:
-    """
-    Generate varied search terms based on project type and search_type.
-    Returns fewer terms (max 6) for faster searching.
-    """
-    previous_terms = previous_terms or []
-    query_lower = query.lower()
-    
-    # Word banks for variety
-    adjectives = ["modern", "beautiful", "stunning", "elegant", "vibrant", "cozy", 
-                  "luxury", "rustic", "minimal", "colorful", "dramatic", "peaceful",
-                  "dynamic", "fresh", "warm", "cool", "bright"]
-    
-    # Person-specific adjectives
-    person_adjectives = ["professional", "friendly", "confident", "smiling", "fit", 
-                         "energetic", "experienced", "expert", "certified", "passionate"]
-    
-    # Project type specific keywords
-    type_keywords = {
-        "hotel": ["lobby", "pool", "spa", "restaurant", "suite", "terrace"],
-        "coffee": ["beans", "barista", "counter", "pastry", "espresso", "latte"],
-        "school": ["classroom", "library", "cafeteria", "playground", "campus"],
-        "gym": ["weights", "treadmill", "yoga", "training", "fitness"],
-        "restaurant": ["dining", "kitchen", "bar", "table", "food", "chef"],
-        "portfolio": ["workspace", "studio", "design", "creative", "office"],
-        "ecommerce": ["product", "display", "packaging", "store", "shop"],
-        "tech": ["dashboard", "interface", "coding", "software", "modern"],
-        "saas": ["dashboard", "analytics", "platform", "interface", "cloud"],
-        # Person/people specific
-        "trainers": ["personal trainer", "fitness coach", "gym instructor", "trainer portrait"],
-        "coaches": ["sports coach", "team coach", "trainer portrait", "professional coach"],
-        "team": ["team photo", "group portrait", "staff", "employees together"],
-        "staff": ["professional portrait", "employee headshot", "team member", "worker"]
-    }
-    
-    # Detect if we need person images
-    needs_people = search_type in ["person", "portrait", "team"]
-    
-    if needs_people:
-        # Person-specific search terms
-        keywords = ["trainer", "coach", "instructor", "fitness expert", "personal trainer", "athlete"]
-        adj_list = person_adjectives
-    else:
-        # Detect project type for general images
-        detected_type = "general"
-        for ptype in type_keywords.keys():
-            if ptype in query_lower:
-                detected_type = ptype
-                break
-        keywords = type_keywords.get(detected_type, ["design", "space", "interior", "exterior", "modern"])
-        adj_list = adjectives
-    
-    search_terms = []
-    
-    if needs_people:
-        # Method for person searches
-        roles = ["trainer", "coach", "instructor", "fitness expert", "personal trainer"]
-        for i in range(3):
-            adj = random.choice(adj_list)
-            role = random.choice(roles)
-            term = f"{adj} {role} portrait"
-            if term not in search_terms:
-                search_terms.append(term)
-        
-        # Add specific person terms
-        person_terms = ["professional headshot", "smiling coach", "trainer at work", "fitness portrait"]
-        for term in person_terms[:2]:
-            if term not in search_terms:
-                search_terms.append(term)
-    else:
-        # Method 1: Adjective + Keyword
-        for i in range(3):
-            adj = random.choice(adj_list)
-            kw = random.choice(keywords)
-            term = f"{adj} {kw}"
-            if term not in search_terms:
-                search_terms.append(term)
-        
-        # Method 2: Keyword + Style
-        styles = ["photography", "background", "stock photo"]
-        for i in range(2):
-            kw = random.choice(keywords)
-            style = random.choice(styles)
-            term = f"{kw} {style}"
-            if term not in search_terms:
-                search_terms.append(term)
-        
-        # Method 3: Original query
-        if query not in search_terms:
-            search_terms.append(query)
-    
-    # Remove used terms
-    if previous_terms:
-        search_terms = [t for t in search_terms if t not in previous_terms]
-    
-    # Ensure we have at least one term
-    if not search_terms:
-        if needs_people:
-            search_terms = ["professional trainer portrait", "fitness coach", "smiling instructor"]
-        else:
-            search_terms = [query, "modern design", "beautiful background"]
-    
-    return search_terms[:6]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return await search_free_images_fallback(query, count)
 
 async def search_free_images_fallback(query: str, count: int = 3) -> List[Dict]:
     """
@@ -1730,46 +1435,6 @@ DESIGN REQUIREMENTS:
 - Smooth page transitions
 - Dark theme with purple-pink gradients
 - Mobile responsive with hamburger menu
-
-
-
-
-🚨 FOOTER (REQUIRED ON EVERY PAGE):
-- Footer.tsx component MUST be imported and used on ALL pages
-- Footer appears at the bottom of every page
-- Contains: Quick links, Contact info, Social media, Copyright
-- Same footer across all pages (consistent)
-
-PAGE STRUCTURE:
-- Home page visible by default
-- Smooth page transitions between routes
-- Dark theme with purple-pink gradients throughout
-
-
-
-
-
-
-
-
-🚨🚨🚨 CRITICAL - NO INVENTED CONTENT 🚨🚨🚨
-The HTML preview is for TESTING ONLY. The actual Vercel deployment will use the Next.js files.
-DO NOT add invented taglines, fake brand names, or marketing text like:
-- "Sanctuary Design"
-- "Crafting high-end digital experiences"
-- "neon-infused aesthetics"
-- "precision design"
-- Any text NOT present in the PAGE CONTENTS above
-
-
-
-The home page content MUST come ONLY from the PAGE CONTENTS provided.
-If the user didn't specify a tagline, DO NOT invent one.
-
-
-
-
-
 
 Return ONLY complete HTML. No explanations."""
 
@@ -2262,343 +1927,9 @@ CRITICAL OUTPUT RULES:
 - ALL file contents MUST be strings
 
 - The brand icon should ONLY be added to Navigation.tsx, NOT to app/page.tsx
-- The home page stylished well rich content and footer
+- The home page should ONLY have the title text, not a duplicate icon
 - Only modify the specific files needed for the request
 - Every website to be generated should have brand icon in the Navigation.tsx and a clean, bold title on the home page (app/page.tsx)
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 CRITICAL: YOU MUST GENERATE COMPLETE FULL PAGES - NO EXCEPTIONS 🚨
-================================================================================
-
-For EVERY navigation link, you MUST create a COMPLETE page file with:
-
-
-❌ NEVER create empty or placeholder pages:
-export default function Courses() { return <div>Courses</div>; }
-export default function Shop() { return <div>Shop Page</div>; }
-export default function About() { return <div>About Us</div>; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨🚨🚨 CRITICAL: CREATE EVERY NAVIGATION LINK PAGE 🚨🚨🚨
-================================================================================
-
-**For EVERY link in Navigation.tsx, you MUST create a corresponding page file with RICH CONTENT.**
-
-Example Navigation.tsx:
-```tsx
-<Link href="/features">Features</Link>
-<Link href="/pricing">Pricing</Link>
-<Link href="/about">About</Link>
-<Link href="/contact">Contact</Link>
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-STYLED MAP PLACEHOLDER - USE THIS INSTEAD OF BLACK CARDS
-================================================================================
-
-**Location Page Map Component (app/locations/page.tsx or contact page):**
-
-Instead of a black card or empty div, use this beautiful styled map placeholder:
-
-```tsx
-// components/StyledMap.tsx
-'use client';
-
-interface StyledMapProps {
-  address?: string;
-  className?: string;
-}
-
-export default function StyledMap({ address = "123 Main Street, City", className = "" }: StyledMapProps) {
-  return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950/40 via-zinc-900 to-pink-950/30 border border-white/10 ${className}`}>
-      {/* Decorative grid pattern */}
-      <div className="absolute inset-0 grid-pattern opacity-20" />
-      
-      {/* Animated gradient orbs */}
-      <div className="absolute top-0 -left-20 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl animate-pulse-slow" />
-      <div className="absolute bottom-0 -right-20 w-72 h-72 bg-pink-500/20 rounded-full blur-3xl animate-pulse-slow" />
-      
-      {/* Map SVG placeholder */}
-      <div className="relative z-10 p-8 text-center">
-        <svg className="w-20 h-20 mx-auto mb-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        
-        <h3 className="text-xl font-semibold mb-2 gradient-text">Our Location</h3>
-        <p className="text-gray-400 mb-4">{address}</p>
-        
-        {/* Decorative location dots */}
-        <div className="flex justify-center gap-2 mt-4">
-          <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-          <div className="w-2 h-2 rounded-full bg-pink-400 animate-pulse delay-150" />
-          <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse delay-300" />
-        </div>
-        
-        {/* Interactive button */}
-        <button className="mt-6 px-6 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm transition-all duration-300">
-          Get Directions
-        </button>
-      </div>
-      
-      {/* Bottom decorative line */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent" />
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Create a premium, elegant Footer component for the Next.js website.
-
-File path: "components/Footer.tsx"
-
-Requirements:
-- Make it a modern glassmorphism-style footer with subtle backdrop blur.
-- Use the project's purple-pink gradient theme: bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
-- Include a decorative top border with gradient: bg-gradient-to-r from-transparent via-purple-500 to-transparent
-- Responsive grid layout: 4 columns on large screens (Brand | Quick Links | Company | Contact + Newsletter)
-- Brand section: Show the same logo/icon as Navigation.tsx + short tagline about the business.
-- Quick Links and Company sections: Use Next.js Link components with hover effects that change to purple-400.
-- Contact section: Include email, phone, and location with Lucide icons (Mail, Phone, MapPin).
-- Newsletter signup: A beautiful glass card with email input and a gradient "Subscribe" button (from-purple-600 to-pink-600).
-- Bottom bar: Copyright with current year, legal links (Privacy, Terms), and a small "Crafted in Nairobi" note.
-- Add subtle decorative elements: soft glowing orbs, grid pattern overlay (opacity 10-20%), and a thin gradient line at the very bottom.
-- Make it fully responsive (stack on mobile).
-- Use Tailwind classes only, no extra libraries except Lucide icons.
-- Add smooth hover transitions and maintain the overall dark luxurious aesthetic (no solid black or white backgrounds).
-- Ensure the footer looks rich and complete so the home page (app/page.tsx) ends beautifully when the footer is placed at the bottom.
-
-In app/page.tsx, place this Footer at the very end of the main content, after all sections (hero, features, gallery, testimonials, etc.), so it sits naturally at the bottom of the home page.
-
-Also import and include the Footer in app/layout.tsx so it appears consistently across all pages.
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 IMAGE USAGE RULE - ONLY 1 IMAGE TOTAL (HERO ONLY) 🚨
-================================================================================
-
-IMAGES AVAILABLE: image_1.jpg ONLY (1 image total)
-
-RULES:
-- image_1.jpg → HERO section ONLY (full screen background)
-- NO image_2.jpg (does not exist)
-- FEATURES/PRODUCTS section → RICH CONTENT, NO images
--- NO images in Courses,Apply,Faculty,Events,Visit or any other page
-- NO gallery section
-- Total appearances: 1 (hero only)
-
-✅ CORRECT - Hero with image ONLY, Features with RICH content (no images):
-```tsx
-{/* ONLY image - Hero with image_1.jpg */}
-<section className="relative h-screen flex items-center justify-center overflow-hidden">
-  <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-black/40" />
-  <div className="relative z-10 text-center">
-    <h1 className="text-6xl font-bold text-white">Project Name</h1>
-    <p className="text-gray-200 mt-4">Welcome to our website</p>
-  </div>
-</section>
-
-{/* Features Section - RICH CONTENT, NO images at all */}
-<section className="py-20 px-4 bg-gradient-to-br from-purple-950 to-pink-950">
-  <div className="container mx-auto">
-    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Features</h2>
-    <div className="grid md:grid-cols-3 gap-8">
-      
-      {/* Feature 1 - Rich content, NO image */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
-        <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-white">...</svg>
-        </div>
-        <h3 className="text-xl font-bold mb-3">Premium Quality</h3>
-        <p className="text-gray-300 mb-4">High-grade materials ensuring durability and performance.</p>
-        <ul className="text-gray-400 text-sm space-y-2">
-          <li>✓ Lifetime warranty</li>
-          <li>✓ Certified quality</li>
-          <li>✓ 24/7 support</li>
-        </ul>
-      </div>
-
-      {/* Feature 2 - Rich content, NO image */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
-        <div className="w-12 h-12 bg-pink-500 rounded-lg flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-white">...</svg>
-        </div>
-        <h3 className="text-xl font-bold mb-3">Expert Team</h3>
-        <p className="text-gray-300 mb-4">Professional trainers with years of experience.</p>
-        <ul className="text-gray-400 text-sm space-y-2">
-          <li>✓ Certified coaches</li>
-          <li>✓ Personalized plans</li>
-          <li>✓ Progress tracking</li>
-        </ul>
-      </div>
-
-      {/* Feature 3 - Rich content, NO image */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
-        <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-white">...</svg>
-        </div>
-        <h3 className="text-xl font-bold mb-3">Best Value</h3>
-        <p className="text-gray-300 mb-4">Affordable plans with maximum benefits.</p>
-        <ul className="text-gray-400 text-sm space-y-2">
-          <li>✓ Competitive pricing</li>
-          <li>✓ Flexible memberships</li>
-          <li>✓ Free trial available</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-{/* Team Section - NO images, use icons or gradients */}
-<section className="py-20 px-4">
-  <div className="container mx-auto">
-    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Team</h2>
-    <div className="grid md:grid-cols-4 gap-6">
-      {['Sarah Johnson', 'Mike Chen', 'Emma Davis', 'Alex Rodriguez'].map(name => (
-        <div key={name} className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 text-center">
-          <div className="w-24 h-24 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <span className="text-2xl text-white">{name[0]}</span>
-          </div>
-          <h3 className="font-bold">{name}</h3>
-          <p className="text-purple-400 text-sm">Expert Trainer</p>
-          <p className="text-gray-400 text-xs mt-2">5+ years experience</p>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-{/* Team/Cards/Testimonials - NO images at all */}
-<div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6">
-  <h3>Team Member Name</h3>
-  <p>Role - NO image here</p>
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 FIXED: NO PINK BACKGROUND + UNIQUE CONTENT FOR EACH COLLECTION 🚨
-================================================================================
-
-1. BACKGROUND COLOR: Use DARK/NEUTRAL colors, NOT pink:
-   ✅ bg-gray-900, bg-zinc-900, bg-black, bg-slate-900
-   ❌ NO pink, purple-pink, or pink gradients
-
-2. EACH COLLECTION MUST HAVE UNIQUE CONTENT:
-   - Collection 1 → UNIQUE description (different from others)
-   - Collection 2 → UNIQUE description (different from 1 and 3)
-   - Collection 3 → UNIQUE description (different from 1 and 2)
-
-
-
-
-
-
-
-
-
-
-
-
-
-🚨 CRITICAL - NO COLOR OVERLAY ON HERO IMAGES 🚨
-
-DO NOT add gradient overlays on hero images:
-❌ <div className="absolute inset-0 bg-gradient-to-br from-purple-950/70 to-pink-950/70" />
-❌ <div className="absolute inset-0 bg-black/50" />
-
-USE original image as-is:
-✅ <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
-✅ Text should be readable with text-shadow or white color
-
-CORRECT:
-```tsx
-<section className="relative h-screen">
-  <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="relative z-10 flex items-center justify-center h-full">
-    <h1 className="text-white text-6xl font-bold drop-shadow-lg">Title</h1>
-  </div>
-</section>
-
-
-
-
-
 
 
 
@@ -3142,93 +2473,11 @@ DO NOT create empty pages or placeholder pages. Each page must have:
 5. **Call-to-Action** - Buttons or links to other pages
 
 
-**HOME PAGE (app/page.tsx):**
-- Hero section with gradient title, description, and CTA button
-- Features section with 3-4 cards (icons, titles, descriptions)
-- Stats section with numbers (e.g., "500+ Students", "10 Years Experience")
-- Testimonials section with 2-3 customer quotes
-- Gallery/portfolio section with 3-4 images
-- FAQ section with 3-4 questions
-- Footer with links, social icons, copyright
 
-**ABOUT PAGE (app/about/page.tsx):**
-- Hero with mission statement
-- Story section with company history
-- Team section with 3-6 member profiles (name, role, bio, image)
-- Values section with 4-6 core values
-- Timeline of milestones
-- CTA to contact
 
-**SERVICES/PRODUCTS PAGE (app/services/page.tsx):**
-- Hero with service overview
-- Grid of 4-8 service cards (icon, title, description, price)
-- Comparison table or feature list
-- Process section (how it works in 3-5 steps)
-- Client logos section
-- Pricing plans (3 tiers)
-- Contact CTA
 
-**CONTACT PAGE (app/contact/page.tsx):**
-- Hero with contact info
-- Contact form (name, email, message, subject)
-- Map location
-- Hours of operation
-- Social media links
-- FAQ mini section
 
-**BLOG/NEWS PAGE (app/blog/page.tsx):**
-- Hero with latest posts
-- Grid of 3-6 blog cards (image, title, date, excerpt, read more)
-- Sidebar with categories and recent posts
-- Newsletter signup
-- Pagination
 
-**FOR PROJECT TYPE SPECIFIC:**
-
-SCHOOL WEBSITE:
-- Courses page with 4-8 course cards (title, duration, price, description)
-- Admissions page with steps, requirements, deadlines, application form
-- Faculty page with 3-6 teacher profiles
-- Events calendar with upcoming dates
-- Gallery page with 3-5 photos
-
-COFFEE WEBSITE:
-- Menu page with categories (espresso, cold brew, food, pastries)
-- Shop page with products, prices, add to cart
-- Locations page with store hours, addresses, maps
-- Brew guide with step-by-step tutorials
-- Subscription page with 3 plans
-
-HOTEL WEBSITE:
-- Rooms page with 3-6 room types (images, amenities, price, book button)
-- Amenities page with pool, spa, gym, restaurant details
-- Gallery with 8-12 photos
-- Offers page with 3-5 packages
-- Reviews page with 5-10 testimonials
-
-RESTAURANT WEBSITE:
-- Menu page with appetizers, mains, desserts, drinks
-- Reservations page with date/time picker, guest count
-- Events page with private dining, catering
-- Gallery with food and interior photos
-
-GYM WEBSITE:
-- Classes page with schedule, instructor names, times
-- Trainers page with 4-8 profiles (specialties, certs, social)
-- Membership page with 3-4 plans, benefits, pricing
-- Schedule page with weekly calendar
-
-E-COMMERCE WEBSITE:
-- Products page with filters, sorting, 6-12 products
-- Product detail page with description, reviews, related
-- Cart page with quantity updates, remove buttons
-- Checkout page with shipping, payment, order summary
-
-PORTFOLIO WEBSITE:
-- Projects page with 6-9 case studies (image, title, category, link)
-- Project detail page with challenge, solution, results, tech stack
-- Services page with 4-6 service cards
-- Testimonials slider with 5-8 quotes
 
 
 
@@ -3248,12 +2497,9 @@ CRITICAL STYLING RULES - MUST FOLLOW:
 1. **GRADIENTS (USE THESE EXACTLY)**:
    - Button / CTA Gradient: `bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-700 hover:via-fuchsia-700 hover:to-pink-700`
    - Text / Heading Gradient: `bg-gradient-to-r from-purple-400 via-pink-400 to-violet-400 bg-clip-text text-transparent animate-gradient`
-   - Hero / Section Background: `bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950`
-   - Card Background: `bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-sm`
-   - Glass Effect: `bg-white/5 backdrop-blur-md border border-white/10`
+   - Hero / Section Background: `bg-gradient-to-br from-purple-950/40 via-zinc-950 to-pink-950/30`
    - Subtle Accent Gradient: `bg-gradient-to-r from-purple-500/10 via-transparent to-pink-500/10`
    - Border Gradient (Hover): `border border-transparent bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-border`
-   - Animated Gradient: `bg-gradient-to-r from-purple-900 via-pink-900 to-purple-900 bg-[length:200%_200%] animate-gradient`
 
 2. **CONTAINERS**:
    - Standard: `container mx-auto px-4 sm:px-6 lg:px-8`
@@ -3263,111 +2509,10 @@ CRITICAL STYLING RULES - MUST FOLLOW:
    - Mobile-first: `text-sm md:text-base lg:text-lg`
    - Grid system: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8`
 
-4. **🚨 BACKGROUND RULE - NO BLACK, NO WHITE 🚨**:
-   
-   **FORBIDDEN (NEVER USE):**
-   - ❌ bg-black, bg-zinc-900, bg-gray-900, #000000, black
-   - ❌ bg-white, bg-gray-100, #FFFFFF, white
-   - ❌ Solid backgrounds of any kind
-   
-   **REQUIRED (ALWAYS USE):**
-   - ✅ Hero with Image: `absolute inset-0 bg-gradient-to-br from-purple-950/70 via-zinc-950/50 to-pink-950/70` over image
-   - ✅ Section Background: `bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950`
-   - ✅ Alternating Section: `bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950`
-   - ✅ Card Background: `bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-sm`
-   - ✅ Glass Navbar: `bg-gradient-to-r from-purple-950/80 via-zinc-950/80 to-pink-950/80 backdrop-blur-xl`
-   - ✅ Footer: `bg-gradient-to-t from-purple-950/80 via-zinc-950 to-transparent`
-
-5. **BACKGROUND EXAMPLES**:
-   
-   **Hero with Image (Full Page):**
-   ```tsx
-   <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-     {/* Background Image with Gradient Overlay */}
-     <div className="absolute inset-0 z-0">
-       <img 
-         src="/images/image_1.jpg" 
-         alt="Hero background" 
-         className="w-full h-full object-cover"
-         onError={(e) => {
-           e.currentTarget.style.display = 'none';
-           e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-purple-950', 'via-zinc-950', 'to-pink-950');
-         }}
-       />
-       <div className="absolute inset-0 bg-gradient-to-br from-purple-950/70 via-zinc-950/50 to-pink-950/70" />
-       <div className="absolute inset-0 bg-radial-gradient opacity-50" />
-     </div>
-     
-     {/* Content */}
-     <div className="relative z-10 container mx-auto px-4 text-center text-white">
-       <h1 className="text-6xl md:text-7xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-6">
-         Project Name
-       </h1>
-       <p className="text-xl text-gray-300 mb-8">Welcome to our beautiful website</p>
-       <button className="px-8 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold transition-all duration-300 shadow-lg shadow-purple-500/25">
-         Get Started
-       </button>
-     </div>
-   </section>............
-
-
-
-
-   
-
-
-
-
+4. **BACKGROUND RULE**:
+   - NO WHITE BACKGROUNDS — All backgrounds must use elegant dark tones with rich purple-pink gradient depth for a premium, modern look.
 
 ================================================================================
-📸 IMAGE RESIZING RULES
-================================================================================
-
-ALL images MUST be resized to appropriate dimensions for their usage:
-
-HERO IMAGES:
-- Width: 1920px, Height: 1080px (16:9 aspect ratio)
-- Use: object-cover, w-full, h-screen
-
-PRODUCT/GALLERY IMAGES:
-- Width: 800px, Height: 600px (4:3 aspect ratio)
-- Use: object-cover, rounded-lg
-
-TRAINER/TEAM IMAGES:
-- Width: 400px, Height: 400px (1:1 square)
-- Use: object-cover, rounded-full
-
-LOGO/ICON IMAGES:
-- Width: 64px, Height: 64px
-- Use: w-16 h-16
-
-✅ CORRECT - Responsive images with proper sizing:
-```tsx
-<img 
-  src="/images/hero.jpg" 
-  className="w-full h-screen object-cover"
-  alt="Hero"
-/>
-
-<img 
-  src="/images/product.jpg" 
-  className="w-full h-64 object-cover rounded-lg"
-  alt="Product"
-/>
-
-<img 
-  src="/images/trainer.jpg" 
-  className="w-32 h-32 object-cover rounded-full"
-  alt="Trainer"
-/>
-
-
-
-
-
-
-
-
 
 
 
@@ -3403,6 +2548,31 @@ The globals.css MUST contain ALL of the following:
 
 
 
+================================================================================
+PREMIUM GRADIENT PATTERNS - USE THESE:
+================================================================================
+
+1. **Primary Gradient** (Buttons, CTAs):
+   `bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-700 hover:via-fuchsia-700 hover:to-pink-700 transition-all duration-300`
+
+2. **Secondary Gradient** (Cards, Sections):
+   `bg-gradient-to-br from-purple-950/40 via-transparent to-pink-950/30`
+
+3. **Text Gradient** (Headings):
+   `bg-gradient-to-r from-purple-400 via-pink-400 to-violet-400 bg-clip-text text-transparent animate-gradient`
+
+4. **Border Gradient** (Cards on hover):
+   `border border-transparent bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-border`
+
+5. **Background Gradient** (Hero & Section backgrounds):
+   `bg-gradient-to-br from-purple-950/40 via-zinc-950 to-pink-950/30`
+
+6. **Animated Gradient** (Shimmer / Dynamic effects):
+   `bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 bg-[length:200%_auto] animate-gradient`
+
+   
+
+
 
 
 ================================================================================
@@ -3411,64 +2581,6 @@ COMPLETE GLOBALS.CSS TEMPLATE - COPY EXACTLY:
 
 "app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;\\n\\n@layer base {\\n  :root {\\n    --background: 0 0% 100%;\\n    --foreground: 222.2 84% 4.9%;\\n    --card: 0 0% 100%;\\n    --card-foreground: 222.2 84% 4.9%;\\n    --border: 214.3 31.8% 91.4%;\\n    --ring: 222.2 84% 4.9%;\\n  }\\n\\n  .dark {\\n    --background: 222.2 84% 4.9%;\\n    --foreground: 210 40% 98%;\\n    --card: 222.2 84% 4.9%;\\n    --card-foreground: 210 40% 98%;\\n    --border: 217.2 32.6% 17.5%;\\n    --ring: 212.7 26.8% 83.9%;\\n  }\\n\\n  * {\\n    border-color: hsl(var(--border));\\n  }\\n\\n  body {\\n    @apply bg-zinc-950 text-white antialiased;\\n    font-feature-settings: \\\"rlig\\\" 1, \\\"calt\\\" 1;\\n  }\\n}\\n\\n@layer utilities {\\n  html {\\n    scroll-behavior: smooth;\\n  }\\n\\n  ::-webkit-scrollbar {\\n    width: 10px;\\n    height: 10px;\\n  }\\n\\n  ::-webkit-scrollbar-track {\\n    background: #18181b;\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb {\\n    background: linear-gradient(to bottom, #a855f7, #ec4899);\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb:hover {\\n    background: linear-gradient(to bottom, #c084fc, #f472b6);\\n  }\\n\\n  ::selection {\\n    @apply bg-purple-500 text-white;\\n  }\\n\\n  *:focus-visible {\\n    @apply outline-none ring-2 ring-purple-500 ring-offset-2 ring-offset-zinc-950;\\n  }\\n}\\n\\n@layer components {\\n  .glass {\\n    @apply bg-white/5 backdrop-blur-md border border-white/10;\\n  }\\n\\n  .glass-hover {\\n    @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20;\\n  }\\n\\n  .gradient-text {\\n    @apply bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent;\\n    background-size: 200% auto;\\n    animation: shimmer 3s ease infinite;\\n  }\\n\\n  .card-hover {\\n    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20;\\n  }\\n\\n  .glow {\\n    @apply shadow-lg shadow-purple-500/25;\\n  }\\n\\n  .glow-hover {\\n    @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40;\\n  }\\n\\n  .hero-gradient {\\n    background: radial-gradient(ellipse at top, #1e1b4b, transparent),\\n                radial-gradient(ellipse at bottom, #4c1d95, transparent);\\n  }\\n\\n  .grid-pattern {\\n    background-image: linear-gradient(to right, #ffffff0a 1px, transparent 1px),\\n                      linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);\\n    background-size: 50px 50px;\\n  }\\n}\\n\\n@keyframes shimmer {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n@keyframes float {\\n  0%, 100% { transform: translateY(0px); }\\n  50% { transform: translateY(-20px); }\\n}\\n\\n@keyframes pulse-slow {\\n  0%, 100% { opacity: 0.5; }\\n  50% { opacity: 1; }\\n}\\n\\n@keyframes gradient {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n.animate-float {\\n  animation: float 6s ease-in-out infinite;\\n}\\n\\n.animate-pulse-slow {\\n  animation: pulse-slow 3s ease-in-out infinite;\\n}\\n\\n.animate-gradient {\\n  background-size: 200% auto;\\n  animation: gradient 3s ease infinite;\\n}"
 
-
-
-
-
-
-
-
-
-🚨 CRITICAL - NO PLACEHOLDER PAGES ALLOWED 🚨
-
-NEVER create pages like this:
-❌ export default function Shop() { return <div><h1>Shop</h1><p>Browse our collection.</p></div>; }
-❌ export default function About() { return <div>About Us</div>; }
-
-ALWAYS create COMPLETE pages with:
-✅ Minimum 3-4 sections (hero, grid, features, CTA)
-✅ Real content (product names, prices, images)
-✅ Interactive elements (buttons, forms, cards)
-✅ Proper styling with Tailwind classes
-
-CORRECT Shop page example:
-```tsx
-export default function Shop() {
-  const products = [
-    { id: 1, name: "Premium Wireless Headphones", price: 199, image: "/images/product1.jpg" },
-    { id: 2, name: "Smart Watch Pro", price: 299, image: "/images/product2.jpg" },
-    { id: 3, name: "Ultra HD Camera", price: 499, image: "/images/product3.jpg" }
-  ];
-  
-  return (
-    <div className="min-h-screen bg-gray-900">
-      <section className="bg-gradient-to-r from-purple-600 to-pink-600 py-20">
-        <h1 className="text-4xl font-bold text-center text-white">Shop Our Collection</h1>
-      </section>
-      
-      <section className="container mx-auto px-4 py-12">
-        <div className="grid md:grid-cols-3 gap-8">
-          {products.map(p => (
-            <div key={p.id} className="bg-gray-800 rounded-xl p-4">
-              <img src={p.image} className="w-full h-48 object-cover rounded-lg" />
-              <h3 className="text-xl font-bold mt-4">{p.name}</h3>
-              <p className="text-purple-400">${p.price}</p>
-              <button className="mt-4 w-full bg-purple-600 py-2 rounded-lg">Add to Cart</button>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-
-
-NEVER create placeholder/empty pages. Each page MUST have:
-- Real data (arrays of products, services, team members)
-- Proper UI components (cards, grids, forms)
-- No "Coming Soon" or placeholder text
-- Complete functionality (buttons, forms, interactive elements)
 
 
 
@@ -3636,169 +2748,26 @@ REQUIRED CORE FILES - ALWAYS CREATE:
 
 app/
   layout.tsx                # Root layout with dark theme (USE RELATIVE IMPORTS)
-  page.tsx                  # Dynamic home page with hero, features, testimonials
-  globals.css               # Premium styles with animations, gradients, scrollbar
-
-
-app/(marketing)/            # Route group for marketing pages
-  page.tsx                  # Landing page
-  layout.tsx                # Marketing layout (optional)
-
-app/(dashboard)/            # Route group for protected pages
-  layout.tsx                # Dashboard layout with sidebar
-  page.tsx                  # Dashboard home
-
-app/api/                    # API routes (if needed)
-  hello/route.ts            # Example API endpoint
-
-app/blog/                   # Blog section
-  page.tsx                  # Blog listing with pagination
-  [slug]/page.tsx           # Dynamic blog post page
+  page.tsx                  # Dynamic home page (USE RELATIVE IMPORTS)
+  globals.css               # Premium styles with animations
+  loading.tsx               # Loading skeleton
+  error.tsx                 # Error boundary (with "use client")
+  not-found.tsx             # 404 page
+  [ALL_NAVIGATION_PAGES]/   # CREATE PAGE FOR EVERY NAVIGATION LINK
 
 components/
   Navigation.tsx            # Dynamic navigation with creative labels
-  Footer.tsx                # Footer with links, social icons, copyright
-  Hero.tsx                  # Hero section component
-  Features.tsx              # Features grid component
-  Testimonials.tsx          # Testimonials slider/component
-  CTA.tsx                   # Call to action component
-  Newsletter.tsx            # Newsletter signup form
-  
-
-  
-components/ui/
-  Button.tsx                # Reusable button with variants (primary, outline, ghost)
-  Card.tsx                  # Card component with hover effects
-  Input.tsx                 # Form input component
-  Modal.tsx                 # Modal dialog component
-  Dropdown.tsx              # Dropdown menu component
-  Tabs.tsx                  # Tabs component
-  Accordion.tsx             # Accordion/FAQ component
-  
-
-
-components/layout/
-  Header.tsx                # Header wrapper
-  Container.tsx             # Responsive container
-  Section.tsx               # Section with padding and background
+  ui/
+    Button.tsx              # Reusable button component
 
 lib/
-  utils.ts                  # cn utility function for Tailwind merging
-  constants.ts              # Site constants (name, description, links)
-  metadata.ts               # SEO metadata helper
-  api.ts                    # API client functions (optional)
-
-hooks/
-  useScroll.ts              # Scroll position hook
-  useMediaQuery.ts          # Responsive breakpoint hook
-  useLocalStorage.ts        # Local storage hook
-  useDebounce.ts            # Debounce hook
-
-types/
-  index.ts                  # TypeScript interfaces and types
-
-styles/
-  globals.css               # Global styles (main file)
-  components.css            # Component-specific styles (optional)
-
-public/
-  images/                   # All image assets
-    og-image.png            # Open Graph image for social sharing
-    favicon.ico             # Browser favicon
-    logo.svg                # Site logo
-  fonts/                    # Custom fonts (if any)
-
-================================================================================
-ADDITIONAL FILES FOR SPECIFIC PROJECT TYPES:
-================================================================================
-
-SCHOOL WEBSITE:
-app/courses/page.tsx        # Course listing with filters
-app/courses/[id]/page.tsx   # Course detail page
-app/admissions/page.tsx     # Admissions process and form
-app/faculty/page.tsx        # Teacher/Staff profiles
-app/events/page.tsx         # Events calendar
-components/CourseCard.tsx   # Course card component
-components/EventCard.tsx    # Event card component
-
-COFFEE WEBSITE:
-app/menu/page.tsx           # Menu with categories
-app/shop/page.tsx           # Product listing
-app/locations/page.tsx      # Store locations with map
-app/subscription/page.tsx   # Subscription plans
-components/ProductCard.tsx  # Product card
-components/Cart.tsx         # Shopping cart
-
-HOTEL WEBSITE:
-app/rooms/page.tsx          # Room types listing
-app/rooms/[id]/page.tsx     # Room detail with booking
-app/amenities/page.tsx      # Hotel amenities
-app/gallery/page.tsx        # Photo gallery
-app/offers/page.tsx         # Special offers/packages
-components/BookingForm.tsx  # Room booking form
-components/RoomCard.tsx      # Room card component
-
-RESTAURANT WEBSITE:
-app/menu/page.tsx           # Food and drink menu
-app/reservations/page.tsx   # Table booking form
-app/events/page.tsx         # Private dining events
-components/MenuItem.tsx     # Menu item component
-components/ReservationForm.tsx # Booking form
-
-GYM WEBSITE:
-app/classes/page.tsx        # Class schedule
-app/trainers/page.tsx       # Trainer profiles
-app/membership/page.tsx     # Pricing plans
-app/schedule/page.tsx       # Weekly class timetable
-components/ClassCard.tsx    # Class card
-components/TrainerCard.tsx  # Trainer profile card
-
-E-COMMERCE WEBSITE:
-app/products/page.tsx       # Product listing with filters
-app/products/[id]/page.tsx  # Product detail
-app/cart/page.tsx           # Shopping cart
-app/checkout/page.tsx       # Checkout flow
-app/account/page.tsx        # User account
-components/ProductCard.tsx  # Product card
-components/CartItem.tsx     # Cart item component
-
-PORTFOLIO WEBSITE:
-app/projects/page.tsx       # Project gallery
-app/projects/[slug]/page.tsx # Project case study
-app/services/page.tsx       # Services offered
-components/ProjectCard.tsx  # Project card
-components/SkillBadge.tsx   # Skill/technology badges
+  utils.ts                  # cn utility function
 
 
 
 
-================================================================================
-VERCEL DEPLOYMENT REQUIRED FILES (ALWAYS CREATE):
-================================================================================
 
-package.json                 # Dependencies and scripts (MUST have build/dev/start)
-package-lock.json            # Lock file (optional, AI can skip)
-next.config.js               # Next.js configuration (images domains, etc.)
-postcss.config.mjs           # PostCSS config with tailwindcss and autoprefixer (MUST be .mjs)
-tailwind.config.ts           # Tailwind config with content paths
-tsconfig.json                # TypeScript config (NO path aliases @/*)
-next-env.d.ts                # Next.js TypeScript references
-.gitignore                   # Ignore node_modules, .next, .env
-.env.example                 # Example environment variables
-
-
-================================================================================
-CRITICAL RULES:
-================================================================================
-
-1. EVERY navigation link MUST have a corresponding page file
-2. EVERY page MUST have AT LEAST 3 content sections
-3. EVERY page MUST use images from /public/images/
-4. ALL imports MUST be relative (NO @/* path aliases)
-5. ALL client components MUST have "use client" directive at top
-6. EVERY array .map() MUST have unique content for each item
-7. ALL pages MUST be responsive (mobile-first design)
-8. EVERY component MUST have proper TypeScript types
+  
 
 
 
@@ -3869,17 +2838,6 @@ Then you MUST create:
 
 **FAILURE TO CREATE THESE PAGES WILL CAUSE 404 ERRORS!**
 
-
-
-
-
-
-
-
-
-
-
-
 Each page MUST have MEANINGFUL content based on its name:
 
 For "/classes" page (Gym website):
@@ -3904,14 +2862,6 @@ For "/contact" page:
 - Hours of operation
 - Phone/email information
 
-**you mustt create unique, rich content for each page.
-
-
-
-
-
-
-
 **NEVER create empty or placeholder pages. Each page must have rich, meaningful content.**
 
 ================================================================================
@@ -3934,9 +2884,6 @@ app/classes/page.tsx = "export default function Classes() { return <div>Classes<
 ❌ Missing pages for navigation links
 ❌ Using the same content for all pages
 ❌ Pages without images, cards, or interactive elements
-
-
-
 
 
 
@@ -4051,39 +2998,6 @@ PACKAGE.JSON:
 
 ================================================================================
 Now generate the complete project for this request: [USER_PROMPT_HERE]"""
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -4235,70 +3149,44 @@ Return ONLY valid JSON like this:
 
 
 
-
-
-
-
-
-
-
-
-
-
-        # ========== START IMAGE SEARCH IN BACKGROUND (NON-BLOCKING) ==========
-        image_data = {}
-        image_metadata = {}
-        used_search_terms = []
-        image_task_complete = False
-        
-        # Create background task for image search
-        async def fetch_images_background():
-            nonlocal image_data, image_metadata, used_search_terms, image_task_complete
-            for i, term in enumerate(search_terms[:2]):  # Only 2 images
-                try:
-                    await websocket.send_json({
-                        "type": "status",
-                        "message": f"🔍 Searching for image {i+1}/2 in background..."
-                    })
-                    images = await search_free_images(term, 1, previous_terms=used_search_terms)
-                    if images:
-                        img_key = f"image_{i+1}"
-                        img_url = images[0]["url"]
-                        img_base64 = await get_image_as_base64(img_url)
-                        if img_base64:
-                            image_data[img_key] = img_base64
-                            image_metadata[img_key] = {
-                                "term": term,
-                                "source": images[0]["source"],
-                                "attribution": images[0]["attribution"],
-                                "license": images[0]["license"],
-                            }
-                            used_search_terms.append(term)
-                            await websocket.send_json({
-                                "type": "status",
-                                "message": f"✅ Image {i+1}/2 found (while generating project)"
-                            })
-                        else:
-                            image_data[f"image_{i+1}"] = ""
-                            image_metadata[f"image_{i+1}"] = {"term": term, "source": "placeholder", "attribution": "", "license": ""}
+        for i, term in enumerate(search_terms[:3]):
+            try:
+                images = await search_free_images(term, 1)
+                if images:
+                    img_key = f"image_{i+1}"
+                    img_url = images[0]["url"]
+                    img_base64 = await get_image_as_base64(img_url)
+                    if img_base64:
+                        image_data[img_key] = img_base64
+                        image_metadata[img_key] = {
+                            "term": term,
+                            "source": images[0]["source"],
+                            "attribution": images[0]["attribution"],
+                            "license": images[0]["license"],
+                        }
+                        await websocket.send_json({
+                            "type": "status",
+                            "message": f"✅ Found image for '{term}'"
+                        })
                     else:
                         image_data[f"image_{i+1}"] = ""
-                        image_metadata[f"image_{i+1}"] = {"term": term, "source": "placeholder", "attribution": "", "license": ""}
-                except Exception as e:
-                    print(f"Error searching images for {term}: {e}")
+                        image_metadata[f"image_{i+1}"] = {
+                            "term": term, "source": "placeholder",
+                            "attribution": "", "license": ""
+                        }
+                else:
                     image_data[f"image_{i+1}"] = ""
-                    image_metadata[f"image_{i+1}"] = {"term": term, "source": "placeholder", "attribution": "", "license": ""}
-            image_task_complete = True
-            print(f"📸 Background image search complete. Found: {len([k for k in image_data if image_data[k]])}/2")
-        
-        # Start image search in BACKGROUND (does NOT wait)
-        background_image_task = asyncio.create_task(fetch_images_background())
-        
-        # Send status that generation started immediately
-        await websocket.send_json({
-            "type": "status",
-            "message": "🚀 Starting project generation (images loading in background)..."
-        })
+                    image_metadata[f"image_{i+1}"] = {
+                        "term": term, "source": "placeholder",
+                        "attribution": "", "license": ""
+                    }
+            except Exception as e:
+                print(f"Error searching images for {term}: {e}")
+                image_data[f"image_{i+1}"] = ""
+                image_metadata[f"image_{i+1}"] = {
+                    "term": term, "source": "placeholder",
+                    "attribution": "", "license": ""
+                }
 
         # ========== RETRY LOOP ==========
         while retry_count < max_retries:
@@ -4331,20 +3219,58 @@ Return ONLY valid JSON like this:
 
 
 
-            print(f"\n{'='*70}")
-            print(f"🔄 Attempt {retry_count + 1}/{max_retries}")
-            if retry_count > 0:
-                print(f"⏳ Retrying due to JSON parse error...")
-            print(f"{'='*70}\n")
-
-            full_response = ""
-            detected_files: set = set()
 
 
 
 
 
-               # ── Build the full prompt ──
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            # ── Build the full prompt ──
             base_prompt = MASTER_BUILD_PROMPT
 
             name_instruction = f"""
@@ -4374,294 +3300,114 @@ Use EXACTLY: {project_name}
                 _is_restaurant = any(w in _pl for w in ['restaurant', 'bistro', 'dining', 'food', 'kitchen'])
                 _is_ecommerce  = any(w in _pl for w in ['shop', 'store', 'ecommerce', 'product', 'market'])
 
-                # Only show images that were actually found (max 2)
                 image_lines = []
                 for key, meta in image_metadata.items():
-                    if meta.get('term'):  # Only show images that have content
-                        image_lines.append(
-                            f"  - {key} → src=\"/images/{key}.jpg\"  (subject: {meta['term']})"
-                        )
-                image_list_str = "\n".join(image_lines) if image_lines else "No real images available. Use styled gradient cards instead."
+                    image_lines.append(
+                        f"  - {key} → src=\"/images/{key}.jpg\"  (subject: {meta['term']})"
+                    )
+                image_list_str = "\n".join(image_lines)
 
-                # UPDATED HERO HINTS - ONLY 2 IMAGES MAX
                 if _is_hotel:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE - USE THEM WISELY 🚨
+FOR THIS HOTEL/RESORT SITE — use image_1.jpg as a FULL-PAGE hero background:
 
-FOR THIS HOTEL/RESORT SITE:
-- Use image_1.jpg ONLY for the FULL-PAGE hero background
-- For ALL room cards, amenities, and other sections → USE STYLED GRADIENT CARDS (NO images needed)
+  <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <img src="/images/image_1.jpg" alt="Hero background" className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-black/55" />
+    <div className="relative z-10 text-center text-white px-6">{/* hero content */}</div>
+  </section>
 
-HERO CODE (use image_1.jpg only):
-<section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-  <img src="/images/image_1.jpg" alt="Hero background" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-black/55" />
-  <div className="relative z-10 text-center text-white px-6">{/* hero content */}</div>
-</section>
-
-STYLED CARD FOR ROOMS/AMENITIES (NO image needed):
-<div className="group relative bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300">
-  <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mb-4">
-    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-    </svg>
-  </div>
-  <h3 className="text-xl font-semibold mb-2">Room/Deluxe Suite</h3>
-  <p className="text-gray-400">Luxury amenities with ocean view</p>
-</div>
-
-DO NOT request or use image_2.jpg or image_3.jpg for cards."""
-
+Use image_2.jpg and image_3.jpg in a Rooms / Gallery section as card thumbnails."""
                 elif _is_coffee:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE - USE THEM WISELY 🚨
+FOR THIS COFFEE SITE — use image_1.jpg as a moody full-width hero:
 
-FOR THIS COFFEE SITE:
-- Use image_1.jpg ONLY for the hero section
-- For ALL product/menu cards → USE STYLED GRADIENT CARDS (NO images needed)
+  <section className="relative h-[90vh] flex items-center overflow-hidden">
+    <img src="/images/image_1.jpg" alt="Coffee hero" className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-black/60" />
+    <div className="relative z-10 px-8">{/* headline + CTA */}</div>
+  </section>
 
-HERO CODE (use image_1.jpg only):
-<section className="relative h-[90vh] flex items-center overflow-hidden">
-  <img src="/images/image_1.jpg" alt="Coffee hero" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-black/60" />
-  <div className="relative z-10 px-8">{/* headline + CTA */}</div>
-</section>
-
-STYLED CARD FOR COFFEE ITEMS (NO image needed):
-<div className="text-center p-6 rounded-xl bg-gradient-to-br from-amber-950/40 to-orange-950/30 border border-white/10 hover:scale-105 transition-all duration-300">
-  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 flex items-center justify-center">
-    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-    </svg>
-  </div>
-  <h3 className="text-xl font-semibold mb-2">Espresso Blend</h3>
-  <p className="text-gray-400">Rich, bold, and aromatic</p>
-</div>
-
-DO NOT request or use image_2.jpg for product cards."""
-
+Use image_2.jpg / image_3.jpg as product or process photos in content sections."""
                 elif _is_school:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE - USE THEM WISELY 🚨
+FOR THIS SCHOOL SITE — use image_1.jpg as a bright campus hero:
 
-FOR THIS SCHOOL SITE:
-- Use image_1.jpg ONLY for the campus hero
-- For ALL course/faculty cards → USE STYLED GRADIENT CARDS (NO images needed)
+  <section className="relative h-[80vh] flex items-center overflow-hidden">
+    <img src="/images/image_1.jpg" alt="Campus hero" className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-indigo-900/50" />
+    <div className="relative z-10 container mx-auto px-6">{/* headline + apply button */}</div>
+  </section>
 
-HERO CODE (use image_1.jpg only):
-<section className="relative h-[80vh] flex items-center overflow-hidden">
-  <img src="/images/image_1.jpg" alt="Campus hero" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-indigo-900/50" />
-  <div className="relative z-10 container mx-auto px-6">{/* headline + apply button */}</div>
-</section>
-
-STYLED CARD FOR COURSES (NO image needed):
-<div className="relative overflow-hidden rounded-xl bg-zinc-900/50 border border-white/10 p-6 group hover:border-purple-500/50 transition-all duration-300">
-  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-full blur-2xl" />
-  <div className="relative z-10">
-    <h3 className="text-lg font-semibold mb-2">Mathematics</h3>
-    <p className="text-gray-400 text-sm">Advanced calculus and algebra</p>
-  </div>
-</div>
-
-DO NOT request or use image_2.jpg for cards."""
-
+Use image_2.jpg / image_3.jpg in the About or Programs section."""
                 elif _is_gym:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE - USE THEM WISELY 🚨
+FOR THIS GYM/FITNESS SITE — use image_1.jpg as an energetic full-bleed hero:
 
-FOR THIS GYM SITE:
-- Use image_1.jpg ONLY for the hero section
-- For ALL class/trainer cards → USE STYLED GRADIENT CARDS (NO images needed)
+  <section className="relative min-h-screen flex items-end overflow-hidden">
+    <img src="/images/image_1.jpg" alt="Gym hero" className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+    <div className="relative z-10 container mx-auto px-6 pb-20">{/* headline + join button */}</div>
+  </section>
 
-HERO CODE (use image_1.jpg only):
-<section className="relative min-h-screen flex items-end overflow-hidden">
-  <img src="/images/image_1.jpg" alt="Gym hero" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-  <div className="relative z-10 container mx-auto px-6 pb-20">{/* headline + join button */}</div>
-</section>
-
-STYLED CARD FOR CLASSES (NO image needed):
-<div className="group relative bg-gradient-to-br from-green-600/20 to-emerald-600/20 rounded-xl p-6 backdrop-blur-sm border border-white/10 hover:border-green-500/50 transition-all duration-300">
-  <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mb-4">
-    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  </div>
-  <h3 className="text-xl font-semibold mb-2">HIIT Class</h3>
-  <p className="text-gray-400">High intensity interval training</p>
-</div>
-
-DO NOT request or use image_2.jpg for cards."""
-
+Use image_2.jpg / image_3.jpg in the Classes or Trainers section."""
                 elif _is_restaurant:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE - USE THEM WISELY 🚨
+FOR THIS RESTAURANT SITE — use image_1.jpg as a full-screen food/ambiance hero:
 
-FOR THIS RESTAURANT SITE:
-- Use image_1.jpg ONLY for the hero ambiance
-- For ALL menu items → USE STYLED GRADIENT CARDS (NO images needed)
+  <section className="relative h-screen flex items-center justify-center overflow-hidden">
+    <img src="/images/image_1.jpg" alt="Restaurant hero" className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-black/50" />
+    <div className="relative z-10 text-center text-white px-6">{/* name + reserve button */}</div>
+  </section>
 
-HERO CODE (use image_1.jpg only):
-<section className="relative h-screen flex items-center justify-center overflow-hidden">
-  <img src="/images/image_1.jpg" alt="Restaurant hero" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-black/50" />
-  <div className="relative z-10 text-center text-white px-6">{/* name + reserve button */}</div>
-</section>
-
-STYLED CARD FOR MENU (NO image needed):
-<div className="flex justify-between items-center p-4 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all duration-300">
-  <div>
-    <h3 className="font-semibold">Grilled Salmon</h3>
-    <p className="text-sm text-gray-400">Fresh Atlantic salmon</p>
-  </div>
-  <span className="text-purple-400 font-bold">$28</span>
-</div>
-
-DO NOT request or use image_2.jpg for menu items."""
-
+Use image_2.jpg / image_3.jpg in the Menu or Gallery section."""
                 elif _is_ecommerce:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE - USE THEM WISELY 🚨
+FOR THIS STORE SITE — use image_1.jpg as a lifestyle hero banner:
 
-FOR THIS STORE SITE:
-- Use image_1.jpg ONLY for the hero banner
-- For ALL product cards → USE STYLED GRADIENT CARDS (NO images needed)
+  <section className="relative h-[70vh] flex items-center overflow-hidden rounded-2xl mx-4 mt-4">
+    <img src="/images/image_1.jpg" alt="Store hero" className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-black/40" />
+    <div className="relative z-10 px-10">{/* tagline + shop now button */}</div>
+  </section>
 
-HERO CODE (use image_1.jpg only):
-<section className="relative h-[70vh] flex items-center overflow-hidden rounded-2xl mx-4 mt-4">
-  <img src="/images/image_1.jpg" alt="Store hero" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-black/40" />
-  <div className="relative z-10 px-10">{/* tagline + shop now button */}</div>
-</section>
-
-STYLED CARD FOR PRODUCTS (NO image needed):
-<div className="group relative bg-gradient-to-br from-pink-600/20 to-purple-600/20 rounded-xl p-6 backdrop-blur-sm border border-white/10 hover:border-pink-500/50 transition-all duration-300">
-  <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-pink-500 to-purple-500 flex items-center justify-center mb-4">
-    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-    </svg>
-  </div>
-  <h3 className="text-xl font-semibold mb-2">Product Name</h3>
-  <p className="text-gray-400">$49.99</p>
-</div>
-
-DO NOT request or use image_2.jpg for product cards."""
-
+Use image_2.jpg / image_3.jpg as product card thumbnails in the catalog."""
                 else:
                     hero_hint = """\
-🚨 ONLY 2 IMAGES AVAILABLE 🚨
-- Use image_1.jpg for hero background ONLY
-- For ALL cards, features, and other sections → USE STYLED GRADIENT CARDS (NO images)
-- NEVER request image_2.jpg or image_3.jpg for cards
-- Use SVG icons from lucide-react for all visual elements"""
+Use image_1.jpg as a full-width hero background with a dark overlay.
+Use image_2.jpg / image_3.jpg in content / gallery sections."""
 
                 image_instructions = f"""
 ================================================================================
-IMAGE ASSETS — MAXIMUM 2 IMAGES ONLY
+IMAGE ASSETS — DOWNLOADED TO /public/images/ — USE THEM IN YOUR CODE
 ================================================================================
 
-🚨 CRITICAL: You have ONLY {len(image_lines)} real image(s). Use them sparingly.
+The following real photos are already saved in the Next.js public folder.
+Reference them DIRECTLY with their public path — NO import, NO base64.
 
 Available images:
 {image_list_str}
 
+HOW TO USE (copy these patterns exactly):
+
 {hero_hint}
 
-STYLED CARD TEMPLATES (USE THESE FOR ALL CARDS - NO IMAGES NEEDED):
-
-1. Gradient Background Card:
-<div className="group relative bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300">
-  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-  <div className="w-12 h-12 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mb-4">
-    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  </div>
-  <h3 className="text-xl font-semibold mb-2">Feature Title</h3>
-  <p className="text-gray-400">Description without needing images</p>
-</div>
-
-2. Minimal Glass Card:
-<div className="p-6 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all duration-300">
-  <h3 className="text-lg font-semibold mb-2">Title</h3>
-  <p className="text-gray-400 text-sm">Content here</p>
-</div>
-
-3. Animated Border Card:
-<div className="relative rounded-xl p-6 bg-zinc-900/50 border border-white/10 hover:border-purple-500/50 transition-all duration-300">
-  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
-  <h3 className="text-xl font-semibold mb-2">Title</h3>
-  <p className="text-gray-400">Description</p>
-</div>
-
-================================================================================
-CRITICAL RULES:
-================================================================================
-1. ONLY use image_1.jpg (hero background) - NO other real images
-2. ALL cards, features, products, rooms, classes MUST use styled gradient cards above
-3. Use lucide-react icons for ALL visual elements in cards
-4. Reference image_2.jpg 
-5. Project must be FAST and SMALL - no unnecessary images
-6. Only 3 maximum images a website should contain
+GENERAL RULES:
+1. NEVER use placeholder colors or gradients where a real image is available.
+2. ALWAYS use the exact src path shown above (e.g. src="/images/image_1.jpg").
+3. Add className="object-cover w-full h-full" to every background image.
+4. Add a semi-transparent overlay div (bg-black/40 to bg-black/60) over every
+   full-bleed hero image so text stays readable.
+5. Use Next.js <Image> component OR plain <img> — both work with /public paths.
+6. Show at least ONE image on the home page hero and at least one more
+   in a secondary section (gallery, rooms, products, about, etc.).
 
 ================================================================================
 """
                 full_prompt = f"{base_prompt}\n\n{name_instruction}\n\n{image_instructions}\n\nUser Request: {user_prompt}"
             else:
                 full_prompt = f"{base_prompt}\n\n{name_instruction}\n\nUser Request: {user_prompt}"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -4801,54 +3547,8 @@ CRITICAL RULES:
                 try:
                     project_files: Dict[str, str] = json.loads(clean_text)
                     print(f"✅ JSON parsed successfully on attempt {retry_count + 1}")
-                    
-                    # ========== INSERT IMAGE WAITING CODE HERE ==========
-                    # After AI generation completes successfully, WAIT for images
-                    await websocket.send_json({
-                        "type": "status",
-                        "message": "⏳ Waiting for images to finish processing..."
-                    })
-                    
-                    # Wait for background images to complete (with timeout)
-                    try:
-                        await asyncio.wait_for(background_image_task, timeout=15)
-                        print(f"✅ Images ready: {len([k for k in image_data if image_data[k]])}/2")
-                        await websocket.send_json({
-                            "type": "status",
-                            "message": f"✅ Images ready! Found {len([k for k in image_data if image_data[k]])}/2 images"
-                        })
-                    except asyncio.TimeoutError:
-                        print("⚠️ Image search timeout, continuing with available images")
-                        await websocket.send_json({
-                            "type": "status",
-                            "message": "⚠️ Image search timeout, using gradient cards for missing images"
-                        })
-                    except Exception as e:
-                        print(f"⚠️ Image task error: {e}")
-                    # ========== END OF IMAGE WAITING CODE ==========
-                    
-                    break  # Exit retry loop
-                    
+                    break
                 except json.JSONDecodeError as e1:
-                    # ... rest of your error handling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                     print(f"⚠️ Initial parse failed: {e1}")
                     try:
                         fixed_text = fix_json_errors(clean_text)
@@ -4864,8 +3564,6 @@ CRITICAL RULES:
                             project_files = json.loads(fixed_text2)
                             print(f"✅ JSON recovered using string repair!")
                             break
-
-
                         except Exception as repair_error:
                             print(f"❌ Repair failed: {repair_error}")
                             if retry_count == max_retries - 1:
@@ -7444,112 +6142,6 @@ async def name_stats():
 
 
 
-async def generate_thumbnail_from_html(html_content: str, project_id: str) -> str:
-    """Generate thumbnail - local: saves to disk, production: uploads to Cloudinary"""
-    try:
-        if not html_content:
-            return None
-        
-        # Check if running on Render (production)
-        is_render = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
-        
-        # Create temp directory for generation
-        temp_dir = Path("temp_thumbnails")
-        temp_dir.mkdir(exist_ok=True)
-        
-        # Save HTML to temp file
-        temp_html = temp_dir / f"{project_id}.html"
-        with open(temp_html, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        
-        # Generate screenshot
-        from html2image import Html2Image
-        hti = Html2Image(
-            output_path=str(temp_dir),
-            size=(400, 225),  # Small size for fast loading
-            browser='chrome',
-        )
-        
-        output_file = f"{project_id}.png"
-        hti.screenshot(
-            html_file=str(temp_html),
-            save_as=output_file
-        )
-        
-        temp_thumbnail = temp_dir / output_file
-        
-        if temp_thumbnail.exists():
-            if is_render:
-                # ========== PRODUCTION (Render) - Upload to Cloudinary ==========
-                import cloudinary.uploader
-                import shutil
-                
-                # Upload to Cloudinary
-                upload_result = cloudinary.uploader.upload(
-                    str(temp_thumbnail),
-                    folder="project_thumbnails",
-                    public_id=project_id,
-                    overwrite=True
-                )
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                shutil.rmtree(temp_dir)
-                
-                # Return Cloudinary URL
-                cloudinary_url = upload_result['secure_url']
-                print(f"✅ Thumbnail uploaded to Cloudinary: {cloudinary_url}")
-                return cloudinary_url
-            else:
-                # ========== DEVELOPMENT (Local) - Save to disk ==========
-                import shutil
-                
-                # Create thumbnails directory if it doesn't exist
-                THUMBNAIL_DIR.mkdir(exist_ok=True)
-                
-                final_thumbnail = THUMBNAIL_DIR / output_file
-                shutil.move(str(temp_thumbnail), str(final_thumbnail))
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                os.rmdir(temp_dir)
-                
-                # Return local URL path
-                return f"/thumbnails/{output_file}"
-        
-        return None
-        
-    except Exception as e:
-        print(f"❌ Thumbnail generation failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -7566,13 +6158,6 @@ async def save_project(request: Request):
         prompt = body.get("prompt", "")
         files = body.get("files", {})
         preview_html = body.get("preview_html", "")
-        
-        # ========== EXTRACT BRAND NAME FROM GENERATED FILES ==========
-        extracted_name = extract_brand_name(files)
-        if extracted_name:
-            name = extracted_name
-            print(f"🏷️ Extracted brand name: {name}")
-        # ============================================================
         
         # Get user info from token
         auth_header = request.headers.get("Authorization", "")
@@ -7627,16 +6212,11 @@ async def save_project(request: Request):
             else:
                 project_type = "general"
             
-            # Create project FIRST (without thumbnail)
-            import uuid
-            project_id = str(uuid.uuid4())
-            
+            # Create project
             project = Project(
-                id=project_id,  # Set ID explicitly
                 name=name,
                 prompt=prompt,
                 preview_html=preview_html,
-                thumbnail_url=None,  # Will update after generation
                 timestamp=timestamp,
                 user_id=user_id,
                 project_type=project_type,
@@ -7647,15 +6227,6 @@ async def save_project(request: Request):
             )
             session.add(project)
             await session.flush()
-            
-            # ========== GENERATE THUMBNAIL AFTER PROJECT CREATION ==========
-            thumbnail_url = None
-            if preview_html:
-                thumbnail_url = await generate_thumbnail_from_html(preview_html, project_id)
-                if thumbnail_url:
-                    project.thumbnail_url = thumbnail_url
-                    print(f"✅ Thumbnail saved to disk: {thumbnail_url}")
-            # ==============================================================
             
             # Save files
             file_saved_count = 0
@@ -7707,9 +6278,7 @@ async def save_project(request: Request):
                 "id": project.id,
                 "name": name,
                 "user_email": user_email,
-                "file_count": file_saved_count,
-                "has_thumbnail": thumbnail_url is not None,
-                "thumbnail_url": thumbnail_url
+                "file_count": file_saved_count
             }
             
     except Exception as e:
@@ -7717,6 +6286,34 @@ async def save_project(request: Request):
         import traceback
         traceback.print_exc()
         return {"success": False, "message": str(e)}
+
+
+
+
+
+
+
+
+
+    except Exception as e:
+        print(f"❌ Save failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7770,7 +6367,6 @@ async def get_project(project_id: str):
                     "name": project.name,
                     "prompt": project.prompt,
                     "preview_html": project.preview_html,
-                    "thumbnail_url": project.thumbnail_url,  # ← Changed from thumbnail_base64
                     "timestamp": project.timestamp.isoformat(),
                     "project_type": project.project_type,
                     "file_count": project.file_count
@@ -7782,6 +6378,8 @@ async def get_project(project_id: str):
     except Exception as e:
         print(f"❌ Get project failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 
@@ -7822,17 +6420,16 @@ async def delete_project(project_id: str):
 
 
 
-
-
 @app.get("/api/get-projects")
-async def get_projects(request: Request, limit: int = 10, offset: int = 0):
-    """Get projects metadata only (fastest - no file contents)"""
+async def get_projects(request: Request, limit: int = 50, offset: int = 0):
+    """Get projects for the authenticated user only"""
     
     # Get user info from JWT token
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "")
     
     if not token:
+        print("⚠️ No token provided")
         return {
             "success": True,
             "projects": [],
@@ -7843,8 +6440,23 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
     
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_email = payload.get('email')
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        user_email = payload.get('email')  # Get email from token
+        user_id = payload.get('user_id')
+        
+        print(f"📚 Getting projects for email: {user_email}")
+        print(f"   User ID from token: {user_id}")
+        
+    except jwt.ExpiredSignatureError:
+        print("⚠️ Token expired")
+        return {
+            "success": True,
+            "projects": [],
+            "count": 0,
+            "total": 0,
+            "has_more": False
+        }
+    except jwt.InvalidTokenError as e:
+        print(f"⚠️ Invalid token: {e}")
         return {
             "success": True,
             "projects": [],
@@ -7855,12 +6467,16 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
     
     try:
         async with AsyncSessionLocal() as session:
-            # Get user ID (single query)
-            user_stmt = select(User.id).where(User.email == user_email)
+            # First, find the user by email to get the correct user_id
+            user_stmt = select(User).where(User.email == user_email)
             user_result = await session.execute(user_stmt)
-            actual_user_id = user_result.scalar_one_or_none()
+            db_user = user_result.scalar_one_or_none()
             
-            if not actual_user_id:
+            if db_user:
+                actual_user_id = db_user.id
+                print(f"✅ Found user in DB: {user_email} -> {actual_user_id}")
+            else:
+                print(f"⚠️ User not found in DB: {user_email}")
                 return {
                     "success": True,
                     "projects": [],
@@ -7869,43 +6485,31 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                     "has_more": False
                 }
             
-            # Get total count (lightweight)
+            # Get total count for pagination
             count_stmt = select(func.count()).select_from(Project).where(Project.user_id == actual_user_id)
-            total_count = await session.execute(count_stmt)
-            total_count = total_count.scalar() or 0
+            count_result = await session.execute(count_stmt)
+            total_count = count_result.scalar() or 0
             
-            # Get metadata including thumbnail_url (NOT base64)
-            stmt = select(
-                Project.id,
-                Project.name,
-                Project.prompt,
-                Project.timestamp,
-                Project.project_type,
-                Project.file_count,
-                Project.thumbnail_url  # ← Changed from thumbnail_base64 to thumbnail_url
-            ).where(
-                Project.user_id == actual_user_id
-            ).order_by(
-                desc(Project.timestamp)
-            ).offset(offset).limit(limit)
-            
+            # Get paginated projects for this user only
+            stmt = select(Project).where(Project.user_id == actual_user_id).order_by(desc(Project.timestamp)).offset(offset).limit(limit)
             result = await session.execute(stmt)
-            rows = result.all()
+            projects = result.scalars().all()
             
-            project_list = [
-                {
-                    "id": row[0],
-                    "name": row[1],
-                    "prompt": (row[2][:100] + "...") if row[2] and len(row[2]) > 100 else (row[2] or ""),
-                    "timestamp": row[3].isoformat(),
-                    "project_type": row[4],
-                    "file_count": row[5],
-                    "thumbnail_url": row[6]  # ← Changed from thumbnail_base64 to thumbnail_url
-                }
-                for row in rows
-            ]
+            project_list = []
+            for p in projects:
+                project_list.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "prompt": p.prompt[:150] + "..." if len(p.prompt) > 150 else p.prompt,
+                    "preview_html": "",
+                    "timestamp": p.timestamp.isoformat(),
+                    "project_type": p.project_type,
+                    "file_count": p.file_count,
+                })
             
             has_more = (offset + len(project_list)) < total_count
+            
+            print(f"📚 Loaded {len(project_list)} projects for {user_email}")
             
             return {
                 "success": True,
@@ -7913,10 +6517,12 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                 "count": len(project_list),
                 "total": total_count,
                 "has_more": has_more,
-                "is_metadata": True
+                "user_email": user_email
             }
     except Exception as e:
         print(f"❌ Error loading projects: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": True,
             "projects": [],
@@ -7924,6 +6530,12 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
             "total": 0,
             "has_more": False
         }
+
+
+
+
+
+
 
 
 

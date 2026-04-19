@@ -4,10 +4,6 @@ import re
 import io
 import jwt  # noqa
 import asyncio
-from html2image import Html2Image
-from pathlib import Path
-
-from fastapi.staticfiles import StaticFiles
 
 # Then import and initialize auth router
 from routes.auth import router as auth_router, init_oauth
@@ -269,23 +265,9 @@ class GeminiModelRouter:
 
 
 
+
 load_dotenv()
 
-# ========== DETECT ENVIRONMENT ==========
-IS_RENDER = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
-
-# ========== CREATE THUMBNAILS DIRECTORY ==========
-if IS_RENDER:
-    # On Render, use /tmp directory (ephemeral, but we upload to Cloudinary anyway)
-    THUMBNAIL_DIR = Path("/tmp/thumbnails")
-else:
-    # Local development
-    THUMBNAIL_DIR = Path("thumbnails")
-
-THUMBNAIL_DIR.mkdir(exist_ok=True)
-
-print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
-print(f"🌍 Environment: {'PRODUCTION (Render)' if IS_RENDER else 'DEVELOPMENT (Local)'}")
 
 
 
@@ -425,12 +407,7 @@ if DATABASE_URL:
             size_bytes = Column(Integer, default=0)
             is_public = Column(Boolean, default=False)
             version = Column(Integer, default=1)
-            thumbnail_url = Column(String(500), nullable=True)  # Store thumbnail URL
-            thumbnail_path = Column(String(500), nullable=True)  # Store file path
         
-
-
-
         # Project Files table (stores individual files separately)
         class ProjectFile(Base):
             __tablename__ = "project_files"
@@ -658,48 +635,6 @@ def create_deployment_files(original_files: Dict[str, Any], image_urls: Dict[str
     
     print(f"📦 Created {len(deployment_files)} deployment files (original files unchanged)")
     return deployment_files
-
-
-
-
-
-
-
-
-
-
-
-
-
-def extract_brand_name(files: dict) -> str:
-    """Extract brand name from Navigation.tsx"""
-    nav_content = files.get("components/Navigation.tsx", "")
-    
-    if not nav_content:
-        return None
-    
-    # Pattern for: <Link ...> <Icon /> Brand Name </Link>
-    match = re.search(r'<Link[^>]*href=["\']/["\'][^>]*>.*?>(.*?)</Link>', nav_content, re.DOTALL)
-    if match:
-        content = match.group(1)
-        # Remove the icon/SVG part
-        content = re.sub(r'<[^>]+>', '', content)  # Remove any HTML tags
-        content = content.strip()
-        # Brand name should be the last part after the icon
-        words = content.split()
-        if words:
-            # Take the last 1-3 words as brand name
-            brand = ' '.join(words[-3:])
-            if brand and len(brand) > 1 and len(brand) < 50:
-                print(f"🏷️ Extracted brand name: {brand}")
-                return brand
-    
-    return None
-
-
-
-
-
 
 
 
@@ -1013,30 +948,8 @@ async def lifespan(app: FastAPI):
         await engine.dispose()
         print("👋 Database connection closed")
 
-
-
-
-
 # Update your app initialization:
 app = FastAPI(title="Scorpio Architecture Engine", lifespan=lifespan)
-
-
-
-
-
-
-
-
-
-# Mount the directory
-app.mount("/thumbnails", StaticFiles(directory="thumbnails"), name="thumbnails")
-# ========================================
-
-
-
-
-
-
 
 
 
@@ -1102,211 +1015,201 @@ IMAGE_CACHE = {}
 
 
 
-
-
-
-
 async def search_free_images(query: str, count: int = 2, previous_terms: List[str] = None, search_type: str = "general") -> List[Dict]:
     """
     Search for free-to-use images using Pexels API with varied search terms.
-    Returns maximum 2 images for faster performance and smaller project size.
-    
     search_type: "general", "person", "portrait", "team"
     """
     previous_terms = previous_terms or []
     
-    # Generate varied search terms based on query AND search_type
     search_terms = generate_varied_search_terms(query, previous_terms, search_type)
     
     print(f"🔍 Generated search terms for {search_type}: {search_terms[:3]}")
     
-    # Try Pexels API first
     api_key = os.environ.get("PEXELS_API_KEY")
+    if not api_key:
+        print(f"⚠️ No PEXELS_API_KEY found, using fallback")
+        return await search_free_images_fallback(query, count)
+    
     all_results = []
     used_terms = []
     
-    for search_term in search_terms[:4]:  # Try up to 4 different terms
+    for search_term in search_terms[:4]:  # Try up to 4 search terms
         if len(all_results) >= count:
             break
             
-        if api_key:
-            try:
-                headers = {"Authorization": api_key}
-                random_page = random.randint(1, 2)
+        try:
+            headers = {"Authorization": api_key}
+            random_page = random.randint(1, 3)  # Expanded to pages 1-3 for more variety
+            params = {"query": search_term, "per_page": min(count * 2, 20), "page": random_page}
+            
+            # Set orientation for person/portrait/team searches
+            if search_type in ["person", "portrait", "team"]:
+                params["orientation"] = "portrait"
+                print(f"👤 Person search mode with term: '{search_term}'")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.pexels.com/v1/search", 
+                    headers=headers, 
+                    params=params, 
+                    timeout=15
+                )
                 
-                # Build params based on search_type
-                params = {
-                    "query": search_term, 
-                    "per_page": count, 
-                    "page": random_page
-                }
-                
-                # Add orientation for person searches
-                if search_type in ["person", "portrait", "team"]:
-                    params["orientation"] = "portrait"
-                    params["size"] = "large"
-                    print(f"👤 Person search mode - using portrait orientation")
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        "https://api.pexels.com/v1/search",
-                        headers=headers,
-                        params=params,
-                        timeout=10
-                    )
+                if response.status_code == 200:
+                    data = response.json()
+                    photos = data.get("photos", [])
                     
-                    if response.status_code == 200:
-                        data = response.json()
+                    # For person searches, request more photos to filter through
+                    if search_type in ["person", "portrait", "team"] and len(photos) < count:
+                        # Try to get more from next page
+                        params["page"] = random_page + 1
+                        response2 = await client.get(
+                            "https://api.pexels.com/v1/search",
+                            headers=headers,
+                            params=params,
+                            timeout=15
+                        )
+                        if response2.status_code == 200:
+                            data2 = response2.json()
+                            photos.extend(data2.get("photos", []))
+                    
+                    for photo in photos:
+                        if len(all_results) >= count:
+                            break
                         
-                        for photo in data.get("photos", []):
-                            img_url = photo.get("src", {}).get("large2x") or photo.get("src", {}).get("large")
-                            
-                            if len(all_results) >= count:
-                                break
-                            
-                            # For person searches, verify photo contains people
-                            if search_type in ["person", "portrait", "team"]:
-                                # Check if photo likely contains people
-                                alt_text = photo.get("alt", "").lower()
-                                photographer = photo.get("photographer", "").lower()
-                                
-                                people_keywords = ["person", "people", "man", "woman", "face", "portrait", "trainer", "coach", "athlete"]
-                                has_people = any(keyword in alt_text or keyword in photographer for keyword in people_keywords)
-                                
-                                if not has_people and search_type == "person":
-                                    print(f"  ⏭️ Skipping non-person photo for '{search_term}'")
-                                    continue
-                            
-                            all_results.append({
-                                "url": img_url,
-                                "source": "Pexels",
-                                "attribution": f"Photo by {photo.get('photographer', 'Unknown')} on Pexels",
-                                "license": "Free to use under Pexels License",
-                                "photographer_url": photo.get("photographer_url"),
-                                "alt": photo.get("alt", search_term),
-                                "search_term": search_term,
-                                "type": search_type
-                            })
-                            used_terms.append(search_term)
+                        img_url = photo.get("src", {}).get("large2x") or photo.get("src", {}).get("large")
+                        if not img_url:
+                            continue
                         
-                        if all_results:
-                            print(f"✅ Found {len(all_results)} images via Pexels API for {search_type}")
-                                    
-            except Exception as e:
-                print(f"⚠️ Pexels API error for '{search_term}': {e}")
-                continue
+                        # Enhanced person detection for person/portrait/team searches
+                        if search_type in ["person", "portrait", "team"]:
+                            alt_text = photo.get("alt", "").lower()
+                            photographer = photo.get("photographer", "").lower()
+                            
+                            # Expanded keywords for better detection
+                            people_keywords = [
+                                "person", "people", "man", "woman", "face", "portrait", 
+                                "trainer", "human", "model", "athlete", "coach", "individual",
+                                "female", "male", "kid", "child", "girl", "boy", "smiling",
+                                "professional", "executive", "worker", "employee"
+                            ]
+                            
+                            # Check alt text and photographer name
+                            text_to_check = f"{alt_text} {photographer}"
+                            has_people = any(kw in text_to_check for kw in people_keywords)
+                            
+                            # Also check if image likely has people based on tags if available
+                            if not has_people and "tags" in photo:
+                                tags = " ".join([tag.get("title", "") for tag in photo.get("tags", [])]).lower()
+                                has_people = any(kw in tags for kw in people_keywords)
+                            
+                            if not has_people:
+                                print(f"⏭️ Skipping non-person image: {alt_text[:50]}")
+                                continue
+                        
+                        all_results.append({
+                            "url": img_url,
+                            "source": "Pexels",
+                            "attribution": f"Photo by {photo.get('photographer', 'Unknown')} on Pexels",
+                            "license": "Free to use under Pexels License",
+                            "photographer_url": photo.get("photographer_url"),
+                            "alt": photo.get("alt", search_term),
+                            "search_term": search_term,
+                            "type": search_type
+                        })
+                        used_terms.append(search_term)
+                        print(f"✅ Found {search_type} image: {photo.get('alt', 'No alt')[:50]}")
+                        
+                elif response.status_code == 429:  # Rate limit
+                    print(f"🚦 Rate limited, waiting 2 seconds...")
+                    await asyncio.sleep(2)
+                    continue
+                else:
+                    print(f"⚠️ Pexels API returned {response.status_code} for '{search_term}'")
+                    
+        except httpx.TimeoutException:
+            print(f"⏰ Timeout for search term: '{search_term}'")
+            continue
+        except Exception as e:
+            print(f"⚠️ Pexels API error for '{search_term}': {e}")
+            continue
     
+    # If we have results, return them
     if all_results:
+        # Shuffle for variety but maintain the search type
         random.shuffle(all_results)
-        print(f"✅ Total {len(all_results[:count])} {search_type} images found")
+        print(f"✅ Found {len(all_results[:count])} {search_type} images")
         return all_results[:count]
     
-    print(f"🔍 Falling back to web scraping for '{query}'")
-    fallback_results = await search_free_images_fallback(query, count)
-    
-    if not fallback_results:
-        print(f"⚠️ No images found for '{query}', will use styled gradient cards instead")
-        return []
-    
-    return fallback_results[:count]
+    # Fallback to web scraping if no results found
+    print(f"🔍 No {search_type} images found via API, falling back to web scraping")
+    return await search_free_images_fallback(query, count)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def generate_varied_search_terms(query: str, previous_terms: List[str] = None, search_type: str = "general") -> List[str]:
-    """
-    Generate varied search terms based on project type and search_type.
-    Returns fewer terms (max 6) for faster searching.
-    """
+    """Generate varied search terms based on project type and search_type."""
     previous_terms = previous_terms or []
     query_lower = query.lower()
     
-    # Word banks for variety
-    adjectives = ["modern", "beautiful", "stunning", "elegant", "vibrant", "cozy", 
-                  "luxury", "rustic", "minimal", "colorful", "dramatic", "peaceful",
-                  "dynamic", "fresh", "warm", "cool", "bright"]
+    person_adjectives = ["professional", "friendly", "confident", "smiling", "fit", "energetic", "expert"]
+    general_adjectives = ["modern", "beautiful", "stunning", "elegant", "vibrant", "cozy", "luxury", "rustic"]
     
-    # Person-specific adjectives
-    person_adjectives = ["professional", "friendly", "confident", "smiling", "fit", 
-                         "energetic", "experienced", "expert", "certified", "passionate"]
-    
-    # Project type specific keywords
     type_keywords = {
-        "hotel": ["lobby", "pool", "spa", "restaurant", "suite", "terrace"],
-        "coffee": ["beans", "barista", "counter", "pastry", "espresso", "latte"],
+        "hotel": ["lobby", "pool", "spa", "restaurant", "suite"],
+        "coffee": ["beans", "barista", "counter", "pastry", "espresso"],
         "school": ["classroom", "library", "cafeteria", "playground", "campus"],
         "gym": ["weights", "treadmill", "yoga", "training", "fitness"],
-        "restaurant": ["dining", "kitchen", "bar", "table", "food", "chef"],
+        "restaurant": ["dining", "kitchen", "bar", "table", "food"],
         "portfolio": ["workspace", "studio", "design", "creative", "office"],
-        "ecommerce": ["product", "display", "packaging", "store", "shop"],
-        "tech": ["dashboard", "interface", "coding", "software", "modern"],
-        "saas": ["dashboard", "analytics", "platform", "interface", "cloud"],
-        # Person/people specific
-        "trainers": ["personal trainer", "fitness coach", "gym instructor", "trainer portrait"],
-        "coaches": ["sports coach", "team coach", "trainer portrait", "professional coach"],
-        "team": ["team photo", "group portrait", "staff", "employees together"],
-        "staff": ["professional portrait", "employee headshot", "team member", "worker"]
+        "ecommerce": ["product", "display", "packaging", "store", "shop"]
     }
     
-    # Detect if we need person images
     needs_people = search_type in ["person", "portrait", "team"]
     
     if needs_people:
-        # Person-specific search terms
-        keywords = ["trainer", "coach", "instructor", "fitness expert", "personal trainer", "athlete"]
-        adj_list = person_adjectives
+        roles = ["trainer", "coach", "instructor", "fitness expert", "personal trainer"]
+        search_terms = []
+        for adj in random.sample(person_adjectives, min(3, len(person_adjectives))):
+            for role in random.sample(roles, 1):
+                search_terms.append(f"{adj} {role} portrait")
+        search_terms.extend(["professional headshot", "smiling coach portrait", "fitness trainer at work"])
     else:
-        # Detect project type for general images
         detected_type = "general"
-        for ptype in type_keywords.keys():
+        for ptype in type_keywords:
             if ptype in query_lower:
                 detected_type = ptype
                 break
-        keywords = type_keywords.get(detected_type, ["design", "space", "interior", "exterior", "modern"])
-        adj_list = adjectives
-    
-    search_terms = []
-    
-    if needs_people:
-        # Method for person searches
-        roles = ["trainer", "coach", "instructor", "fitness expert", "personal trainer"]
-        for i in range(3):
-            adj = random.choice(adj_list)
-            role = random.choice(roles)
-            term = f"{adj} {role} portrait"
-            if term not in search_terms:
-                search_terms.append(term)
+        keywords = type_keywords.get(detected_type, ["design", "space", "interior", "exterior"])
         
-        # Add specific person terms
-        person_terms = ["professional headshot", "smiling coach", "trainer at work", "fitness portrait"]
-        for term in person_terms[:2]:
-            if term not in search_terms:
-                search_terms.append(term)
-    else:
-        # Method 1: Adjective + Keyword
-        for i in range(3):
-            adj = random.choice(adj_list)
-            kw = random.choice(keywords)
-            term = f"{adj} {kw}"
-            if term not in search_terms:
-                search_terms.append(term)
+        search_terms = []
+        for adj in random.sample(general_adjectives, min(3, len(general_adjectives))):
+            for kw in random.sample(keywords, 1):
+                search_terms.append(f"{adj} {kw}")
         
-        # Method 2: Keyword + Style
-        styles = ["photography", "background", "stock photo"]
-        for i in range(2):
-            kw = random.choice(keywords)
-            style = random.choice(styles)
-            term = f"{kw} {style}"
-            if term not in search_terms:
-                search_terms.append(term)
-        
-        # Method 3: Original query
+        search_terms.extend([f"{kw} photography" for kw in random.sample(keywords, min(2, len(keywords)))])
         if query not in search_terms:
             search_terms.append(query)
     
-    # Remove used terms
     if previous_terms:
         search_terms = [t for t in search_terms if t not in previous_terms]
     
-    # Ensure we have at least one term
     if not search_terms:
         if needs_people:
             search_terms = ["professional trainer portrait", "fitness coach", "smiling instructor"]
@@ -1730,24 +1633,6 @@ DESIGN REQUIREMENTS:
 - Smooth page transitions
 - Dark theme with purple-pink gradients
 - Mobile responsive with hamburger menu
-
-
-
-
-🚨 FOOTER (REQUIRED ON EVERY PAGE):
-- Footer.tsx component MUST be imported and used on ALL pages
-- Footer appears at the bottom of every page
-- Contains: Quick links, Contact info, Social media, Copyright
-- Same footer across all pages (consistent)
-
-PAGE STRUCTURE:
-- Home page visible by default
-- Smooth page transitions between routes
-- Dark theme with purple-pink gradients throughout
-
-
-
-
 
 
 
@@ -2262,35 +2147,9 @@ CRITICAL OUTPUT RULES:
 - ALL file contents MUST be strings
 
 - The brand icon should ONLY be added to Navigation.tsx, NOT to app/page.tsx
-- The home page stylished well rich content and footer
+- The home page should ONLY have the title text, not a duplicate icon
 - Only modify the specific files needed for the request
 - Every website to be generated should have brand icon in the Navigation.tsx and a clean, bold title on the home page (app/page.tsx)
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 CRITICAL: YOU MUST GENERATE COMPLETE FULL PAGES - NO EXCEPTIONS 🚨
-================================================================================
-
-For EVERY navigation link, you MUST create a COMPLETE page file with:
-
-
-❌ NEVER create empty or placeholder pages:
-export default function Courses() { return <div>Courses</div>; }
-export default function Shop() { return <div>Shop Page</div>; }
-export default function About() { return <div>About Us</div>; }
-
-
-
-
 
 
 
@@ -2322,7 +2181,7 @@ Example Navigation.tsx:
 
 
 
-
+# Add this styled map component to your MASTER_BUILD_PROMPT or create a dedicated component
 
 ================================================================================
 STYLED MAP PLACEHOLDER - USE THIS INSTEAD OF BLACK CARDS
@@ -2396,204 +2255,78 @@ export default function StyledMap({ address = "123 Main Street, City", className
 
 
 
-
-
-
-Create a premium, elegant Footer component for the Next.js website.
-
-File path: "components/Footer.tsx"
-
-Requirements:
-- Make it a modern glassmorphism-style footer with subtle backdrop blur.
-- Use the project's purple-pink gradient theme: bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
-- Include a decorative top border with gradient: bg-gradient-to-r from-transparent via-purple-500 to-transparent
-- Responsive grid layout: 4 columns on large screens (Brand | Quick Links | Company | Contact + Newsletter)
-- Brand section: Show the same logo/icon as Navigation.tsx + short tagline about the business.
-- Quick Links and Company sections: Use Next.js Link components with hover effects that change to purple-400.
-- Contact section: Include email, phone, and location with Lucide icons (Mail, Phone, MapPin).
-- Newsletter signup: A beautiful glass card with email input and a gradient "Subscribe" button (from-purple-600 to-pink-600).
-- Bottom bar: Copyright with current year, legal links (Privacy, Terms), and a small "Crafted in Nairobi" note.
-- Add subtle decorative elements: soft glowing orbs, grid pattern overlay (opacity 10-20%), and a thin gradient line at the very bottom.
-- Make it fully responsive (stack on mobile).
-- Use Tailwind classes only, no extra libraries except Lucide icons.
-- Add smooth hover transitions and maintain the overall dark luxurious aesthetic (no solid black or white backgrounds).
-- Ensure the footer looks rich and complete so the home page (app/page.tsx) ends beautifully when the footer is placed at the bottom.
-
-In app/page.tsx, place this Footer at the very end of the main content, after all sections (hero, features, gallery, testimonials, etc.), so it sits naturally at the bottom of the home page.
-
-Also import and include the Footer in app/layout.tsx so it appears consistently across all pages.
-
-
-
-
-
-
-
-
-
-
-
-
-
 ================================================================================
-🚨 IMAGE USAGE RULE - ONLY 1 IMAGE TOTAL (HERO ONLY) 🚨
+🚨 IMAGE USAGE RULE - Updated with Coaches/Trainers
 ================================================================================
 
-IMAGES AVAILABLE: image_1.jpg ONLY (1 image total)
+IMAGES AVAILABLE: 
+- image_1.jpg 
+- image_2.jpg 
+- image_3.jpg 
+- image_4.jpg 
+- image_5.jpg
 
-RULES:
-- image_1.jpg → HERO section ONLY (full screen background)
-- NO image_2.jpg (does not exist)
-- FEATURES/PRODUCTS section → RICH CONTENT, NO images
--- NO images in Courses,Apply,Faculty,Events,Visit or any other page
-- NO gallery section
-- Total appearances: 1 (hero only)
+STRICT RULES:
 
-✅ CORRECT - Hero with image ONLY, Features with RICH content (no images):
-```tsx
-{/* ONLY image - Hero with image_1.jpg */}
+- image_1.jpg → HERO section ONLY (alone, full screen background)
+- image_1.jpg + image_2.jpg → TOGETHER in GALLERY section (side by side)
+- image_3.jpg, image_4.jpg, and image_5.jpg → ONLY for Coaches / Trainers / Team section 
+  (Use these when the AI includes coaches or trainers names)
+
+Total appearances allowed:
+- image_1.jpg: Maximum 3 times (1× Hero + 2× in Gallery)
+- image_2.jpg: Maximum 2 times (only in Gallery)
+- image_3.jpg, image_4.jpg, image_5.jpg: Only when Coaches/Trainers section is present
+
+FORBIDDEN:
+- Do NOT use image_3, 4, or 5 in Hero or Gallery
+- Do NOT use image_1 or image_2 in Coaches/Trainers section
+- Do NOT add images to Features, Services, or any other card sections (use gradients only)
+
+EXAMPLE (CORRECT):
+
+{/* 1st appearance - Hero with image_1.jpg ONLY */}
 <section className="relative h-screen flex items-center justify-center overflow-hidden">
   <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="absolute inset-0 bg-black/40" />
+  <div className="absolute inset-0 bg-gradient-to-br from-purple-950/70 to-pink-950/70" />
   <div className="relative z-10 text-center">
-    <h1 className="text-6xl font-bold text-white">Project Name</h1>
-    <p className="text-gray-200 mt-4">Welcome to our website</p>
+    <h1 className="text-6xl font-bold gradient-text">Project Name</h1>
+    <p className="text-gray-300 mt-4">Welcome to our website</p>
   </div>
 </section>
 
-{/* Features Section - RICH CONTENT, NO images at all */}
-<section className="py-20 px-4 bg-gradient-to-br from-purple-950 to-pink-950">
-  <div className="container mx-auto">
-    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Features</h2>
+{/* 2nd & 3rd appearance - Gallery with BOTH images together */}
+<section className="py-20 bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950">
+  <div className="container mx-auto px-4">
+    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Gallery</h2>
+    <div className="grid md:grid-cols-2 gap-6">
+      <img src="/images/image_1.jpg" className="rounded-2xl shadow-2xl" />
+      <img src="/images/image_2.jpg" className="rounded-2xl shadow-2xl" />
+    </div>
+  </div>
+</section>
+
+{/* Coaches / Trainers Section - Use image_3, 4, 5 here ONLY */}
+<section className="py-20 bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950">
+  <div className="container mx-auto px-4">
+    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Expert Coaches</h2>
     <div className="grid md:grid-cols-3 gap-8">
-      
-      {/* Feature 1 - Rich content, NO image */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
-        <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-white">...</svg>
-        </div>
-        <h3 className="text-xl font-bold mb-3">Premium Quality</h3>
-        <p className="text-gray-300 mb-4">High-grade materials ensuring durability and performance.</p>
-        <ul className="text-gray-400 text-sm space-y-2">
-          <li>✓ Lifetime warranty</li>
-          <li>✓ Certified quality</li>
-          <li>✓ 24/7 support</li>
-        </ul>
+      <div className="text-center">
+        <img src="/images/image_3.jpg" className="w-40 h-40 mx-auto rounded-full object-cover border-4 border-purple-500" />
+        <h3 className="mt-6 text-xl font-semibold">Coach Name 1</h3>
+        <p className="text-purple-400">Specialization</p>
       </div>
-
-      {/* Feature 2 - Rich content, NO image */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
-        <div className="w-12 h-12 bg-pink-500 rounded-lg flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-white">...</svg>
-        </div>
-        <h3 className="text-xl font-bold mb-3">Expert Team</h3>
-        <p className="text-gray-300 mb-4">Professional trainers with years of experience.</p>
-        <ul className="text-gray-400 text-sm space-y-2">
-          <li>✓ Certified coaches</li>
-          <li>✓ Personalized plans</li>
-          <li>✓ Progress tracking</li>
-        </ul>
-      </div>
-
-      {/* Feature 3 - Rich content, NO image */}
-      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
-        <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-white">...</svg>
-        </div>
-        <h3 className="text-xl font-bold mb-3">Best Value</h3>
-        <p className="text-gray-300 mb-4">Affordable plans with maximum benefits.</p>
-        <ul className="text-gray-400 text-sm space-y-2">
-          <li>✓ Competitive pricing</li>
-          <li>✓ Flexible memberships</li>
-          <li>✓ Free trial available</li>
-        </ul>
-      </div>
+      <!-- Repeat for image_4.jpg and image_5.jpg -->
     </div>
   </div>
 </section>
 
-{/* Team Section - NO images, use icons or gradients */}
-<section className="py-20 px-4">
-  <div className="container mx-auto">
-    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Team</h2>
-    <div className="grid md:grid-cols-4 gap-6">
-      {['Sarah Johnson', 'Mike Chen', 'Emma Davis', 'Alex Rodriguez'].map(name => (
-        <div key={name} className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 text-center">
-          <div className="w-24 h-24 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <span className="text-2xl text-white">{name[0]}</span>
-          </div>
-          <h3 className="font-bold">{name}</h3>
-          <p className="text-purple-400 text-sm">Expert Trainer</p>
-          <p className="text-gray-400 text-xs mt-2">5+ years experience</p>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-{/* Team/Cards/Testimonials - NO images at all */}
+{/* Other sections (Features, Services, etc.) - NO images, gradient only */}
 <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6">
-  <h3>Team Member Name</h3>
-  <p>Role - NO image here</p>
+  Card content here - NO images
 </div>
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 FIXED: NO PINK BACKGROUND + UNIQUE CONTENT FOR EACH COLLECTION 🚨
-================================================================================
-
-1. BACKGROUND COLOR: Use DARK/NEUTRAL colors, NOT pink:
-   ✅ bg-gray-900, bg-zinc-900, bg-black, bg-slate-900
-   ❌ NO pink, purple-pink, or pink gradients
-
-2. EACH COLLECTION MUST HAVE UNIQUE CONTENT:
-   - Collection 1 → UNIQUE description (different from others)
-   - Collection 2 → UNIQUE description (different from 1 and 3)
-   - Collection 3 → UNIQUE description (different from 1 and 2)
-
-
-
-
-
-
-
-
-
-
-
-
-
-🚨 CRITICAL - NO COLOR OVERLAY ON HERO IMAGES 🚨
-
-DO NOT add gradient overlays on hero images:
-❌ <div className="absolute inset-0 bg-gradient-to-br from-purple-950/70 to-pink-950/70" />
-❌ <div className="absolute inset-0 bg-black/50" />
-
-USE original image as-is:
-✅ <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
-✅ Text should be readable with text-shadow or white color
-
-CORRECT:
-```tsx
-<section className="relative h-screen">
-  <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
-  <div className="relative z-10 flex items-center justify-center h-full">
-    <h1 className="text-white text-6xl font-bold drop-shadow-lg">Title</h1>
-  </div>
-</section>
 
 
 
@@ -3141,13 +2874,20 @@ DO NOT create empty pages or placeholder pages. Each page must have:
 4. **Visual Elements** - Icons, images, or illustrations
 5. **Call-to-Action** - Buttons or links to other pages
 
+ADD THIS NEW CONTENT:
+
+================================================================================
+EXPANDED PAGE CONTENT REQUIREMENTS - MUST FOLLOW:
+================================================================================
+
+Each page MUST include ALL of these sections:
 
 **HOME PAGE (app/page.tsx):**
 - Hero section with gradient title, description, and CTA button
 - Features section with 3-4 cards (icons, titles, descriptions)
 - Stats section with numbers (e.g., "500+ Students", "10 Years Experience")
 - Testimonials section with 2-3 customer quotes
-- Gallery/portfolio section with 3-4 images
+- Gallery/portfolio section with 3-6 images
 - FAQ section with 3-4 questions
 - Footer with links, social icons, copyright
 
@@ -3188,9 +2928,9 @@ DO NOT create empty pages or placeholder pages. Each page must have:
 SCHOOL WEBSITE:
 - Courses page with 4-8 course cards (title, duration, price, description)
 - Admissions page with steps, requirements, deadlines, application form
-- Faculty page with 3-6 teacher profiles
+- Faculty page with 4-8 teacher profiles
 - Events calendar with upcoming dates
-- Gallery page with 3-5 photos
+- Gallery page with 6-12 photos
 
 COFFEE WEBSITE:
 - Menu page with categories (espresso, cold brew, food, pastries)
@@ -3229,6 +2969,23 @@ PORTFOLIO WEBSITE:
 - Project detail page with challenge, solution, results, tech stack
 - Services page with 4-6 service cards
 - Testimonials slider with 5-8 quotes
+
+================================================================================
+ADD THIS ENFORCEMENT RULE:
+================================================================================
+
+🚨🚨🚨 CRITICAL ENFORCEMENT: 
+- EVERY page MUST have AT LEAST 3 distinct content sections
+- EVERY page MUST have AT LEAST 1 image (use provided /images/image_X.jpg)
+- EVERY page MUST have AT LEAST 1 interactive element (button, form, or card)
+- NO page can be just a heading and paragraph
+- ALL arrays in .map() loops MUST have 3-6 items with DIFFERENT content
+- Each array item MUST have unique title, description, and image
+
+FAILURE TO FOLLOW THESE RULES WILL RESULT IN REJECTION.
+================================================================================
+
+
 
 
 
@@ -3319,49 +3076,6 @@ CRITICAL STYLING RULES - MUST FOLLOW:
 
 
 
-================================================================================
-📸 IMAGE RESIZING RULES
-================================================================================
-
-ALL images MUST be resized to appropriate dimensions for their usage:
-
-HERO IMAGES:
-- Width: 1920px, Height: 1080px (16:9 aspect ratio)
-- Use: object-cover, w-full, h-screen
-
-PRODUCT/GALLERY IMAGES:
-- Width: 800px, Height: 600px (4:3 aspect ratio)
-- Use: object-cover, rounded-lg
-
-TRAINER/TEAM IMAGES:
-- Width: 400px, Height: 400px (1:1 square)
-- Use: object-cover, rounded-full
-
-LOGO/ICON IMAGES:
-- Width: 64px, Height: 64px
-- Use: w-16 h-16
-
-✅ CORRECT - Responsive images with proper sizing:
-```tsx
-<img 
-  src="/images/hero.jpg" 
-  className="w-full h-screen object-cover"
-  alt="Hero"
-/>
-
-<img 
-  src="/images/product.jpg" 
-  className="w-full h-64 object-cover rounded-lg"
-  alt="Product"
-/>
-
-<img 
-  src="/images/trainer.jpg" 
-  className="w-32 h-32 object-cover rounded-full"
-  alt="Trainer"
-/>
-
-
 
 
 
@@ -3403,6 +3117,31 @@ The globals.css MUST contain ALL of the following:
 
 
 
+================================================================================
+PREMIUM GRADIENT PATTERNS - USE THESE:
+================================================================================
+
+1. **Primary Gradient** (Buttons, CTAs):
+   `bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-700 hover:via-fuchsia-700 hover:to-pink-700 transition-all duration-300`
+
+2. **Secondary Gradient** (Cards, Sections):
+   `bg-gradient-to-br from-purple-950/40 via-transparent to-pink-950/30`
+
+3. **Text Gradient** (Headings):
+   `bg-gradient-to-r from-purple-400 via-pink-400 to-violet-400 bg-clip-text text-transparent animate-gradient`
+
+4. **Border Gradient** (Cards on hover):
+   `border border-transparent bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-border`
+
+5. **Background Gradient** (Hero & Section backgrounds):
+   `bg-gradient-to-br from-purple-950/40 via-zinc-950 to-pink-950/30`
+
+6. **Animated Gradient** (Shimmer / Dynamic effects):
+   `bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500 bg-[length:200%_auto] animate-gradient`
+
+   
+
+
 
 
 ================================================================================
@@ -3411,64 +3150,6 @@ COMPLETE GLOBALS.CSS TEMPLATE - COPY EXACTLY:
 
 "app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;\\n\\n@layer base {\\n  :root {\\n    --background: 0 0% 100%;\\n    --foreground: 222.2 84% 4.9%;\\n    --card: 0 0% 100%;\\n    --card-foreground: 222.2 84% 4.9%;\\n    --border: 214.3 31.8% 91.4%;\\n    --ring: 222.2 84% 4.9%;\\n  }\\n\\n  .dark {\\n    --background: 222.2 84% 4.9%;\\n    --foreground: 210 40% 98%;\\n    --card: 222.2 84% 4.9%;\\n    --card-foreground: 210 40% 98%;\\n    --border: 217.2 32.6% 17.5%;\\n    --ring: 212.7 26.8% 83.9%;\\n  }\\n\\n  * {\\n    border-color: hsl(var(--border));\\n  }\\n\\n  body {\\n    @apply bg-zinc-950 text-white antialiased;\\n    font-feature-settings: \\\"rlig\\\" 1, \\\"calt\\\" 1;\\n  }\\n}\\n\\n@layer utilities {\\n  html {\\n    scroll-behavior: smooth;\\n  }\\n\\n  ::-webkit-scrollbar {\\n    width: 10px;\\n    height: 10px;\\n  }\\n\\n  ::-webkit-scrollbar-track {\\n    background: #18181b;\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb {\\n    background: linear-gradient(to bottom, #a855f7, #ec4899);\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb:hover {\\n    background: linear-gradient(to bottom, #c084fc, #f472b6);\\n  }\\n\\n  ::selection {\\n    @apply bg-purple-500 text-white;\\n  }\\n\\n  *:focus-visible {\\n    @apply outline-none ring-2 ring-purple-500 ring-offset-2 ring-offset-zinc-950;\\n  }\\n}\\n\\n@layer components {\\n  .glass {\\n    @apply bg-white/5 backdrop-blur-md border border-white/10;\\n  }\\n\\n  .glass-hover {\\n    @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20;\\n  }\\n\\n  .gradient-text {\\n    @apply bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent;\\n    background-size: 200% auto;\\n    animation: shimmer 3s ease infinite;\\n  }\\n\\n  .card-hover {\\n    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20;\\n  }\\n\\n  .glow {\\n    @apply shadow-lg shadow-purple-500/25;\\n  }\\n\\n  .glow-hover {\\n    @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40;\\n  }\\n\\n  .hero-gradient {\\n    background: radial-gradient(ellipse at top, #1e1b4b, transparent),\\n                radial-gradient(ellipse at bottom, #4c1d95, transparent);\\n  }\\n\\n  .grid-pattern {\\n    background-image: linear-gradient(to right, #ffffff0a 1px, transparent 1px),\\n                      linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);\\n    background-size: 50px 50px;\\n  }\\n}\\n\\n@keyframes shimmer {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n@keyframes float {\\n  0%, 100% { transform: translateY(0px); }\\n  50% { transform: translateY(-20px); }\\n}\\n\\n@keyframes pulse-slow {\\n  0%, 100% { opacity: 0.5; }\\n  50% { opacity: 1; }\\n}\\n\\n@keyframes gradient {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n.animate-float {\\n  animation: float 6s ease-in-out infinite;\\n}\\n\\n.animate-pulse-slow {\\n  animation: pulse-slow 3s ease-in-out infinite;\\n}\\n\\n.animate-gradient {\\n  background-size: 200% auto;\\n  animation: gradient 3s ease infinite;\\n}"
 
-
-
-
-
-
-
-
-
-🚨 CRITICAL - NO PLACEHOLDER PAGES ALLOWED 🚨
-
-NEVER create pages like this:
-❌ export default function Shop() { return <div><h1>Shop</h1><p>Browse our collection.</p></div>; }
-❌ export default function About() { return <div>About Us</div>; }
-
-ALWAYS create COMPLETE pages with:
-✅ Minimum 3-4 sections (hero, grid, features, CTA)
-✅ Real content (product names, prices, images)
-✅ Interactive elements (buttons, forms, cards)
-✅ Proper styling with Tailwind classes
-
-CORRECT Shop page example:
-```tsx
-export default function Shop() {
-  const products = [
-    { id: 1, name: "Premium Wireless Headphones", price: 199, image: "/images/product1.jpg" },
-    { id: 2, name: "Smart Watch Pro", price: 299, image: "/images/product2.jpg" },
-    { id: 3, name: "Ultra HD Camera", price: 499, image: "/images/product3.jpg" }
-  ];
-  
-  return (
-    <div className="min-h-screen bg-gray-900">
-      <section className="bg-gradient-to-r from-purple-600 to-pink-600 py-20">
-        <h1 className="text-4xl font-bold text-center text-white">Shop Our Collection</h1>
-      </section>
-      
-      <section className="container mx-auto px-4 py-12">
-        <div className="grid md:grid-cols-3 gap-8">
-          {products.map(p => (
-            <div key={p.id} className="bg-gray-800 rounded-xl p-4">
-              <img src={p.image} className="w-full h-48 object-cover rounded-lg" />
-              <h3 className="text-xl font-bold mt-4">{p.name}</h3>
-              <p className="text-purple-400">${p.price}</p>
-              <button className="mt-4 w-full bg-purple-600 py-2 rounded-lg">Add to Cart</button>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-
-
-NEVER create placeholder/empty pages. Each page MUST have:
-- Real data (arrays of products, services, team members)
-- Proper UI components (cards, grids, forms)
-- No "Coming Soon" or placeholder text
-- Complete functionality (buttons, forms, interactive elements)
 
 
 
@@ -3638,7 +3319,11 @@ app/
   layout.tsx                # Root layout with dark theme (USE RELATIVE IMPORTS)
   page.tsx                  # Dynamic home page with hero, features, testimonials
   globals.css               # Premium styles with animations, gradients, scrollbar
-
+  loading.tsx               # Loading skeleton with spinner animation
+  error.tsx                 # Error boundary with retry button ("use client")
+  not-found.tsx             # 404 page with back to home link
+  robots.ts                 # SEO: robots.txt configuration
+  sitemap.ts                # SEO: sitemap.xml generation
 
 app/(marketing)/            # Route group for marketing pages
   page.tsx                  # Landing page
@@ -3664,8 +3349,6 @@ components/
   CTA.tsx                   # Call to action component
   Newsletter.tsx            # Newsletter signup form
   
-
-  
 components/ui/
   Button.tsx                # Reusable button with variants (primary, outline, ghost)
   Card.tsx                  # Card component with hover effects
@@ -3675,8 +3358,6 @@ components/ui/
   Tabs.tsx                  # Tabs component
   Accordion.tsx             # Accordion/FAQ component
   
-
-
 components/layout/
   Header.tsx                # Header wrapper
   Container.tsx             # Responsive container
@@ -3769,9 +3450,6 @@ app/services/page.tsx       # Services offered
 components/ProjectCard.tsx  # Project card
 components/SkillBadge.tsx   # Skill/technology badges
 
-
-
-
 ================================================================================
 VERCEL DEPLOYMENT REQUIRED FILES (ALWAYS CREATE):
 ================================================================================
@@ -3786,6 +3464,15 @@ next-env.d.ts                # Next.js TypeScript references
 .gitignore                   # Ignore node_modules, .next, .env
 .env.example                 # Example environment variables
 
+================================================================================
+SEO & META FILES (RECOMMENDED):
+================================================================================
+
+app/opengraph-image.tsx      # Dynamic OG image generation
+app/twitter-image.tsx        # Twitter card image
+app/manifest.ts              # PWA manifest.json
+app/robots.ts                # Robots.txt
+app/sitemap.ts               # Sitemap.xml
 
 ================================================================================
 CRITICAL RULES:
@@ -3869,17 +3556,6 @@ Then you MUST create:
 
 **FAILURE TO CREATE THESE PAGES WILL CAUSE 404 ERRORS!**
 
-
-
-
-
-
-
-
-
-
-
-
 Each page MUST have MEANINGFUL content based on its name:
 
 For "/classes" page (Gym website):
@@ -3904,14 +3580,6 @@ For "/contact" page:
 - Hours of operation
 - Phone/email information
 
-**you mustt create unique, rich content for each page.
-
-
-
-
-
-
-
 **NEVER create empty or placeholder pages. Each page must have rich, meaningful content.**
 
 ================================================================================
@@ -3934,9 +3602,6 @@ app/classes/page.tsx = "export default function Classes() { return <div>Classes<
 ❌ Missing pages for navigation links
 ❌ Using the same content for all pages
 ❌ Pages without images, cards, or interactive elements
-
-
-
 
 
 
@@ -4794,6 +4459,10 @@ CRITICAL RULES:
 
 
 
+
+
+
+
             # ========== JSON PARSING ==========
             try:
                 clean_text = clean_json_response(full_response)
@@ -4802,33 +4471,73 @@ CRITICAL RULES:
                     project_files: Dict[str, str] = json.loads(clean_text)
                     print(f"✅ JSON parsed successfully on attempt {retry_count + 1}")
                     
-                    # ========== INSERT IMAGE WAITING CODE HERE ==========
-                    # After AI generation completes successfully, WAIT for images
+                    # ========== SMART IMAGE SEARCH BASED ON GENERATED CONTENT ==========
                     await websocket.send_json({
                         "type": "status",
-                        "message": "⏳ Waiting for images to finish processing..."
+                        "message": "📸 Project generated! Analyzing for image needs..."
                     })
                     
-                    # Wait for background images to complete (with timeout)
-                    try:
-                        await asyncio.wait_for(background_image_task, timeout=15)
-                        print(f"✅ Images ready: {len([k for k in image_data if image_data[k]])}/2")
+                    # Extract trainer/coach names from generated files
+                    trainer_images_needed = []
+                    
+                    for file_path, content in project_files.items():
+                        if "trainer" in file_path.lower() or "coach" in file_path.lower() or "team" in file_path.lower():
+                            # Extract names from h3 tags
+                            trainer_names = re.findall(r'<h3[^>]*>([^<]+)</h3>', content)
+                            trainer_roles = re.findall(r'<p class="text-purple-400">([^<]+)</p>', content)
+                            
+                            for idx, name in enumerate(trainer_names[:4]):
+                                role = trainer_roles[idx] if idx < len(trainer_roles) else "Trainer"
+                                trainer_images_needed.append({
+                                    "name": name.strip(),
+                                    "role": role.strip(),
+                                    "index": idx + 1
+                                })
+                    
+                    # Search for images (based on what AI generated)
+                    image_data = {}
+                    image_metadata = {}
+                    
+                    if trainer_images_needed:
                         await websocket.send_json({
                             "type": "status",
-                            "message": f"✅ Images ready! Found {len([k for k in image_data if image_data[k]])}/2 images"
+                            "message": f"👥 Found {len(trainer_images_needed)} trainers, searching for photos..."
                         })
-                    except asyncio.TimeoutError:
-                        print("⚠️ Image search timeout, continuing with available images")
-                        await websocket.send_json({
-                            "type": "status",
-                            "message": "⚠️ Image search timeout, using gradient cards for missing images"
-                        })
-                    except Exception as e:
-                        print(f"⚠️ Image task error: {e}")
-                    # ========== END OF IMAGE WAITING CODE ==========
+                        
+                        async def search_trainer_photo(trainer):
+                            search_query = f"{trainer['name']} {trainer['role']} portrait"
+                            images = await search_free_images(search_query, 1, search_type="person")
+                            if images:
+                                img_base64 = await get_image_as_base64(images[0]["url"])
+                                return {"index": trainer["index"], "name": trainer["name"], "base64": img_base64}
+                            return None
+                        
+                        trainer_results = await asyncio.gather(*[search_trainer_photo(t) for t in trainer_images_needed])
+                        
+                        for result in trainer_results:
+                            if result:
+                                file_key = f"public/images/trainer_{result['index']}.jpg"
+                                project_files[file_key] = f"__binary_base64__{result['base64']}"
+                                print(f"📸 Added photo for {result['name']}")
+                    else:
+                        # Search for general images (hero + gallery)
+                        for i, term in enumerate(search_terms[:2]):
+                            images = await search_free_images(term, 1, search_type="general")
+                            if images:
+                                img_key = f"image_{i+1}"
+                                img_base64 = await get_image_as_base64(images[0]["url"])
+                                if img_base64:
+                                    raw_b64 = img_base64.split(',')[1] if img_base64.startswith('data:image') else img_base64
+                                    file_key = f"public/images/{img_key}.jpg"
+                                    project_files[file_key] = f"__binary_base64__{raw_b64}"
+                                    print(f"📸 Added {img_key} to project")
+                    
+                    await websocket.send_json({
+                        "type": "status",
+                        "message": "✅ Images processed and added to project"
+                    })
                     
                     break  # Exit retry loop
-                    
                 except json.JSONDecodeError as e1:
                     # ... rest of your error handling
 
@@ -7444,112 +7153,6 @@ async def name_stats():
 
 
 
-async def generate_thumbnail_from_html(html_content: str, project_id: str) -> str:
-    """Generate thumbnail - local: saves to disk, production: uploads to Cloudinary"""
-    try:
-        if not html_content:
-            return None
-        
-        # Check if running on Render (production)
-        is_render = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
-        
-        # Create temp directory for generation
-        temp_dir = Path("temp_thumbnails")
-        temp_dir.mkdir(exist_ok=True)
-        
-        # Save HTML to temp file
-        temp_html = temp_dir / f"{project_id}.html"
-        with open(temp_html, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        
-        # Generate screenshot
-        from html2image import Html2Image
-        hti = Html2Image(
-            output_path=str(temp_dir),
-            size=(400, 225),  # Small size for fast loading
-            browser='chrome',
-        )
-        
-        output_file = f"{project_id}.png"
-        hti.screenshot(
-            html_file=str(temp_html),
-            save_as=output_file
-        )
-        
-        temp_thumbnail = temp_dir / output_file
-        
-        if temp_thumbnail.exists():
-            if is_render:
-                # ========== PRODUCTION (Render) - Upload to Cloudinary ==========
-                import cloudinary.uploader
-                import shutil
-                
-                # Upload to Cloudinary
-                upload_result = cloudinary.uploader.upload(
-                    str(temp_thumbnail),
-                    folder="project_thumbnails",
-                    public_id=project_id,
-                    overwrite=True
-                )
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                shutil.rmtree(temp_dir)
-                
-                # Return Cloudinary URL
-                cloudinary_url = upload_result['secure_url']
-                print(f"✅ Thumbnail uploaded to Cloudinary: {cloudinary_url}")
-                return cloudinary_url
-            else:
-                # ========== DEVELOPMENT (Local) - Save to disk ==========
-                import shutil
-                
-                # Create thumbnails directory if it doesn't exist
-                THUMBNAIL_DIR.mkdir(exist_ok=True)
-                
-                final_thumbnail = THUMBNAIL_DIR / output_file
-                shutil.move(str(temp_thumbnail), str(final_thumbnail))
-                
-                # Cleanup temp files
-                os.remove(temp_html)
-                os.rmdir(temp_dir)
-                
-                # Return local URL path
-                return f"/thumbnails/{output_file}"
-        
-        return None
-        
-    except Exception as e:
-        print(f"❌ Thumbnail generation failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -7566,13 +7169,6 @@ async def save_project(request: Request):
         prompt = body.get("prompt", "")
         files = body.get("files", {})
         preview_html = body.get("preview_html", "")
-        
-        # ========== EXTRACT BRAND NAME FROM GENERATED FILES ==========
-        extracted_name = extract_brand_name(files)
-        if extracted_name:
-            name = extracted_name
-            print(f"🏷️ Extracted brand name: {name}")
-        # ============================================================
         
         # Get user info from token
         auth_header = request.headers.get("Authorization", "")
@@ -7627,16 +7223,11 @@ async def save_project(request: Request):
             else:
                 project_type = "general"
             
-            # Create project FIRST (without thumbnail)
-            import uuid
-            project_id = str(uuid.uuid4())
-            
+            # Create project
             project = Project(
-                id=project_id,  # Set ID explicitly
                 name=name,
                 prompt=prompt,
                 preview_html=preview_html,
-                thumbnail_url=None,  # Will update after generation
                 timestamp=timestamp,
                 user_id=user_id,
                 project_type=project_type,
@@ -7647,15 +7238,6 @@ async def save_project(request: Request):
             )
             session.add(project)
             await session.flush()
-            
-            # ========== GENERATE THUMBNAIL AFTER PROJECT CREATION ==========
-            thumbnail_url = None
-            if preview_html:
-                thumbnail_url = await generate_thumbnail_from_html(preview_html, project_id)
-                if thumbnail_url:
-                    project.thumbnail_url = thumbnail_url
-                    print(f"✅ Thumbnail saved to disk: {thumbnail_url}")
-            # ==============================================================
             
             # Save files
             file_saved_count = 0
@@ -7707,9 +7289,7 @@ async def save_project(request: Request):
                 "id": project.id,
                 "name": name,
                 "user_email": user_email,
-                "file_count": file_saved_count,
-                "has_thumbnail": thumbnail_url is not None,
-                "thumbnail_url": thumbnail_url
+                "file_count": file_saved_count
             }
             
     except Exception as e:
@@ -7717,6 +7297,34 @@ async def save_project(request: Request):
         import traceback
         traceback.print_exc()
         return {"success": False, "message": str(e)}
+
+
+
+
+
+
+
+
+
+    except Exception as e:
+        print(f"❌ Save failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7770,7 +7378,6 @@ async def get_project(project_id: str):
                     "name": project.name,
                     "prompt": project.prompt,
                     "preview_html": project.preview_html,
-                    "thumbnail_url": project.thumbnail_url,  # ← Changed from thumbnail_base64
                     "timestamp": project.timestamp.isoformat(),
                     "project_type": project.project_type,
                     "file_count": project.file_count
@@ -7782,6 +7389,8 @@ async def get_project(project_id: str):
     except Exception as e:
         print(f"❌ Get project failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 
@@ -7822,17 +7431,16 @@ async def delete_project(project_id: str):
 
 
 
-
-
 @app.get("/api/get-projects")
-async def get_projects(request: Request, limit: int = 10, offset: int = 0):
-    """Get projects metadata only (fastest - no file contents)"""
+async def get_projects(request: Request, limit: int = 50, offset: int = 0):
+    """Get projects for the authenticated user only"""
     
     # Get user info from JWT token
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "")
     
     if not token:
+        print("⚠️ No token provided")
         return {
             "success": True,
             "projects": [],
@@ -7843,8 +7451,23 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
     
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_email = payload.get('email')
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        user_email = payload.get('email')  # Get email from token
+        user_id = payload.get('user_id')
+        
+        print(f"📚 Getting projects for email: {user_email}")
+        print(f"   User ID from token: {user_id}")
+        
+    except jwt.ExpiredSignatureError:
+        print("⚠️ Token expired")
+        return {
+            "success": True,
+            "projects": [],
+            "count": 0,
+            "total": 0,
+            "has_more": False
+        }
+    except jwt.InvalidTokenError as e:
+        print(f"⚠️ Invalid token: {e}")
         return {
             "success": True,
             "projects": [],
@@ -7855,12 +7478,16 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
     
     try:
         async with AsyncSessionLocal() as session:
-            # Get user ID (single query)
-            user_stmt = select(User.id).where(User.email == user_email)
+            # First, find the user by email to get the correct user_id
+            user_stmt = select(User).where(User.email == user_email)
             user_result = await session.execute(user_stmt)
-            actual_user_id = user_result.scalar_one_or_none()
+            db_user = user_result.scalar_one_or_none()
             
-            if not actual_user_id:
+            if db_user:
+                actual_user_id = db_user.id
+                print(f"✅ Found user in DB: {user_email} -> {actual_user_id}")
+            else:
+                print(f"⚠️ User not found in DB: {user_email}")
                 return {
                     "success": True,
                     "projects": [],
@@ -7869,43 +7496,31 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                     "has_more": False
                 }
             
-            # Get total count (lightweight)
+            # Get total count for pagination
             count_stmt = select(func.count()).select_from(Project).where(Project.user_id == actual_user_id)
-            total_count = await session.execute(count_stmt)
-            total_count = total_count.scalar() or 0
+            count_result = await session.execute(count_stmt)
+            total_count = count_result.scalar() or 0
             
-            # Get metadata including thumbnail_url (NOT base64)
-            stmt = select(
-                Project.id,
-                Project.name,
-                Project.prompt,
-                Project.timestamp,
-                Project.project_type,
-                Project.file_count,
-                Project.thumbnail_url  # ← Changed from thumbnail_base64 to thumbnail_url
-            ).where(
-                Project.user_id == actual_user_id
-            ).order_by(
-                desc(Project.timestamp)
-            ).offset(offset).limit(limit)
-            
+            # Get paginated projects for this user only
+            stmt = select(Project).where(Project.user_id == actual_user_id).order_by(desc(Project.timestamp)).offset(offset).limit(limit)
             result = await session.execute(stmt)
-            rows = result.all()
+            projects = result.scalars().all()
             
-            project_list = [
-                {
-                    "id": row[0],
-                    "name": row[1],
-                    "prompt": (row[2][:100] + "...") if row[2] and len(row[2]) > 100 else (row[2] or ""),
-                    "timestamp": row[3].isoformat(),
-                    "project_type": row[4],
-                    "file_count": row[5],
-                    "thumbnail_url": row[6]  # ← Changed from thumbnail_base64 to thumbnail_url
-                }
-                for row in rows
-            ]
+            project_list = []
+            for p in projects:
+                project_list.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "prompt": p.prompt[:150] + "..." if len(p.prompt) > 150 else p.prompt,
+                    "preview_html": "",
+                    "timestamp": p.timestamp.isoformat(),
+                    "project_type": p.project_type,
+                    "file_count": p.file_count,
+                })
             
             has_more = (offset + len(project_list)) < total_count
+            
+            print(f"📚 Loaded {len(project_list)} projects for {user_email}")
             
             return {
                 "success": True,
@@ -7913,10 +7528,12 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                 "count": len(project_list),
                 "total": total_count,
                 "has_more": has_more,
-                "is_metadata": True
+                "user_email": user_email
             }
     except Exception as e:
         print(f"❌ Error loading projects: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": True,
             "projects": [],
@@ -7924,6 +7541,12 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
             "total": 0,
             "has_more": False
         }
+
+
+
+
+
+
 
 
 
