@@ -266,8 +266,6 @@ class GeminiModelRouter:
 
 
 
-
-
 load_dotenv()
 
 # ========== DETECT ENVIRONMENT ==========
@@ -275,24 +273,32 @@ IS_RENDER = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNA
 
 # ========== CREATE THUMBNAILS DIRECTORY ==========
 if IS_RENDER:
-    # On Render, use /tmp directory (ephemeral, but we upload to Cloudinary anyway)
+    # On Render, use /tmp directory (ephemeral storage)
     THUMBNAIL_DIR = Path("/tmp/thumbnails")
 else:
     # Local development
     THUMBNAIL_DIR = Path("thumbnails")
 
+# Create directory with parents
 THUMBNAIL_DIR.mkdir(exist_ok=True, parents=True)
 
 print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
-print(f"🌍 Environment: {'PRODUCTION (Render)' if IS_RENDER else 'DEVELOPMENT (Local)'}")
+print(f"🌍 Environment: {'RENDER' if IS_RENDER else 'LOCAL'}")
 
-# ========== MOUNT STATIC FILES (LOCAL ONLY) ==========
-if not IS_RENDER:
-    from fastapi.staticfiles import StaticFiles
+# ========== MOUNT STATIC FILES ==========
+from fastapi.staticfiles import StaticFiles
+
+# On Render, we still mount static files for serving thumbnails from /tmp
+# This works because Render keeps /tmp for the duration of the process
+try:
     app.mount("/thumbnails", StaticFiles(directory=str(THUMBNAIL_DIR)), name="thumbnails")
-    print("✅ Thumbnails mounted at /thumbnails")
-else:
-    print("⚠️ Skipping static mount on Render - thumbnails will use Cloudinary URLs")
+    print(f"✅ Thumbnails mounted at /thumbnails from {THUMBNAIL_DIR}")
+except Exception as e:
+    print(f"⚠️ Could not mount thumbnails: {e}")
+
+
+
+
 
 
 # ========== CONFIGURATION ==========
