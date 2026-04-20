@@ -352,6 +352,11 @@ async def get_projects(request: Request, user_id: str = None, limit: int = 11):
     
     return {"success": True, "projects": light_projects}
 
+
+
+
+
+
 @app.post("/api/save-project")
 async def save_project(request: Request):
     """Save a project"""

@@ -95,9 +95,11 @@ class GeminiModelRouter:
         self.client = client
         # Priority order - try models with highest quotas first
         self.model_order = [
+            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite              
+            
             AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)            
             AVAILABLE_MODELS["flash_25"],            # Gemini 2.5 Flash
-            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite            
+          
             
 
 
@@ -7968,7 +7970,6 @@ async def root():
 
 
 
-
 @app.post("/api/save-project")
 async def save_project(request: Request):
     try:
@@ -8047,103 +8048,124 @@ async def save_project(request: Request):
             files_url = None
             thumbnail_url = None
             
-            # 1. Upload preview HTML to Cloudinary
+            # 1. Upload preview HTML to Cloudinary (as HTML, not raw)
             if preview_html:
                 try:
-                    import gzip
-                    compressed = gzip.compress(preview_html.encode('utf-8'))
-                    upload_result = cloudinary.uploader.upload(
-                        compressed,
-                        folder=f"project_previews/{project_id}",
-                        public_id="preview",
-                        resource_type="raw",
-                        overwrite=True
-                    )
-                    preview_url = upload_result['secure_url']
-                    print(f"☁️ Preview uploaded to Cloudinary")
+                        import gzip
+                        import tempfile
+                        import os
+                        
+                        # Create a temporary HTML file
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
+                                tmp.write(preview_html)
+                                tmp_path = tmp.name
+                        
+                        # Upload the file as HTML
+                        upload_result = cloudinary.uploader.upload(
+                                tmp_path,
+                                folder=f"project_previews/{project_id}",
+                                public_id="preview",
+                                resource_type="auto",
+                                overwrite=True,
+                                format="html",
+                                use_filename=True,
+                                unique_filename=False,
+                              
+                        )
+                        preview_url = upload_result['secure_url']
+                        print(f"☁️ Preview uploaded to Cloudinary: {preview_url[:60]}...")
+                        
+                        # Cleanup temp file
+                        os.unlink(tmp_path)
+                        
                 except Exception as e:
-                    print(f"⚠️ Failed to upload preview: {e}")
+                        print(f"⚠️ Failed to upload preview: {e}")
             
             # 2. Upload files as ZIP to Cloudinary
             if files:
                 try:
-                    import zipfile
-                    from io import BytesIO
-                    
-                    zip_buffer = BytesIO()
-                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                        for file_path, content in files.items():
-                            if file_path == "preview_html":
-                                continue
-                            if isinstance(content, dict):
-                                content = json.dumps(content, indent=2)
-                            elif not isinstance(content, str):
-                                content = str(content)
-                            zipf.writestr(file_path, content)
-                    
-                    zip_buffer.seek(0)
-                    upload_result = cloudinary.uploader.upload(
-                        zip_buffer.getvalue(),
-                        folder=f"project_files/{project_id}",
-                        public_id="files",
-                        resource_type="raw",
-                        overwrite=True
-                    )
-                    files_url = upload_result['secure_url']
-                    print(f"☁️ Files uploaded to Cloudinary")
+                        import zipfile
+                        from io import BytesIO
+                        
+                        # Create ZIP in memory
+                        zip_buffer = BytesIO()
+                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                                for file_path, content in files.items():
+                                        if file_path == "preview_html":
+                                                continue
+                                        if isinstance(content, dict):
+                                                content = json.dumps(content, indent=2)
+                                        elif not isinstance(content, str):
+                                                content = str(content)
+                                        zipf.writestr(file_path, content)
+                        
+                        zip_buffer.seek(0)
+                        
+                        # Upload to Cloudinary
+                        upload_result = cloudinary.uploader.upload(
+                                zip_buffer.getvalue(),
+                                folder=f"project_files/{project_id}",
+                                public_id="files",
+                                resource_type="raw",
+                                overwrite=True
+                        )
+                        files_url = upload_result['secure_url']
+                        print(f"☁️ Files uploaded to Cloudinary: {files_url[:60]}...")
+                        
                 except Exception as e:
-                    print(f"⚠️ Failed to upload files: {e}")
+                        print(f"⚠️ Failed to upload files: {e}")
+                        files_url = None
             
             # 3. Generate and upload thumbnail to Cloudinary
             if preview_html:
                 try:
-                    # Generate thumbnail and get local file path
-                    thumbnail_local_path = await generate_thumbnail_from_html(preview_html, project_id)
-                    
-                    if thumbnail_local_path and os.path.exists(thumbnail_local_path):
-                        print(f"📸 Uploading thumbnail from: {thumbnail_local_path}")
+                        # Generate thumbnail and get local file path
+                        thumbnail_local_path = await generate_thumbnail_from_html(preview_html, project_id)
                         
-                        # Upload to Cloudinary
-                        upload_result = cloudinary.uploader.upload(
-                            thumbnail_local_path,
-                            folder=f"project_thumbnails/{project_id}",
-                            public_id="thumbnail",
-                            overwrite=True,
-                            width=400,
-                            height=225,
-                            crop="fill",
-                            quality="auto:best"
-                        )
-                        thumbnail_url = upload_result['secure_url']
-                        print(f"☁️ Thumbnail uploaded to Cloudinary: {thumbnail_url[:60]}...")
-                        
-                        # Cleanup local thumbnail file
-                        if os.path.exists(thumbnail_local_path):
-                            os.unlink(thumbnail_local_path)
-                            print(f"🗑️ Cleaned up local thumbnail")
-                    else:
-                        print(f"⚠️ Thumbnail file not generated")
-                        
+                        if thumbnail_local_path and os.path.exists(thumbnail_local_path):
+                                print(f"📸 Uploading thumbnail from: {thumbnail_local_path}")
+                                
+                                # Upload to Cloudinary
+                                upload_result = cloudinary.uploader.upload(
+                                        thumbnail_local_path,
+                                        folder=f"project_thumbnails/{project_id}",
+                                        public_id="thumbnail",
+                                        overwrite=True,
+                                        width=400,
+                                        height=225,
+                                        crop="fill",
+                                        quality="auto:best"
+                                )
+                                thumbnail_url = upload_result['secure_url']
+                                print(f"☁️ Thumbnail uploaded to Cloudinary: {thumbnail_url[:60]}...")
+                                
+                                # Cleanup local thumbnail file
+                                if os.path.exists(thumbnail_local_path):
+                                        os.unlink(thumbnail_local_path)
+                                        print(f"🗑️ Cleaned up local thumbnail")
+                        else:
+                                print(f"⚠️ Thumbnail file not generated")
+                                
                 except Exception as e:
-                    print(f"⚠️ Failed to upload thumbnail: {e}")
-                    import traceback
-                    traceback.print_exc()
+                        print(f"⚠️ Failed to upload thumbnail: {e}")
+                        import traceback
+                        traceback.print_exc()
             
             # ========== CREATE PROJECT WITH URLs ONLY ==========
             project = Project(
-                id=project_id,
-                name=name,
-                prompt=prompt,
-                user_id=user_id,
-                preview_url=preview_url,      # Cloudinary URL for preview
-                thumbnail_url=thumbnail_url,  # Cloudinary URL for thumbnail
-                files_url=files_url,          # Cloudinary URL for ZIP
-                timestamp=timestamp,
-                project_type=project_type,
-                file_count=len(files),
-                size_bytes=len(json.dumps(files)),
-                is_public=False,
-                version=1
+                    id=project_id,
+                    name=name,
+                    prompt=prompt,
+                    user_id=user_id,
+                    preview_url=preview_url,
+                    thumbnail_url=thumbnail_url,
+                    files_url=files_url,
+                    timestamp=timestamp,
+                    project_type=project_type,
+                    file_count=len(files),
+                    size_bytes=len(json.dumps(files)),
+                    is_public=False,
+                    version=1
             )
             session.add(project)
             await session.flush()
@@ -8151,41 +8173,41 @@ async def save_project(request: Request):
             # ========== SAVE FILE METADATA (NO CONTENT) ==========
             file_saved_count = 0
             for file_path, content in files.items():
-                if file_path == "preview_html":
-                    continue
-                
-                # Determine file type
-                file_type = None
-                if '.' in file_path:
-                    ext = file_path.split('.')[-1].lower()
-                    file_type_map = {
-                        'html': 'html', 'htm': 'html',
-                        'css': 'css', 'scss': 'scss',
-                        'js': 'javascript', 'ts': 'typescript',
-                        'jsx': 'jsx', 'tsx': 'tsx',
-                        'json': 'json', 'md': 'markdown',
-                        'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'svg': 'image'
-                    }
-                    file_type = file_type_map.get(ext, 'text')
-                
-                # Convert content to string for size calculation
-                if isinstance(content, dict):
-                    content_str = json.dumps(content, indent=2)
-                elif not isinstance(content, str):
-                    content_str = str(content)
-                else:
-                    content_str = content
-                
-                # Store ONLY metadata (no content)
-                project_file = ProjectFile(
-                    project_id=project_id,
-                    file_path=file_path,
-                    file_type=file_type,
-                    size_bytes=len(content_str),
-                    cloudinary_url=f"{files_url}/{file_path}" if files_url else None
-                )
-                session.add(project_file)
-                file_saved_count += 1
+                    if file_path == "preview_html":
+                            continue
+                    
+                    # Determine file type
+                    file_type = None
+                    if '.' in file_path:
+                            ext = file_path.split('.')[-1].lower()
+                            file_type_map = {
+                                    'html': 'html', 'htm': 'html',
+                                    'css': 'css', 'scss': 'scss',
+                                    'js': 'javascript', 'ts': 'typescript',
+                                    'jsx': 'jsx', 'tsx': 'tsx',
+                                    'json': 'json', 'md': 'markdown',
+                                    'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'svg': 'image'
+                            }
+                            file_type = file_type_map.get(ext, 'text')
+                    
+                    # Convert content to string for size calculation
+                    if isinstance(content, dict):
+                            content_str = json.dumps(content, indent=2)
+                    elif not isinstance(content, str):
+                            content_str = str(content)
+                    else:
+                            content_str = content
+                    
+                    # Store ONLY metadata (no content)
+                    project_file = ProjectFile(
+                            project_id=project_id,
+                            file_path=file_path,
+                            file_type=file_type,
+                            size_bytes=len(content_str),
+                            cloudinary_url=f"{files_url}/{file_path}" if files_url else None
+                    )
+                    session.add(project_file)
+                    file_saved_count += 1
             
             await session.commit()
             
@@ -8194,15 +8216,15 @@ async def save_project(request: Request):
             print(f"✅ Saved project '{name}' for user {user_email}")
             
             return {
-                "success": True,
-                "id": project_id,
-                "name": name,
-                "user_email": user_email,
-                "file_count": file_saved_count,
-                "has_thumbnail": thumbnail_url is not None,
-                "thumbnail_url": thumbnail_url,
-                "preview_url": preview_url,
-                "files_url": files_url
+                    "success": True,
+                    "id": project_id,
+                    "name": name,
+                    "user_email": user_email,
+                    "file_count": file_saved_count,
+                    "has_thumbnail": thumbnail_url is not None,
+                    "thumbnail_url": thumbnail_url,
+                    "preview_url": preview_url,
+                    "files_url": files_url
             }
             
     except Exception as e:
@@ -8620,6 +8642,8 @@ async def websocket_projects(websocket: WebSocket):
         if websocket in active_project_connections:
             active_project_connections.remove(websocket)
         print(f"🔌 Projects WebSocket disconnected. Remaining: {len(active_project_connections)}")
+
+
 
 async def notify_projects_updated(project_name: str = None):
     """Notify all connected clients that projects have been updated"""
