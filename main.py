@@ -7332,7 +7332,7 @@ async def generate_static_html(request: Dict[str, Any]):
                 </button>
             </div>
             <div id="mobile-menu" class="hidden md:hidden pb-4 space-y-2">
-                {''.join([f'<button onclick="showPage(\'{path}\')" class="block w-full text-left px-4 py-2 rounded-lg hover:bg-white/10 text-gray-300 hover:text-white">{label}</button>' for path, label in nav_links])}
+                {mobile_nav_html}
             </div>
         </div>
     </nav>
