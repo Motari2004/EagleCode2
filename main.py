@@ -5147,7 +5147,8 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
                 import traceback
                 traceback.print_exc()
                 
-                # Send fallback preview
+                
+   # Send fallback preview
                 fallback_html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -5170,24 +5171,22 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
 </html>"""
                 
                 await websocket.send_json({
-                        "type": "preview",
-                        "html": fallback_html,
-                        "preview_type": "fallback"
+                    "type": "preview",
+                    "html": fallback_html,
+                    "preview_type": "fallback"
                 })
 
         # Send complete message
         await websocket.send_json({"type": "complete"})
 
-    except Exception as e:
-        print(f"❌ Build Error: {e}")
-        import traceback
-        traceback.print_exc()
-        try:
-            await websocket.send_json({"type": "error", "message": str(e)})
-        except:
-            pass
-
-
+except Exception as e:
+    print(f"❌ Build Error: {e}")
+    import traceback
+    traceback.print_exc()
+    try:
+        await websocket.send_json({"type": "error", "message": str(e)})
+    except:
+        pass
 
 
 
