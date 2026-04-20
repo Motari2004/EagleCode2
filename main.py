@@ -265,7 +265,32 @@ class GeminiModelRouter:
 
 
 
+# ============================================
+# ========== ENVIRONMENT DETECTION ==========
+# ============================================
 
+# Detect if running in Docker/Render
+IS_DOCKER = os.environ.get("RENDER") == "true" or os.path.exists("/.dockerenv")
+
+# Use /tmp for temporary files in Docker/Render
+if IS_DOCKER:
+    THUMBNAIL_DIR = Path("/tmp/thumbnails")
+    PREVIEWS_DIR = Path("/tmp/previews")
+    TEMP_DIR = Path("/tmp/temp_thumbnails")
+else:
+    THUMBNAIL_DIR = Path("thumbnails")
+    PREVIEWS_DIR = Path("previews")
+    TEMP_DIR = Path("temp_thumbnails")
+
+# Create directories
+THUMBNAIL_DIR.mkdir(exist_ok=True, parents=True)
+PREVIEWS_DIR.mkdir(exist_ok=True, parents=True)
+TEMP_DIR.mkdir(exist_ok=True, parents=True)
+
+print(f"📁 Environment: {'DOCKER/RENDER' if IS_DOCKER else 'LOCAL'}")
+print(f"📁 Thumbnails dir: {THUMBNAIL_DIR}")
+print(f"📁 Previews dir: {PREVIEWS_DIR}")
+print(f"📁 Temp dir: {TEMP_DIR}")
 
 
 
@@ -274,11 +299,6 @@ load_dotenv()
 
 
 
-
-
-# Create thumbnails directory
-THUMBNAIL_DIR = Path("thumbnails")
-THUMBNAIL_DIR.mkdir(exist_ok=True)
 
 
 
@@ -5087,69 +5107,75 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
 
 
 
-        # ========== GENERATE AND SEND PREVIEW ==========
+# ========== GENERATE AND SEND PREVIEW ==========
         await websocket.send_json({"type": "status", "message": "🎨 Generating preview..."})
 
         try:
-            preview_result = await generate_preview_internal(project_files, user_prompt)
-            if preview_result.get("success"):
-                preview_html = preview_result.get("preview_html")
-                original_size = len(preview_html)
-                
-                # ========== SAVE PREVIEW TO FILE ==========
-                previews_dir = os.path.join(os.path.dirname(__file__), "previews")
-                os.makedirs(previews_dir, exist_ok=True)
-                
-                preview_filename = f"preview_{uuid.uuid4().hex[:8]}.html"
-                preview_path = os.path.join(previews_dir, preview_filename)
-                
-                with open(preview_path, "w", encoding="utf-8") as f:
-                    f.write(preview_html)
-                
-                print(f"💾 Preview saved to file: {preview_path}")
-                print(f"📦 Preview size: {original_size:,} chars")
-                
-                # CRITICAL: Add preview_html to project_files so frontend can find it
-                project_files["preview_html"] = preview_html
-                project_files["preview_html_url"] = f"/api/preview/{preview_filename}"
-                
-
-                
-                
-                # KEEP/ADD this one message:
-                await websocket.send_json({
-                   "type": "preview",
-                   "html": preview_html,
-                   "preview_type": "ai_full"
-                })
-                
-
-                print(f"✅ Preview sent via file_complete")
-
-
-
-
-
-
-
-                
-            else:
-                print(f"⚠️ Preview generation failed: {preview_result.get('error')}")
+                preview_result = await generate_preview_internal(project_files, user_prompt)
+                if preview_result.get("success"):
+                        preview_html = preview_result.get("preview_html")
+                        original_size = len(preview_html)
+                        
+                        # ========== SAVE PREVIEW TO FILE ==========
+                        # Use global PREVIEWS_DIR (defined at top)
+                        previews_dir = PREVIEWS_DIR
+                        previews_dir.mkdir(exist_ok=True)
+                        
+                        preview_filename = f"preview_{uuid.uuid4().hex[:8]}.html"
+                        preview_path = previews_dir / preview_filename
+                        
+                        with open(preview_path, "w", encoding="utf-8") as f:
+                                f.write(preview_html)
+                        
+                        print(f"💾 Preview saved to file: {preview_path}")
+                        print(f"📦 Preview size: {original_size:,} chars")
+                        
+                        # Send preview HTML directly to frontend
+                        await websocket.send_json({
+                                "type": "preview",
+                                "html": preview_html,
+                                "preview_type": "ai_full"
+                        })
+                        
+                        print(f"✅ Preview sent")
+                        
+                else:
+                        print(f"⚠️ Preview generation failed: {preview_result.get('error')}")
+                        
         except Exception as preview_error:
-            print(f"⚠️ Preview error: {preview_error}")
-            fallback_html = f"""<!DOCTYPE html>
-<html><head><title>Preview</title><script src="https://cdn.tailwindcss.com"></script></head>
+                print(f"⚠️ Preview error: {preview_error}")
+                import traceback
+                traceback.print_exc()
+                
+                # Send fallback preview
+                fallback_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
 <body class="bg-zinc-950 text-white">
-<div class="container mx-auto px-4 py-20 text-center">
-<h1 class="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">{user_prompt or 'Project'}</h1>
-<p class="text-gray-400 mt-4">✨ Project generated successfully!</p>
-</div></body></html>"""
-            await websocket.send_json({
-                "type": "preview",
-                "html": fallback_html,
-                "preview_type": "fallback"
-            })
+    <div class="container mx-auto px-4 py-20 text-center">
+        <h1 class="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            {user_prompt or 'Project'}
+        </h1>
+        <p class="text-gray-400 mt-4">✨ Project generated successfully! Preview will appear shortly.</p>
+        <button onclick="location.reload()" class="mt-8 px-6 py-3 bg-purple-600 rounded-lg hover:bg-purple-700">
+            Refresh Preview
+        </button>
+    </div>
+</body>
+</html>"""
+                
+                await websocket.send_json({
+                        "type": "preview",
+                        "html": fallback_html,
+                        "preview_type": "fallback"
+                })
 
+        # Send complete message
         await websocket.send_json({"type": "complete"})
 
     except Exception as e:
@@ -7404,19 +7430,17 @@ async def name_stats():
 
 
 
-
 async def generate_thumbnail_from_html(html_content: str, project_id: str) -> str:
-    """Generate thumbnail and return the LOCAL file path for upload"""
+    """Generate thumbnail using Chrome (works in Docker with Chrome installed)"""
     import os
     from pathlib import Path
-    from html2image import Html2Image
     
     try:
         if not html_content:
             return None
         
-        # Create temp directory for generation
-        temp_dir = Path("temp_thumbnails")
+        # Use /tmp for temporary files (works on Render/Docker)
+        temp_dir = Path("/tmp/temp_thumbnails")
         temp_dir.mkdir(exist_ok=True)
         
         # Save HTML to temp file
@@ -7424,11 +7448,18 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
         with open(temp_html, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        # Generate screenshot
+        # Generate screenshot with Chrome
+        from html2image import Html2Image
+        
+        # Use Chrome from environment variable or default path
+        chrome_path = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome-stable")
+        
         hti = Html2Image(
             output_path=str(temp_dir),
             size=(400, 225),
             browser='chrome',
+            browser_executable=chrome_path,
+            disable_logging=True
         )
         
         output_file = f"{project_id}.png"
@@ -7440,7 +7471,6 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
         temp_thumbnail = temp_dir / output_file
         
         if temp_thumbnail.exists():
-            # Return the actual local file path
             local_path = str(temp_thumbnail.absolute())
             print(f"📸 Thumbnail generated at: {local_path}")
             print(f"   Size: {temp_thumbnail.stat().st_size} bytes")
