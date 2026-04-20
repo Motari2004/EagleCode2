@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: monospace;
+            background: #1a1a1a;
+            color: white;
+        }
+        .toolbar {
+            background: #2d2d2d;
+            padding: 10px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input {
+            flex: 1;
+            padding: 8px;
+            background: #3d3d3d;
+            border: 1px solid #555;
+            color: white;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0052a3;
+        }
+        iframe {
+            width: 100%;
+            height: calc(100vh - 50px);
+            border: none;
+        }
+        .info {
+            background: #2d2d2d;
+            padding: 5px 10px;
+            font-size: 12px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <span>📺 Preview URL:</span>
+        <input type="text" id="urlInput" placeholder="Enter preview URL..." value="/api/preview/preview_fb3a8584.html">
+        <button onclick="loadPreview()">Load Preview</button>
+        <button onclick="refreshPreview()">🔄 Refresh</button>
+    </div>
+    <div class="info" id="info">
+        💡 Enter the preview URL and click Load
+    </div>
+    <iframe id="previewFrame" src="about:blank"></iframe>
+
+    <script>
+        function loadPreview() {
+            const url = document.getElementById('urlInput').value;
+            const iframe = document.getElementById('previewFrame');
+            const info = document.getElementById('info');
+            
+            if (!url) {
+                info.innerHTML = '❌ Please enter a URL';
+                return;
+            }
+            
+            info.innerHTML = `🔄 Loading preview from: ${url} ...`;
+            iframe.src = url;
+            
+            iframe.onload = () => {
+                info.innerHTML = `✅ Preview loaded successfully from: ${url}`;
+            };
+            
+            iframe.onerror = () => {
+                info.innerHTML = `❌ Failed to load preview from: ${url}`;
+            };
+        }
+        
+        function refreshPreview() {
+            const iframe = document.getElementById('previewFrame');
+            iframe.src = iframe.src;
+            document.getElementById('info').innerHTML = '🔄 Preview refreshed';
+        }
+        
+        // Load default preview on page load
+        loadPreview();
+    </script>
+</body>
+</html>

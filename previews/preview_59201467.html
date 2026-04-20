@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lake Palace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .animate-gradient {
+            background-size: 200% 200%;
+            animation: gradient 5s ease infinite;
+        }
+        .gradient-text {
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            background-image: linear-gradient(to right, #a78bfa, #60a5fa, #f472b6); /* Purple to Pink gradient */
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            transition: transform 0.3s ease-in-out;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .bg-gradient-to-br {
+            background-image: linear-gradient(to bottom right, var(--tw-gradient-stops));
+        }
+        .bg-gradient-to-tr {
+            background-image: linear-gradient(to top right, var(--tw-gradient-stops));
+        }
+        .bg-gradient-to-r {
+            background-image: linear-gradient(to right, var(--tw-gradient-stops));
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white font-sans">
+
+    <header class="bg-gradient-to-br from-indigo-950 via-zinc-950 to-blue-950 py-4 shadow-lg">
+        <nav class="container mx-auto px-4 flex justify-between items-center">
+            <a href="#home" class="text-3xl font-bold text-transparent bg-gradient-to-r from-indigo-400 via-blue-400 to-purple-400 bg-clip-text">Lake Palace</a>
+            <ul class="hidden md:flex space-x-6">
+                <li><a href="#features" class="text-gray-300 hover:text-indigo-400 transition">Features</a></li>
+                <li><a href="#about" class="text-gray-300 hover:text-indigo-400 transition">About Us</a></li>
+                <li><a href="#services" class="text-gray-300 hover:text-indigo-400 transition">Services</a></li>
+                <li><a href="#contact" class="text-gray-300 hover:text-indigo-400 transition">Contact</a></li>
+            </ul>
+            <button class="md:hidden text-gray-300 focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+            </button>
+        </nav>
+    </header>
+
+    <main id="content">
+        <!-- Home Page Content -->
+        <section id="home" class="min-h-screen flex items-center justify-center overflow-hidden">
+            <div class="absolute inset-0 z-0">
+                <img
+                    src="/images/hero-bg.jpg"
+                    alt="Deep indigo abstract background"
+                    class="w-full h-full object-cover"
+                    onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-indigo-950', 'via-zinc-950', 'to-blue-950');
+                    }}
+                />
+                <div class="absolute inset-0 bg-gradient-to-br from-indigo-950/70 via-zinc-950/50 to-blue-950/70" />
+            </div>
+            <div class="relative z-10 text-center px-4">
+                <h1 class="text-6xl font-bold bg-gradient-to-r from-indigo-400 via-blue-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-4">Lake Palace</h1>
+                <p class="text-gray-300 mt-4 text-lg">Welcome to our digital space.</p>
+            </div>
+        </section>
+
+        <!-- Features Page Content -->
+        <section id="features" class="hidden min-h-screen flex-col">
+            <div class="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-blue-950">
+                <section class="relative h-96 flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-0 z-0">
+                        <img
+                            src="/images/features-hero.jpg"
+                            alt="Abstract background for features page"
+                            class="w-full h-full object-cover opacity-50"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-indigo-950', 'via-zinc-950', 'to-blue-950');
+                            }}
+                        />
+                        <div class="absolute inset-0 bg-gradient-to-br from-indigo-950/70 via-zinc-950/50 to-blue-950/70" />
+                    </div>
+                    <div class="relative z-10 text-center px-4">
+                        <h1 class="text-5xl font-bold bg-gradient-to-r from-indigo-400 via-blue-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-4">Powerful Features for Your Business</h1>
+                        <p class="text-xl text-gray-300">Discover the tools that drive efficiency and innovation.</p>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4">
+                    <div class="container mx-auto">
+                        <h2 class="text-4xl font-bold text-center mb-12 gradient-text">Core Capabilities</h2>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                            {/* Placeholder for Feature Cards */}
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-indigo-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Feature Title 1</h3>
+                                    <p class="text-gray-300 leading-relaxed">Description for feature 1 goes here. It highlights the key benefit.</p>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-indigo-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Feature Title 2</h3>
+                                    <p class="text-gray-300 leading-relaxed">Description for feature 2 goes here. It highlights the key benefit.</p>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-indigo-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Feature Title 3</h3>
+                                    <p class="text-gray-300 leading-relaxed">Description for feature 3 goes here. It highlights the key benefit.</p>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-indigo-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Feature Title 4</h3>
+                                    <p class="text-gray-300 leading-relaxed">Description for feature 4 goes here. It highlights the key benefit.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4 bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950">
+                    <div class="container mx-auto">
+                        <h2 class="text-4xl font-bold text-center mb-12 gradient-text">Advanced Functionality</h2>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                            {/* Placeholder for Advanced Feature Cards */}
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-purple-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Advanced Feature A</h3>
+                                    <p class="text-gray-300 leading-relaxed">Details on advanced functionality A.</p>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-purple-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Advanced Feature B</h3>
+                                    <p class="text-gray-300 leading-relaxed">Details on advanced functionality B.</p>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-purple-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Advanced Feature C</h3>
+                                    <p class="text-gray-300 leading-relaxed">Details on advanced functionality C.</p>
+                                </div>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <feature.icon class="w-12 h-12 text-purple-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Advanced Feature D</h3>
+                                    <p class="text-gray-300 leading-relaxed">Details on advanced functionality D.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4 text-center bg-gradient-to-br from-blue-950 via-purple-950 to-pink-950">
+                    <h2 class="text-4xl font-bold mb-6 gradient-text">Ready to Boost Your Productivity?</h2>
+                    <p class="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">Explore how Lake Palace can streamline your operations and drive growth.</p>
+                    <button class="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition duration-300 ease-in-out shadow-lg">Request a Demo</button>
+                </section>
+            </div>
+        </section>
+
+        <!-- About Us Page Content -->
+        <section id="about" class="hidden min-h-screen flex-col">
+            <div class="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-blue-950">
+                <section class="relative h-96 flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-0 z-0">
+                        <img
+                            src="/images/about-hero.jpg"
+                            alt="Abstract background for about page"
+                            class="w-full h-full object-cover opacity-50"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-indigo-950', 'via-zinc-950', 'to-blue-950');
+                            }}
+                        />
+                        <div class="absolute inset-0 bg-gradient-to-br from-indigo-950/70 via-zinc-950/50 to-blue-950/70" />
+                    </div>
+                    <div class="relative z-10 text-center px-4">
+                        <h1 class="text-5xl font-bold bg-gradient-to-r from-indigo-400 via-blue-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-4">About Lake Palace</h1>
+                        <p class="text-xl text-gray-300">Empowering businesses with intelligent SaaS solutions.</p>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4">
+                    <div class="container mx-auto flex flex-col md:flex-row items-center gap-12">
+                        <div class="md:w-1/2">
+                            <h2 class="text-4xl font-bold mb-6 gradient-text">Our Journey</h2>
+                            <p class="text-gray-300 leading-relaxed mb-4">Founded in 2020, Lake Palace was born from a vision to simplify complex business processes through technology. We saw a need for a SaaS platform that was not only powerful and scalable but also elegant and intuitive. Our journey began with a small team of passionate engineers and designers, and we've since grown into a dedicated force, committed to helping businesses thrive in the digital age.</p>
+                            <p class="text-gray-300 leading-relaxed">We believe in the power of smart solutions to unlock potential, and we're constantly innovating to bring you the best tools for success.</p>
+                        </div>
+                        <div class="md:w-1/2">
+                            <img src="/images/our-story.jpg" alt="Our story illustration" class="rounded-xl shadow-lg w-full h-auto object-cover" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4 bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950">
+                    <div class="container mx-auto">
+                        <h2 class="text-4xl font-bold text-center mb-12 gradient-text">Meet the Team</h2>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                            {/* Placeholder for Team Member Cards */}
+                            <div class="glass p-6 rounded-xl text-center shadow-lg card-hover">
+                                <img
+                                    src="/images/avatar1.jpg"
+                                    alt="Team Member 1"
+                                    class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-2 border-indigo-500"
+                                    onError={(e) => { e.currentTarget.src = '/images/placeholder-avatar.png'; }}
+                                />
+                                <h3 class="text-xl font-bold text-white">Jane Doe</h3>
+                                <p class="text-indigo-400 mb-3">CEO</p>
+                                <p class="text-gray-300 text-sm leading-relaxed">Visionary leader driving innovation and strategy.</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center shadow-lg card-hover">
+                                <img
+                                    src="/images/avatar2.jpg"
+                                    alt="Team Member 2"
+                                    class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-2 border-indigo-500"
+                                    onError={(e) => { e.currentTarget.src = '/images/placeholder-avatar.png'; }}
+                                />
+                                <h3 class="text-xl font-bold text-white">John Smith</h3>
+                                <p class="text-indigo-400 mb-3">CTO</p>
+                                <p class="text-gray-300 text-sm leading-relaxed">Architect of our cutting-edge technology.</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center shadow-lg card-hover">
+                                <img
+                                    src="/images/avatar3.jpg"
+                                    alt="Team Member 3"
+                                    class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-2 border-indigo-500"
+                                    onError={(e) => { e.currentTarget.src = '/images/placeholder-avatar.png'; }}
+                                />
+                                <h3 class="text-xl font-bold text-white">Emily White</h3>
+                                <p class="text-indigo-400 mb-3">Head of Product</p>
+                                <p class="text-gray-300 text-sm leading-relaxed">Ensuring our products meet user needs.</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center shadow-lg card-hover">
+                                <img
+                                    src="/images/avatar-david.jpg"
+                                    alt="Team Member 4"
+                                    class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-2 border-indigo-500"
+                                    onError={(e) => { e.currentTarget.src = '/images/placeholder-avatar.png'; }}
+                                />
+                                <h3 class="text-xl font-bold text-white">David Lee</h3>
+                                <p class="text-indigo-400 mb-3">Lead Developer</p>
+                                <p class="text-gray-300 text-sm leading-relaxed">Building robust and scalable solutions.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4">
+                    <div class="container mx-auto">
+                        <h2 class="text-4xl font-bold text-center mb-12 gradient-text">Our Core Values</h2>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                            {/* Placeholder for Value Cards */}
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-start">
+                                {/* <value.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                <h3 class="text-xl font-bold mb-3 text-white">Innovation</h3>
+                                <p class="text-gray-300 leading-relaxed">We constantly seek new and better ways to solve problems.</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-start">
+                                {/* <value.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                <h3 class="text-xl font-bold mb-3 text-white">Integrity</h3>
+                                <p class="text-gray-300 leading-relaxed">We operate with honesty and transparency in all our dealings.</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-start">
+                                {/* <value.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                <h3 class="text-xl font-bold mb-3 text-white">Customer Focus</h3>
+                                <p class="text-gray-300 leading-relaxed">Our clients' success is our top priority.</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-start">
+                                {/* <value.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                <h3 class="text-xl font-bold mb-3 text-white">Collaboration</h3>
+                                <p class="text-gray-300 leading-relaxed">We believe in the power of teamwork and shared goals.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4 text-center bg-gradient-to-br from-blue-950 via-purple-950 to-pink-950">
+                    <h2 class="text-4xl font-bold mb-6 gradient-text">Join Our Mission</h2>
+                    <p class="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">Be a part of the Lake Palace story. Explore opportunities to grow with us.</p>
+                    <button class="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-lg text-lg transition duration-300 ease-in-out shadow-lg">View Careers</button>
+                </section>
+            </div>
+        </section>
+
+        <!-- Services Page Content -->
+        <section id="services" class="hidden min-h-screen flex-col">
+            <div class="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-blue-950">
+                <section class="relative h-96 flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-0 z-0">
+                        <img
+                            src="/images/services-hero.jpg"
+                            alt="Abstract background for services page"
+                            class="w-full h-full object-cover opacity-50"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-indigo-950', 'via-zinc-950', 'to-blue-950');
+                            }}
+                        />
+                        <div class="absolute inset-0 bg-gradient-to-br from-indigo-950/70 via-zinc-950/50 to-blue-950/70" />
+                    </div>
+                    <div class="relative z-10 text-center px-4">
+                        <h1 class="text-5xl font-bold bg-gradient-to-r from-indigo-400 via-blue-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-4">Our Comprehensive Services</h1>
+                        <p class="text-xl text-gray-300">Solutions designed to empower your business and drive growth.</p>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4">
+                    <div class="container mx-auto">
+                        <h2 class="text-4xl font-bold text-center mb-12 gradient-text">Tailored Solutions</h2>
+                        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                            {/* Placeholder for Service Cards */}
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <service.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Service A</h3>
+                                    <p class="text-gray-300 leading-relaxed mb-4">Brief description of Service A, highlighting its core value.</p>
+                                </div>
+                                <p class="text-lg font-semibold text-blue-400 mt-4">$XXX/month</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <service.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Service B</h3>
+                                    <p class="text-gray-300 leading-relaxed mb-4">Brief description of Service B, highlighting its core value.</p>
+                                </div>
+                                <p class="text-lg font-semibold text-blue-400 mt-4">$YYY/month</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <service.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Service C</h3>
+                                    <p class="text-gray-300 leading-relaxed mb-4">Brief description of Service C, highlighting its core value.</p>
+                                </div>
+                                <p class="text-lg font-semibold text-blue-400 mt-4">$ZZZ/month</p>
+                            </div>
+                            <div class="glass p-6 rounded-xl text-center flex flex-col items-center justify-between">
+                                <div>
+                                    {/* <service.icon class="w-12 h-12 text-blue-400 mb-4" /> */}
+                                    <h3 class="text-xl font-bold mb-3 text-white">Service D</h3>
+                                    <p class="text-gray-300 leading-relaxed mb-4">Brief description of Service D, highlighting its core value.</p>
+                                </div>
+                                <p class="text-lg font-semibold text-blue-400 mt-4">Custom</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4 bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950">
+                    <div class="container mx-auto text-center">
+                        <h2 class="text-4xl font-bold mb-12 gradient-text">Our Process</h2>
+                        <div class="grid md:grid-cols-3 gap-10">
+                            <div class="space-y-3">
+                                <div class="w-16 h-16 mx-auto rounded-full bg-indigo-500/20 flex items-center justify-center border-2 border-indigo-500">
+                                    <span class="text-3xl font-bold text-indigo-400">1</span>
+                                </div>
+                                <h3 class="text-xl font-bold text-white">Discovery & Planning</h3>
+                                <p class="text-gray-300">We start by understanding your unique requirements and goals.</p>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="w-16 h-16 mx-auto rounded-full bg-blue-500/20 flex items-center justify-center border-2 border-blue-500">
+                                    <span class="text-3xl font-bold text-blue-400">2</span>
+                                </div>
+                                <h3 class="text-xl font-bold text-white">Development & Integration</h3>
+                                <p class="text-gray-300">Our expert team builds and integrates robust solutions tailored for you.</p>
+                            </div>
+                            <div class="space-y-3">
+                                <div class="w-16 h-16 mx-auto rounded-full bg-purple-500/20 flex items-center justify-center border-2 border-purple-500">
+                                    <span class="text-3xl font-bold text-purple-400">3</span>
+                                </div>
+                                <h3 class="text-xl font-bold text-white">Deployment & Support</h3>
+                                <p class="text-gray-300">We deploy your solution and provide ongoing support for optimal performance.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4">
+                    <div class="container mx-auto text-center">
+                        <h2 class="text-4xl font-bold mb-12 gradient-text">Flexible Pricing Plans</h2>
+                        <div class="grid md:grid-cols-3 gap-8">
+                            {/* Placeholder for Pricing Cards */}
+                            <div class="glass p-6 rounded-xl flex flex-col justify-between">
+                                <div>
+                                    <h3 class="text-2xl font-bold mb-4 text-white">Basic Plan</h3>
+                                    <p class="text-4xl font-bold mb-6 text-indigo-400">$49<span class="text-xl font-normal text-gray-400">/month</span></p>
+                                    <ul class="text-left text-gray-300 space-y-3">
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Core Feature 1</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Core Feature 2</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Advanced Feature A</li>
+                                    </ul>
+                                </div>
+                                <button class="mt-8 w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 ease-in-out shadow-lg">Choose Plan</button>
+                            </div>
+                            <div class="glass p-6 rounded-xl flex flex-col justify-between border-2 border-indigo-500 shadow-xl">
+                                <div>
+                                    <h3 class="text-2xl font-bold mb-4 text-white">Pro Plan</h3>
+                                    <p class="text-4xl font-bold mb-6 text-indigo-400">$99<span class="text-xl font-normal text-gray-400">/month</span></p>
+                                    <ul class="text-left text-gray-300 space-y-3">
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Core Feature 1</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Core Feature 2</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Advanced Feature A</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Advanced Feature B</li>
+                                    </ul>
+                                </div>
+                                <button class="mt-8 w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 ease-in-out shadow-lg">Choose Plan</button>
+                            </div>
+                            <div class="glass p-6 rounded-xl flex flex-col justify-between">
+                                <div>
+                                    <h3 class="text-2xl font-bold mb-4 text-white">Enterprise</h3>
+                                    <p class="text-4xl font-bold mb-6 text-indigo-400">Custom</p>
+                                    <ul class="text-left text-gray-300 space-y-3">
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>All Pro Features</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Dedicated Support</li>
+                                        <li class="flex items-center gap-2"><svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>Custom Integrations</li>
+                                    </ul>
+                                </div>
+                                <button class="mt-8 w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 ease-in-out shadow-lg">Contact Sales</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <!-- Contact Page Content -->
+        <section id="contact" class="hidden min-h-screen flex-col">
+            <div class="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-blue-950">
+                <section class="relative h-96 flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-0 z-0">
+                        <img
+                            src="/images/contact-hero.jpg"
+                            alt="Abstract background for contact page"
+                            class="w-full h-full object-cover opacity-50"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-indigo-950', 'via-zinc-950', 'to-blue-950');
+                            }}
+                        />
+                        <div class="absolute inset-0 bg-gradient-to-br from-indigo-950/70 via-zinc-950/50 to-blue-950/70" />
+                    </div>
+                    <div class="relative z-10 text-center px-4">
+                        <h1 class="text-5xl font-bold bg-gradient-to-r from-indigo-400 via-blue-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-4">Get In Touch</h1>
+                        <p class="text-xl text-gray-300">We'd love to hear from you. Reach out with any questions or inquiries.</p>
+                    </div>
+                </section>
+
+                <section class="py-20 px-4">
+                    <div class="container mx-auto grid md:grid-cols-2 gap-16">
+                        <div>
+                            <h2 class="text-4xl font-bold mb-8 gradient-text">Contact Us</h2>
+                            <p class="text-gray-300 leading-relaxed mb-8">Fill out the form or reach us via the details below. We aim to respond within 24 business hours.</p>
+
+                            <div class="space-y-6">
+                                <div class="flex items-center gap-4">
+                                    <div class="p-3 rounded-lg bg-indigo-500/20 border border-indigo-500/30">
+                                        <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M3 8l3.878-2.586m0 0L12 12l8.122-5.714M3 8a2 2 0 01-1.732-1.217 2 2 0 01-.768-2.38M12 12l9-5.714M12 12l-9 5.714M12 12v10m0-10V12a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-10z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-white">Email</h3>
+                                        <p class="text-gray-400">info@lakepalace.com</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <div class="p-3 rounded-lg bg-blue-500/20 border border-blue-500/30">
+                                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.066 0.615a1 1 0 00-.502 1.211L9.13 14.057a1 1 0 001.211.502l4.493-1.498a1 1 0 011.21-.502l0.615 2.066a1 1 0 001.211.502l4.493-1.498a1 1 0 01.684.948V19a2 2 0 01-2 2h-1.066A17.565 17.565 0 013 14.066V19z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-white">Phone</h3>
+                                        <p class="text-gray-400">+1 (123) 456-7890</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <div class="p-3 rounded-lg bg-purple-500/20 border border-purple-500/30">
+                                        <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-white">Location</h3>
+                                        <p class="text-gray-400">123 Lake St, Indigo City, IC 54321</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mt-10 flex space-x-4">
+                                <a href="#" aria-label="LinkedIn"><svg class="w-6 h-6 text-gray-400 hover:text-indigo-400 transition" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.761 0 5-2.239 5-5v-14c0-2.761-2.239-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.5c-.828 0-1.5-.672-1.5-1.5s.672-1.5 1.5-1.5 1.5.672 1.5 1.5-.672 1.5-1.5 1.5zm13.5 12.5h-3v-7c0-2.056-4.322-1.777-4.322 0v7h-3v-11h3v2.603c2.872-3.423 7-3.423 7 0v8.397z"></path></svg></a>
+                                <a href="#" aria-label="Twitter"><svg class="w-6 h-6 text-gray-400 hover:text-blue-400 transition" fill="currentColor" viewBox="0 0 24 24"><path d="M23.465 4.395c-.797.352-1.65.59-2.553.695.923-.556 1.627-1.438 1.958-2.504-.859.51-1.813.881-2.833 1.082-.814-.867-1.967-1.412-3.217-1.412-2.424 0-4.395 1.97-4.395 4.395 0 .347.039.685.115 1.009-3.677-.184-6.942-1.947-9.127-4.617-.382.657-.595 1.421-.595 2.227 0 1.523.775 2.865 1.95 3.657-.702-.023-1.36-.216-1.938-.542v.057c0 1.06.754 1.952 1.757 2.152-.183.051-.375.078-.57.078-.139 0-.274-.014-.406-.039.274.857 1.067 1.487 2.007 1.504-7.347 1.504-16.583 3.372-25.54 6.314.857 2.761 3.372 4.754 6.314 4.754 7.574 0 11.714-6.314 11.714-11.714 0-.178-.004-.356-.012-.532.807-.578 1.512-1.294 2.079-2.114z"></path></svg></a>
+                                <a href="#" aria-label="GitHub"><svg class="w-6 h-6 text-gray-400 hover:text-purple-400 transition" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.627 0-12 5.373-12 12 0 5.302 3.438 9.818 8.207 11.423-.599.111-.822-.255-.822-.566 0-.281.01-1.028.015-2.021-3.34.725-4.042-1.615-4.042-1.615-.546-1.383-1.333-1.557-1.333-1.557-.91-.622.069-.61.069-.61 1.003.071 1.534 1.028 1.534 1.028.89 1.534 2.344 1.093 2.915.835.087-.648.347-1.093.63-1.347-2.217-.251-4.542-1.107-4.542-4.929 0-1.089.387-1.979 1.028-2.677-.097-.249-.447-1.242.097-2.634 0 0 .837-.269 2.742.995.797-.221 1.657-.332 2.517-.337.86.005 1.72.116 2.517.337 1.905-1.264 2.742-.995 2.742-.995.544 1.392.207 2.385.097 2.634.642.698 1.028 1.588 1.028 2.677 0 3.821-2.725 4.674-4.944 4.929-.387.071-.742.139-1.037.179.742.477 1.333 1.383 1.333 2.742 0 1.093-.039 2.021-.039 2.304-.029.311-.251.685-.822.566 4.769-1.615 8.207-6.131 8.207-11.423 0-6.627-5.373-12-12-12z"></path></svg></a>
+                            </div>
+                        </div>
+
+                        <form class="space-y-4 glass p-8 rounded-xl border border-white/10">
+                            <div>
+                                <label htmlFor="name" class="block text-sm font-medium text-gray-300 mb-1">Name</label>
+                                <input type="text" id="name" class="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Your Name" />
+                            </div>
+                            <div>
+                                <label htmlFor="email" class="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                                <input type="email" id="email" class="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="your.email@example.com" />
+                            </div>
+                            <div>
+                                <label htmlFor="message" class="block text-sm font-medium text-gray-300 mb-1">Message</label>
+                                <textarea id="message" rows="5" class="w-full px-4 py-3 rounded-lg bg-zinc-800/50 border border-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Your message here..."></textarea>
+                            </div>
+                            <button type="submit" class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition duration-300 ease-in-out shadow-lg">Send Message</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gradient-to-br from-indigo-950 via-zinc-950 to-blue-950 py-12">
+        <div class="container mx-auto px-4">
+            <div class="grid md:grid-cols-4 gap-10">
+                <div>
+                    <h3 class="text-xl font-bold mb-4 text-white">Lake Palace</h3>
+                    <p class="text-gray-400 leading-relaxed">Empowering businesses with intelligent SaaS solutions for a brighter future.</p>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold mb-4 text-white">Quick Links</h3>
+                    <ul class="space-y-2">
+                        <li><a href="#features" class="text-gray-400 hover:text-indigo-400 transition">Features</a></li>
+                        <li><a href="#about" class="text-gray-400 hover:text-indigo-400 transition">About Us</a></li>
+                        <li><a href="#services" class="text-gray-400 hover:text-indigo-400 transition">Services</a></li>
+                        <li><a href="#contact" class="text-gray-400 hover:text-indigo-400 transition">Contact</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold mb-4 text-white">Contact Info</h3>
+                    <p class="text-gray-400 mb-2">info@lakepalace.com</p>
+                    <p class="text-gray-400">+1 (123) 456-7890</p>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold mb-4 text-white">Follow Us</h3>
+                    <div class="flex space-x-4">
+                        <a href="#" aria-label="LinkedIn"><svg class="w-6 h-6 text-gray-400 hover:text-indigo-400 transition" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.761 0 5-2.239 5-5v-14c0-2.761-2.239-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.5c-.828 0-1.5-.672-1.5-1.5s.672-1.5 1.5-1.5 1.5.672 1.5 1.5-.672 1.5-1.5 1.5zm13.5 12.5h-3v-7c0-2.056-4.322-1.777-4.322 0v7h-3v-11h3v2.603c2.872-3.423 7-3.423 7 0v8.397z"></path></svg></a>
+                        <a href="#" aria-label="Twitter"><svg class="w-6 h-6 text-gray-400 hover:text-blue-400 transition" fill="currentColor" viewBox="0 0 24 24"><path d="M23.465 4.395c-.797.352-1.65.59-2.553.695.923-.556 1.627-1.438 1.958-2.504-.859.51-1.813.881-2.833 1.082-.814-.867-1.967-1.412-3.217-1.412-2.424 0-4.395 1.97-4.395 4.395 0 .347.039.685.115 1.009-3.677-.184-6.942-1.947-9.127-4.617-.382.657-.595 1.421-.595 2.227 0 1.523.775 2.865 1.95 3.657-.702-.023-1.36-.216-1.938-.542v.057c0 1.06.754 1.952 1.757 2.152-.183.051-.375.078-.57.078-.139 0-.274-.014-.406-.039.274.857 1.067 1.487 2.007 1.504-7.347 1.504-16.583 3.372-25.54 6.314.857 2.761 3.372 4.754 6.314 4.754 7.574 0 11.714-6.314 11.714-11.714 0-.178-.004-.356-.012-.532.807-.578 1.512-1.294 2.079-2.114z"></path></svg></a>
+                        <a href="#" aria-label="GitHub"><svg class="w-6 h-6 text-gray-400 hover:text-purple-400 transition" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.627 0-12 5.373-12 12 0 5.302 3.438 9.818 8.207 11.423-.599.111-.822-.255-.822-.566 0-.281.01-1.028.015-2.021-3.34.725-4.042-1.615-4.042-1.615-.546-1.383-1.333-1.557-1.333-1.557-.91-.622.069-.61.069-.61 1.003.071 1.534 1.028 1.534 1.028.89 1.534 2.344 1.093 2.915.835.087-.648.347-1.093.63-1.347-2.217-.251-4.542-1.107-4.542-4.929 0-1.089.387-1.979 1.028-2.677-.097-.249-.447-1.242.097-2.634 0 0 .837-.269 2.742.995.797-.221 1.657-.332 2.517-.337.86.005 1.72.116 2.517.337 1.905-1.264 2.742-.995 2.742-.995.544 1.392.207 2.385.097 2.634.642.698 1.028 1.383 1.333 2.742 0 1.093-.039 2.021-.039 2.304-.029.311-.251.685-.822.566 4.769-1.615 8.207-6.131 8.207-11.423 0-6.627-5.373-12-12-12z"></path></svg></a>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-white/20 mt-10 pt-6 text-center text-gray-400">
+                &copy; 2023 Lake Palace. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const navLinks = [
+            ["#home", "Home"],
+            ["#features", "Features"],
+            ["#about", "About Us"],
+            ["#services", "Services"],
+            ["#contact", "Contact"]
+        ];
+
+        const mainContent = document.getElementById('content');
+        const header = document.querySelector('header');
+
+        navLinks.forEach(([href, text]) => {
+            const linkElement = document.querySelector(`header nav ul li a[href="${href}"]`);
+            if (linkElement) {
+                linkElement.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const targetId = href.substring(1);
+                    const targetSection = document.getElementById(targetId);
+                    if (targetSection) {
+                        targetSection.scrollIntoView({ behavior: 'smooth' });
+                        // Hide all sections and show the target
+                        document.querySelectorAll('main section').forEach(sec => sec.classList.add('hidden'));
+                        targetSection.classList.remove('hidden');
+                    }
+                });
+            }
+        });
+
+        // Initial display of home page
+        document.getElementById('home').classList.remove('hidden');
+
+        // Handle scroll to show/hide sections
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.5 // Trigger when 50% of the section is visible
+        };
+
+        const observerCallback = (entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const targetId = entry.target.id;
+                    // Hide all sections
+                    document.querySelectorAll('main section').forEach(sec => sec.classList.add('hidden'));
+                    // Show the intersecting section
+                    entry.target.classList.remove('hidden');
+
+                    // Update active nav link (optional, for visual feedback)
+                    navLinks.forEach(([href, text]) => {
+                        const linkElement = document.querySelector(`header nav ul li a[href="${href}"]`);
+                        if (linkElement) {
+                            linkElement.classList.remove('text-indigo-400');
+                            linkElement.classList.add('text-gray-300');
+                        }
+                    });
+                    const activeLink = document.querySelector(`header nav ul li a[href="#${targetId}"]`);
+                    if (activeLink) {
+                        activeLink.classList.remove('text-gray-300');
+                        activeLink.classList.add('text-indigo-400');
+                    }
+                }
+            });
+        };
+
+        const observer = new IntersectionObserver(observerCallback, observerOptions);
+
+        document.querySelectorAll('main section').forEach(section => {
+            observer.observe(section);
+        });
+
+        // Mobile menu toggle
+        const mobileMenuButton = document.querySelector('header button');
+        const navUl = document.querySelector('header nav ul');
+
+        mobileMenuButton.addEventListener('click', () => {
+            navUl.classList.toggle('hidden');
+        });
+
+        // Close mobile menu when a link is clicked
+        document.querySelectorAll('header nav ul li a').forEach(link => {
+            link.addEventListener('click', () => {
+                navUl.classList.add('hidden');
+            });
+        });
+    </script>
+</body>
+</html>

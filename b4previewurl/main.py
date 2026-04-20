@@ -7,6 +7,9 @@ import asyncio
 from html2image import Html2Image
 from pathlib import Path
 
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+
 from fastapi.staticfiles import StaticFiles
 
 # Then import and initialize auth router
@@ -95,13 +98,15 @@ class GeminiModelRouter:
         self.client = client
         # Priority order - try models with highest quotas first
         self.model_order = [
-            AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)            
+            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite              
+            AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier) 
+            AVAILABLE_MODELS["flash_latest"],        # Latest flash                         
             AVAILABLE_MODELS["flash_25"],            # Gemini 2.5 Flash
-            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite            
+        
             
 
 
-            AVAILABLE_MODELS["flash_latest"],        # Latest flash
+
         ]
     
     async def generate_stream(self, prompt: str, config: dict):
@@ -266,22 +271,24 @@ class GeminiModelRouter:
 
 
 
-
-
-
-
 load_dotenv()
 
+# ========== DETECT ENVIRONMENT ==========
+IS_RENDER = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
 
+# ========== CREATE THUMBNAILS DIRECTORY ==========
+if IS_RENDER:
+    # On Render, use /tmp directory (ephemeral storage)
+    THUMBNAIL_DIR = Path("/tmp/thumbnails")
+else:
+    # Local development
+    THUMBNAIL_DIR = Path("thumbnails")
 
+# Create directory with parents
+THUMBNAIL_DIR.mkdir(exist_ok=True, parents=True)
 
-
-# Create thumbnails directory
-THUMBNAIL_DIR = Path("thumbnails")
-THUMBNAIL_DIR.mkdir(exist_ok=True)
-
-
-
+print(f"📁 Thumbnails directory: {THUMBNAIL_DIR}")
+print(f"🌍 Environment: {'RENDER' if IS_RENDER else 'LOCAL'}")
 
 
 
@@ -371,82 +378,60 @@ async def upload_images_to_cloudinary(files: Dict[str, Any]) -> Dict[str, str]:
 
 
 
-# Get DATABASE_URL from environment
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# For local development, fallback to SQLite
-if not DATABASE_URL:
-    DATABASE_URL = "sqlite+aiosqlite:///./eaglecode.db"
-    print(f"⚠️ No DATABASE_URL found, using SQLite: {DATABASE_URL}")
-else:
-    # Remove sslmode from URL (asyncpg doesn't support it as a query param)
-    if "sslmode" in DATABASE_URL:
-        # Remove the sslmode parameter
-        import re
-        DATABASE_URL = re.sub(r'\?sslmode=[^&]+', '', DATABASE_URL)
-        DATABASE_URL = re.sub(r'&sslmode=[^&]+', '', DATABASE_URL)
-        print(f"🔗 Removed sslmode from connection string")
-    
-    # Convert to asyncpg format for Neon PostgreSQL
-    if "postgresql://" in DATABASE_URL and "+asyncpg" not in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-    
-    print(f"🔗 Using Neon PostgreSQL database")
 
-# Create thumbnails directory (for temporary files before Cloudinary upload)
+
+
+
+# Use SQLite - stored locally as a single file
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./eaglecode.db")
+
+print(f"🔗 Using SQLite database: {DATABASE_URL}")
+
+# Create thumbnails directory
 THUMBNAIL_DIR = Path("thumbnails")
 THUMBNAIL_DIR.mkdir(exist_ok=True)
 
 try:
-    # Create engine with proper SSL configuration
+    # SQLite engine - simple and fast, NO data transfer limits
     engine = create_async_engine(
         DATABASE_URL,
         echo=False,
-        pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
-        # For Neon PostgreSQL, SSL is handled automatically
-        connect_args={
-            "server_settings": {
-                "application_name": "eaglecode_backend",
-            }
-        } if "postgresql" in DATABASE_URL else {}
+        connect_args={"check_same_thread": False}  # Required for SQLite
     )
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     Base = declarative_base()
     
-    print("✅ PostgreSQL engine configured successfully!")
+    print("✅ SQLite database configured successfully!")
     
-    # ========== DEFINE ALL TABLES (METADATA ONLY - NO LARGE FILES) ==========
+    # ========== DEFINE ALL TABLES ==========
     
-    # Projects table (metadata only - NO preview_html content)
+    # Projects table (metadata only)
     class Project(Base):
         __tablename__ = "projects"
         id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-        name = Column(String, nullable=False, index=True)
+        name = Column(String, nullable=False)
         prompt = Column(Text, nullable=False)
-        timestamp = Column(DateTime, nullable=False, default=datetime.now, index=True)
-        user_id = Column(String, nullable=False, index=True)
-        project_type = Column(String, nullable=True, index=True)
+        preview_html = Column(Text, nullable=True)
+        timestamp = Column(DateTime, nullable=False, default=datetime.now)
+        user_id = Column(String, default="default")
+        project_type = Column(String, nullable=True)
         file_count = Column(Integer, default=0)
         size_bytes = Column(Integer, default=0)
         is_public = Column(Boolean, default=False)
         version = Column(Integer, default=1)
-        
-        # ✅ Store ONLY URLs (large files go to Cloudinary)
-        preview_url = Column(String(500), nullable=True)   # Cloudinary URL for HTML preview
-        thumbnail_url = Column(String(500), nullable=True) # Cloudinary URL for thumbnail
-        files_url = Column(String(500), nullable=True)     # Cloudinary URL for ZIP file
+        thumbnail_url = Column(String(500), nullable=True)  # Store thumbnail URL
+        thumbnail_path = Column(String(500), nullable=True)  # Store file path
 
-    # Project Files table (metadata only - NO file content)
+    # Project Files table (stores individual files separately)
     class ProjectFile(Base):
         __tablename__ = "project_files"
         id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
         project_id = Column(String, nullable=False, index=True)
         file_path = Column(String, nullable=False)
-        file_type = Column(String, nullable=True, index=True)
+        content = Column(Text, nullable=False)
+        file_type = Column(String, nullable=True)
         size_bytes = Column(Integer, default=0)
-        cloudinary_url = Column(String(500), nullable=True)  # URL to file on Cloudinary
         created_at = Column(DateTime, nullable=False, default=datetime.now)
         updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
         
@@ -458,8 +443,8 @@ try:
     class User(Base):
         __tablename__ = "users"
         id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-        email = Column(String, unique=True, nullable=False, index=True)
-        username = Column(String, unique=True, nullable=False, index=True)
+        email = Column(String, unique=True, nullable=False)
+        username = Column(String, unique=True, nullable=False)
         password_hash = Column(String, nullable=False)
         avatar_url = Column(String, nullable=True)
         created_at = Column(DateTime, nullable=False, default=datetime.now)
@@ -471,7 +456,7 @@ try:
         id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
         user_id = Column(String, nullable=False, index=True)
         token = Column(String, unique=True, nullable=False, index=True)
-        expires_at = Column(DateTime, nullable=False, index=True)
+        expires_at = Column(DateTime, nullable=False)
         created_at = Column(DateTime, nullable=False, default=datetime.now)
         ip_address = Column(String, nullable=True)
         user_agent = Column(String, nullable=True)
@@ -486,76 +471,63 @@ try:
         created_at = Column(DateTime, nullable=False, default=datetime.now)
         last_used_at = Column(DateTime, nullable=True)
         expires_at = Column(DateTime, nullable=True)
-        is_active = Column(Boolean, default=True, index=True)
+        is_active = Column(Boolean, default=True)
     
     # User Credits table
     class UserCredits(Base):
         __tablename__ = "user_credits"
         id = Column(Integer, primary_key=True, autoincrement=True)
         user_id = Column(String, nullable=False, unique=True, index=True)
-        plan = Column(String, default="free", index=True)
+        plan = Column(String, default="free")
         daily_credits_used = Column(Integer, default=0)
-        daily_reset_date = Column(Date, nullable=False, index=True)
+        daily_reset_date = Column(Date, nullable=False)
         monthly_credits_used = Column(Integer, default=0)
-        monthly_reset_date = Column(Date, nullable=False, index=True)
+        monthly_reset_date = Column(Date, nullable=False)
         created_at = Column(DateTime, default=datetime.now)
         updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    # Templates table (small files only)
+    # Templates table
     class Template(Base):
         __tablename__ = "templates"
         id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-        name = Column(String, nullable=False, index=True)
+        name = Column(String, nullable=False)
         description = Column(Text, nullable=True)
         category = Column(String, nullable=False, index=True)
-        files = Column(Text, nullable=False)  # JSON string (small)
-        preview_html = Column(Text, nullable=True)  # Small preview HTML
+        files = Column(Text, nullable=False)
+        preview_html = Column(Text, nullable=True)
         icon = Column(String, nullable=True)
         created_at = Column(DateTime, nullable=False, default=datetime.now)
-        user_id = Column(String, default="default", index=True)
-        usage_count = Column(Integer, default=0, index=True)
+        user_id = Column(String, default="default")
+        usage_count = Column(Integer, default=0)
     
     # Upgrade Requests table
     class UpgradeRequest(Base):
         __tablename__ = "upgrade_requests"
         id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
         user_id = Column(String, nullable=False, index=True)
-        user_email = Column(String, nullable=False, index=True)
+        user_email = Column(String, nullable=False)
         user_name = Column(String, nullable=True)
-        requested_plan = Column(String, nullable=False, index=True)
+        requested_plan = Column(String, nullable=False)
         message = Column(Text, nullable=True)
-        status = Column(String, default="pending", index=True)
+        status = Column(String, default="pending")
         admin_notes = Column(Text, nullable=True)
-        created_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
+        created_at = Column(DateTime, nullable=False, default=datetime.now)
         updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
     
     async def init_db():
-        """Initialize database tables"""
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
                 print("✅ All tables verified/created successfully!")
                 
-                # For PostgreSQL, list tables
-                if "postgresql" in DATABASE_URL:
-                    result = await conn.execute(
-                        text("""
-                            SELECT tablename 
-                            FROM pg_tables 
-                            WHERE schemaname = 'public'
-                            ORDER BY tablename
-                        """)
-                    )
-                else:
-                    # For SQLite
-                    result = await conn.execute(
-                        text("""
-                            SELECT name FROM sqlite_master 
-                            WHERE type='table' 
-                            ORDER BY name
-                        """)
-                    )
-                
+                # List all tables
+                result = await conn.execute(
+                    text("""
+                        SELECT name FROM sqlite_master 
+                        WHERE type='table' 
+                        ORDER BY name
+                    """)
+                )
                 tables = result.fetchall()
                 if tables:
                     print("\n📚 Existing tables in database:")
@@ -568,10 +540,10 @@ try:
             print(f"❌ Database initialization error: {e}")
             raise
     
-    print("✅ Database configured successfully!")
+    print("✅ SQLite database configured successfully!")
     
 except Exception as e:
-    print(f"❌ Failed to configure database: {e}")
+    print(f"❌ Failed to configure SQLite: {e}")
     engine = None
     AsyncSessionLocal = None
     Base = None
@@ -585,7 +557,6 @@ except Exception as e:
     UpgradeRequest = None
     async def init_db():
         print("⚠️ Database not available")
-
 
 
 
@@ -941,7 +912,7 @@ name_tracker = NameTracker()
 
 
 
-active_project_connections = []
+
 
 
 
@@ -994,12 +965,18 @@ app = FastAPI(title="Scorpio Architecture Engine", lifespan=lifespan)
 
 
 
-# Mount the directory
-app.mount("/thumbnails", StaticFiles(directory="thumbnails"), name="thumbnails")
-# ========================================
 
 
+# ========== MOUNT STATIC FILES ==========
+from fastapi.staticfiles import StaticFiles
 
+# On Render, we still mount static files for serving thumbnails from /tmp
+# This works because Render keeps /tmp for the duration of the process
+try:
+    app.mount("/thumbnails", StaticFiles(directory=str(THUMBNAIL_DIR)), name="thumbnails")
+    print(f"✅ Thumbnails mounted at /thumbnails from {THUMBNAIL_DIR}")
+except Exception as e:
+    print(f"⚠️ Could not mount thumbnails: {e}")
 
 
 
@@ -5113,17 +5090,21 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
                 project_files["preview_html"] = preview_html
                 project_files["preview_html_url"] = f"/api/preview/{preview_filename}"
                 
-
-                
-                
-                # KEEP/ADD this one message:
+                # Send as file_complete event (not preview_url)
                 await websocket.send_json({
-                   "type": "preview",
-                   "html": preview_html,
-                   "preview_type": "ai_full"
+                    "type": "file_complete",
+                    "file": "preview_html",
+                    "content": preview_html,
+                    "binary": False,
                 })
                 
-
+                # Also send the URL for reference
+                await websocket.send_json({
+                    "type": "preview_url",
+                    "url": f"/api/preview/{preview_filename}",
+                    "size": original_size
+                })
+                
                 print(f"✅ Preview sent via file_complete")
 
 
@@ -7405,15 +7386,15 @@ async def name_stats():
 
 
 
+
 async def generate_thumbnail_from_html(html_content: str, project_id: str) -> str:
-    """Generate thumbnail and return the LOCAL file path for upload"""
-    import os
-    from pathlib import Path
-    from html2image import Html2Image
-    
+    """Generate thumbnail - local: saves to disk, production: uploads to Cloudinary"""
     try:
         if not html_content:
             return None
+        
+        # Check if running on Render (production)
+        is_render = os.environ.get("RENDER") == "true" or os.environ.get("RENDER_EXTERNAL_URL") is not None
         
         # Create temp directory for generation
         temp_dir = Path("temp_thumbnails")
@@ -7425,9 +7406,10 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
             f.write(html_content)
         
         # Generate screenshot
+        from html2image import Html2Image
         hti = Html2Image(
             output_path=str(temp_dir),
-            size=(400, 225),
+            size=(400, 225),  # Small size for fast loading
             browser='chrome',
         )
         
@@ -7440,15 +7422,43 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
         temp_thumbnail = temp_dir / output_file
         
         if temp_thumbnail.exists():
-            # Return the actual local file path
-            local_path = str(temp_thumbnail.absolute())
-            print(f"📸 Thumbnail generated at: {local_path}")
-            print(f"   Size: {temp_thumbnail.stat().st_size} bytes")
-            
-            # Cleanup temp HTML file
-            os.remove(temp_html)
-            
-            return local_path
+            if is_render:
+                # ========== PRODUCTION (Render) - Upload to Cloudinary ==========
+                import cloudinary.uploader
+                import shutil
+                
+                # Upload to Cloudinary
+                upload_result = cloudinary.uploader.upload(
+                    str(temp_thumbnail),
+                    folder="project_thumbnails",
+                    public_id=project_id,
+                    overwrite=True
+                )
+                
+                # Cleanup temp files
+                os.remove(temp_html)
+                shutil.rmtree(temp_dir)
+                
+                # Return Cloudinary URL
+                cloudinary_url = upload_result['secure_url']
+                print(f"✅ Thumbnail uploaded to Cloudinary: {cloudinary_url}")
+                return cloudinary_url
+            else:
+                # ========== DEVELOPMENT (Local) - Save to disk ==========
+                import shutil
+                
+                # Create thumbnails directory if it doesn't exist
+                THUMBNAIL_DIR.mkdir(exist_ok=True)
+                
+                final_thumbnail = THUMBNAIL_DIR / output_file
+                shutil.move(str(temp_thumbnail), str(final_thumbnail))
+                
+                # Cleanup temp files
+                os.remove(temp_html)
+                os.rmdir(temp_dir)
+                
+                # Return local URL path
+                return f"/thumbnails/{output_file}"
         
         return None
         
@@ -7474,54 +7484,6 @@ async def generate_thumbnail_from_html(html_content: str, project_id: str) -> st
 
 
 
-@app.get("/api/get-project/{project_id}")
-async def get_project(project_id: str):
-    try:
-        async with AsyncSessionLocal() as session:
-            # Get project metadata
-            stmt = select(Project).where(Project.id == project_id)
-            result = await session.execute(stmt)
-            project = result.scalar_one_or_none()
-            
-            if not project:
-                return {"success": False, "message": "Project not found"}
-            
-            # Get all files metadata for this project
-            stmt = select(ProjectFile).where(ProjectFile.project_id == project_id)
-            result = await session.execute(stmt)
-            files = result.scalars().all()
-            
-            # Reconstruct files dictionary with Cloudinary URLs
-            files_dict = {}
-            for file in files:
-                # Store file metadata (content is on Cloudinary)
-                files_dict[file.file_path] = {
-                    "type": file.file_type,
-                    "size": file.size_bytes,
-                    "url": file.cloudinary_url,
-                    "path": file.file_path
-                }
-            
-            return {
-                "success": True,
-                "project": {
-                    "id": project.id,
-                    "name": project.name,
-                    "prompt": project.prompt,
-                    "preview_url": project.preview_url,      # Cloudinary URL for preview
-                    "thumbnail_url": project.thumbnail_url,  # Cloudinary URL for thumbnail
-                    "files_url": project.files_url,          # Cloudinary URL for ZIP
-                    "timestamp": project.timestamp.isoformat(),
-                    "project_type": project.project_type,
-                    "file_count": project.file_count
-                },
-                "files": files_dict,
-                "file_count": len(files)
-            }
-            
-    except Exception as e:
-        print(f"❌ Get project failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -7529,29 +7491,6 @@ async def get_project(project_id: str):
 
 
 
-
-@app.delete("/api/delete-project/{project_id}")
-async def delete_project(project_id: str):
-    try:
-        async with AsyncSessionLocal() as session:
-            # Delete project files first
-            stmt = delete(ProjectFile).where(ProjectFile.project_id == project_id)
-            await session.execute(stmt)
-            
-            # Delete project metadata
-            stmt = delete(Project).where(Project.id == project_id)
-            result = await session.execute(stmt)
-            
-            await session.commit()
-            
-            if result.rowcount > 0:
-                return {"success": True, "message": "Project deleted successfully"}
-            else:
-                return {"success": False, "message": "Project not found"}
-                
-    except Exception as e:
-        print(f"❌ Delete failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -7631,107 +7570,18 @@ async def save_project(request: Request):
             else:
                 project_type = "general"
             
-            # Create project ID
+            # Create project FIRST (without thumbnail)
             import uuid
             project_id = str(uuid.uuid4())
             
-            # ========== UPLOAD TO CLOUDINARY ==========
-            preview_url = None
-            files_url = None
-            thumbnail_url = None
-            
-            # 1. Upload preview HTML to Cloudinary
-            if preview_html:
-                try:
-                    import gzip
-                    compressed = gzip.compress(preview_html.encode('utf-8'))
-                    upload_result = cloudinary.uploader.upload(
-                        compressed,
-                        folder=f"project_previews/{project_id}",
-                        public_id="preview",
-                        resource_type="raw",
-                        overwrite=True
-                    )
-                    preview_url = upload_result['secure_url']
-                    print(f"☁️ Preview uploaded to Cloudinary")
-                except Exception as e:
-                    print(f"⚠️ Failed to upload preview: {e}")
-            
-            # 2. Upload files as ZIP to Cloudinary
-            if files:
-                try:
-                    import zipfile
-                    from io import BytesIO
-                    
-                    zip_buffer = BytesIO()
-                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                        for file_path, content in files.items():
-                            if file_path == "preview_html":
-                                continue
-                            if isinstance(content, dict):
-                                content = json.dumps(content, indent=2)
-                            elif not isinstance(content, str):
-                                content = str(content)
-                            zipf.writestr(file_path, content)
-                    
-                    zip_buffer.seek(0)
-                    upload_result = cloudinary.uploader.upload(
-                        zip_buffer.getvalue(),
-                        folder=f"project_files/{project_id}",
-                        public_id="files",
-                        resource_type="raw",
-                        overwrite=True
-                    )
-                    files_url = upload_result['secure_url']
-                    print(f"☁️ Files uploaded to Cloudinary")
-                except Exception as e:
-                    print(f"⚠️ Failed to upload files: {e}")
-            
-            # 3. Generate and upload thumbnail to Cloudinary
-            if preview_html:
-                try:
-                    # Generate thumbnail and get local file path
-                    thumbnail_local_path = await generate_thumbnail_from_html(preview_html, project_id)
-                    
-                    if thumbnail_local_path and os.path.exists(thumbnail_local_path):
-                        print(f"📸 Uploading thumbnail from: {thumbnail_local_path}")
-                        
-                        # Upload to Cloudinary
-                        upload_result = cloudinary.uploader.upload(
-                            thumbnail_local_path,
-                            folder=f"project_thumbnails/{project_id}",
-                            public_id="thumbnail",
-                            overwrite=True,
-                            width=400,
-                            height=225,
-                            crop="fill",
-                            quality="auto:best"
-                        )
-                        thumbnail_url = upload_result['secure_url']
-                        print(f"☁️ Thumbnail uploaded to Cloudinary: {thumbnail_url[:60]}...")
-                        
-                        # Cleanup local thumbnail file
-                        if os.path.exists(thumbnail_local_path):
-                            os.unlink(thumbnail_local_path)
-                            print(f"🗑️ Cleaned up local thumbnail")
-                    else:
-                        print(f"⚠️ Thumbnail file not generated")
-                        
-                except Exception as e:
-                    print(f"⚠️ Failed to upload thumbnail: {e}")
-                    import traceback
-                    traceback.print_exc()
-            
-            # ========== CREATE PROJECT WITH URLs ONLY ==========
             project = Project(
-                id=project_id,
+                id=project_id,  # Set ID explicitly
                 name=name,
                 prompt=prompt,
-                user_id=user_id,
-                preview_url=preview_url,      # Cloudinary URL for preview
-                thumbnail_url=thumbnail_url,  # Cloudinary URL for thumbnail
-                files_url=files_url,          # Cloudinary URL for ZIP
+                preview_html=preview_html,
+                thumbnail_url=None,  # Will update after generation
                 timestamp=timestamp,
+                user_id=user_id,
                 project_type=project_type,
                 file_count=len(files),
                 size_bytes=len(json.dumps(files)),
@@ -7741,7 +7591,16 @@ async def save_project(request: Request):
             session.add(project)
             await session.flush()
             
-            # ========== SAVE FILE METADATA (NO CONTENT) ==========
+            # ========== GENERATE THUMBNAIL AFTER PROJECT CREATION ==========
+            thumbnail_url = None
+            if preview_html:
+                thumbnail_url = await generate_thumbnail_from_html(preview_html, project_id)
+                if thumbnail_url:
+                    project.thumbnail_url = thumbnail_url
+                    print(f"✅ Thumbnail saved to disk: {thumbnail_url}")
+            # ==============================================================
+            
+            # Save files
             file_saved_count = 0
             for file_path, content in files.items():
                 if file_path == "preview_html":
@@ -7761,41 +7620,39 @@ async def save_project(request: Request):
                     }
                     file_type = file_type_map.get(ext, 'text')
                 
-                # Convert content to string for size calculation
+                # Convert content to string
                 if isinstance(content, dict):
-                    content_str = json.dumps(content, indent=2)
+                    content = json.dumps(content, indent=2)
                 elif not isinstance(content, str):
-                    content_str = str(content)
-                else:
-                    content_str = content
+                    content = str(content)
                 
-                # Store ONLY metadata (no content)
+                # Skip large images
+                if file_type == 'image' and len(content) > 100000:
+                    print(f"   ⚠️ Skipping large image: {file_path}")
+                    continue
+                
                 project_file = ProjectFile(
-                    project_id=project_id,
+                    project_id=project.id,
                     file_path=file_path,
+                    content=content[:1000000],
                     file_type=file_type,
-                    size_bytes=len(content_str),
-                    cloudinary_url=f"{files_url}/{file_path}" if files_url else None
+                    size_bytes=len(content)
                 )
                 session.add(project_file)
                 file_saved_count += 1
             
             await session.commit()
             
-            # ✅ Notify all connected clients to refresh their projects list
-            await notify_projects_updated(name)
             print(f"✅ Saved project '{name}' for user {user_email}")
             
             return {
                 "success": True,
-                "id": project_id,
+                "id": project.id,
                 "name": name,
                 "user_email": user_email,
                 "file_count": file_saved_count,
                 "has_thumbnail": thumbnail_url is not None,
-                "thumbnail_url": thumbnail_url,
-                "preview_url": preview_url,
-                "files_url": files_url
+                "thumbnail_url": thumbnail_url
             }
             
     except Exception as e:
@@ -7804,6 +7661,100 @@ async def save_project(request: Request):
         traceback.print_exc()
         return {"success": False, "message": str(e)}
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.get("/api/get-project/{project_id}")
+async def get_project(project_id: str):
+    try:
+        async with AsyncSessionLocal() as session:
+            # Get project metadata
+            stmt = select(Project).where(Project.id == project_id)
+            result = await session.execute(stmt)
+            project = result.scalar_one_or_none()
+            
+            if not project:
+                return {"success": False, "message": "Project not found"}
+            
+            # Get all files for this project
+            stmt = select(ProjectFile).where(ProjectFile.project_id == project_id)
+            result = await session.execute(stmt)
+            files = result.scalars().all()
+            
+            # Reconstruct files dictionary
+            files_dict = {}
+            for file in files:
+                files_dict[file.file_path] = file.content
+            
+            # Add preview_html if it exists
+            if project.preview_html:
+                files_dict["preview_html"] = project.preview_html
+            
+            return {
+                "success": True,
+                "project": {
+                    "id": project.id,
+                    "name": project.name,
+                    "prompt": project.prompt,
+                    "preview_html": project.preview_html,
+                    "thumbnail_url": project.thumbnail_url,  # ← Changed from thumbnail_base64
+                    "timestamp": project.timestamp.isoformat(),
+                    "project_type": project.project_type,
+                    "file_count": project.file_count
+                },
+                "files": files_dict,
+                "file_count": len(files)
+            }
+            
+    except Exception as e:
+        print(f"❌ Get project failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+@app.delete("/api/delete-project/{project_id}")
+async def delete_project(project_id: str):
+    try:
+        async with AsyncSessionLocal() as session:
+            # Delete project files first
+            stmt = delete(ProjectFile).where(ProjectFile.project_id == project_id)
+            await session.execute(stmt)
+            
+            # Delete project metadata
+            stmt = delete(Project).where(Project.id == project_id)
+            result = await session.execute(stmt)
+            
+            await session.commit()
+            
+            if result.rowcount > 0:
+                return {"success": True, "message": "Project deleted successfully"}
+            else:
+                return {"success": False, "message": "Project not found"}
+                
+    except Exception as e:
+        print(f"❌ Delete failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -7866,7 +7817,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
             total_count = await session.execute(count_stmt)
             total_count = total_count.scalar() or 0
             
-            # ✅ Get metadata including ALL Cloudinary URLs
+            # Get metadata including thumbnail_url (NOT base64)
             stmt = select(
                 Project.id,
                 Project.name,
@@ -7874,9 +7825,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                 Project.timestamp,
                 Project.project_type,
                 Project.file_count,
-                Project.thumbnail_url,   # Cloudinary URL for thumbnail
-                Project.preview_url,     # Cloudinary URL for preview HTML
-                Project.files_url        # Cloudinary URL for ZIP file
+                Project.thumbnail_url  # ← Changed from thumbnail_base64 to thumbnail_url
             ).where(
                 Project.user_id == actual_user_id
             ).order_by(
@@ -7894,9 +7843,7 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                     "timestamp": row[3].isoformat(),
                     "project_type": row[4],
                     "file_count": row[5],
-                    "thumbnail_url": row[6],   # ← Cloudinary URL
-                    "preview_url": row[7],     # ← Cloudinary URL (NEW)
-                    "files_url": row[8]        # ← Cloudinary URL (NEW)
+                    "thumbnail_url": row[6]  # ← Changed from thumbnail_base64 to thumbnail_url
                 }
                 for row in rows
             ]
@@ -8505,54 +8452,246 @@ async def serve_preview(filename: str):
 
 
 
+@app.get("/api/db/health")
+async def db_health():
+    """Quick database health check"""
+    try:
+        async with AsyncSessionLocal() as session:
+            # Simple query to check if database is responsive
+            result = await session.execute(text("SELECT 1"))
+            await session.execute(text("SELECT COUNT(*) FROM users"))
+            
+            # Get file size
+            import os
+            db_size = os.path.getsize("./eaglecode.db") if os.path.exists("./eaglecode.db") else 0
+            
+            return {
+                "status": "healthy",
+                "type": "sqlite",
+                "size_mb": round(db_size / 1024 / 1024, 2),
+                "tables": 8,
+                "message": "Database is operational"
+            }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+
+
+
+
+
+
+
+@app.get("/api/db/inspect-public")
+async def inspect_database_public():
+    """Public database inspection - NO AUTH REQUIRED (development only)"""
+    try:
+        async with AsyncSessionLocal() as session:
+            inspection_result = {}
+            
+            # 1. USERS table (hide sensitive info)
+            users_result = await session.execute(
+                text("SELECT id, email, username, is_admin, created_at FROM users ORDER BY created_at DESC")
+            )
+            users = users_result.fetchall()
+            inspection_result["users"] = [
+                {
+                    "id": u[0],
+                    "email": u[1],
+                    "username": u[2],
+                    "is_admin": bool(u[3]),
+                    "created_at": u[4].isoformat() if u[4] else None
+                }
+                for u in users
+            ]
+            
+            # 2. PROJECTS table
+            projects_result = await session.execute(
+                text("SELECT id, name, project_type, file_count, is_public, version, timestamp, user_id FROM projects ORDER BY timestamp DESC LIMIT 50")
+            )
+            projects = projects_result.fetchall()
+            inspection_result["projects"] = [
+                {
+                    "id": p[0],
+                    "name": p[1],
+                    "type": p[2],
+                    "file_count": p[3],
+                    "is_public": bool(p[4]),
+                    "version": p[5],
+                    "timestamp": p[6].isoformat() if p[6] else None,
+                    "user_id": p[7]
+                }
+                for p in projects
+            ]
+            
+            # 3. USER_CREDITS table
+            credits_result = await session.execute(
+                text("SELECT user_id, plan, daily_credits_used, daily_reset_date, monthly_credits_used FROM user_credits")
+            )
+            credits = credits_result.fetchall()
+            inspection_result["user_credits"] = [
+                {
+                    "user_id": c[0],
+                    "plan": c[1],
+                    "daily_credits_used": c[2],
+                    "daily_reset_date": c[3].isoformat() if c[3] else None,
+                    "monthly_credits_used": c[4]
+                }
+                for c in credits
+            ]
+            
+            # 4. Counts
+            total_projects = await session.execute(text("SELECT COUNT(*) FROM projects"))
+            total_files = await session.execute(text("SELECT COUNT(*) FROM project_files"))
+            total_sessions = await session.execute(text("SELECT COUNT(*) FROM sessions"))
+            
+            # Database size
+            import os
+            from pathlib import Path
+            db_path = Path("./eaglecode.db")
+            db_size = db_path.stat().st_size if db_path.exists() else 0
+            
+            inspection_result["summary"] = {
+                "total_users": len(inspection_result["users"]),
+                "total_projects": total_projects.scalar() or 0,
+                "total_files": total_files.scalar() or 0,
+                "total_sessions": total_sessions.scalar() or 0,
+                "database_size_mb": round(db_size / 1024 / 1024, 2),
+                "last_inspection": datetime.now().isoformat()
+            }
+            
+            return {
+                "success": True,
+                "data": inspection_result
+            }
+            
+    except Exception as e:
+        print(f"❌ Database inspection error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+
+
+
+
+
 @app.websocket("/ws/projects")
-async def websocket_projects(websocket: WebSocket):
-    """WebSocket for real-time project updates"""
+async def websocket_projects_endpoint(websocket: WebSocket):
+    """Handle project listing WebSocket connections"""
     await websocket.accept()
-    active_project_connections.append(websocket)
-    print(f"✅ Projects WebSocket connected. Total: {len(active_project_connections)}")
     
     try:
-        while True:
-            # Keep connection alive
-            try:
-                data = await websocket.receive_text()
-                message = json.loads(data)
-                if message.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-            except:
-                await asyncio.sleep(30)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        if websocket in active_project_connections:
-            active_project_connections.remove(websocket)
-        print(f"🔌 Projects WebSocket disconnected. Remaining: {len(active_project_connections)}")
-
-async def notify_projects_updated(project_name: str = None):
-    """Notify all connected clients that projects have been updated"""
-    if not active_project_connections:
-        return
-    
-    message = {
-        "type": "projects_updated",
-        "project_name": project_name,
-        "timestamp": datetime.now().isoformat()
-    }
-    
-    disconnected = []
-    for connection in active_project_connections:
+        # Get auth token from query params or headers
+        token = websocket.query_params.get("token")
+        
+        if not token:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Authentication required"
+            })
+            await websocket.close(code=1008, reason="No token provided")
+            return
+        
+        # Verify token
         try:
-            await connection.send_json(message)
-        except:
-            disconnected.append(connection)
-    
-    for conn in disconnected:
-        if conn in active_project_connections:
-            active_project_connections.remove(conn)
-    
-    if active_project_connections:
-        print(f"📡 Notified {len(active_project_connections)} clients about project update")
+            payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            user_email = payload.get('email')
+            
+            async with AsyncSessionLocal() as session:
+                # Get user
+                user_result = await session.execute(
+                    select(User).where(User.email == user_email)
+                )
+                user = user_result.scalar_one_or_none()
+                
+                if not user:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "User not found"
+                    })
+                    await websocket.close(code=1008, reason="User not found")
+                    return
+                
+                # Send initial projects list
+                await send_projects_list(websocket, user.id)
+                
+                # Keep connection alive and listen for refresh requests
+                while True:
+                    try:
+                        data = await websocket.receive_text()
+                        message = json.loads(data)
+                        
+                        if message.get("type") == "refresh":
+                            await send_projects_list(websocket, user.id)
+                        elif message.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                            
+                    except json.JSONDecodeError:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Invalid JSON"
+                        })
+                    except Exception as e:
+                        print(f"WebSocket error: {e}")
+                        break
+                        
+        except jwt.InvalidTokenError:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Invalid token"
+            })
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+            
+    except Exception as e:
+        print(f"WebSocket projects error: {e}")
+        await websocket.send_json({
+            "type": "error",
+            "message": str(e)
+        })
+        await websocket.close(code=1011, reason="Internal error")
+
+async def send_projects_list(websocket: WebSocket, user_id: str):
+    """Send list of user's projects"""
+    async with AsyncSessionLocal() as session:
+        # Get projects for this user
+        result = await session.execute(
+            select(Project)
+            .where(Project.user_id == user_id)
+            .order_by(desc(Project.timestamp))
+            .limit(50)
+        )
+        projects = result.scalars().all()
+        
+        projects_data = []
+        for project in projects:
+            projects_data.append({
+                "id": project.id,
+                "name": project.name,
+                "prompt": project.prompt[:100] + "..." if len(project.prompt) > 100 else project.prompt,
+                "project_type": project.project_type,
+                "file_count": project.file_count,
+                "thumbnail_url": project.thumbnail_url,
+                "timestamp": project.timestamp.isoformat(),
+                "is_public": project.is_public
+            })
+        
+        await websocket.send_json({
+            "type": "projects_list",
+            "projects": projects_data,
+            "count": len(projects_data)
+        })
+
+
+
+
+
 
 
 

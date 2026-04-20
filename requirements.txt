@@ -20,4 +20,5 @@ aiofiles
 PyJWT
 itsdangerous==2.1.2
 html2image
+aiosqlite
 
