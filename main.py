@@ -413,9 +413,7 @@ else:
     
     print(f"🔗 Using Neon PostgreSQL database")
 
-# Create thumbnails directory (for temporary files before Cloudinary upload)
-THUMBNAIL_DIR = Path("thumbnails")
-THUMBNAIL_DIR.mkdir(exist_ok=True)
+
 
 try:
     # Create engine with proper SSL configuration
@@ -1050,7 +1048,7 @@ app.add_middleware(
         "http://127.0.0.1:8000",
         "https://eaglecode.vercel.app",  # Your Vercel frontend URL
         "http://localhost:3000",                    # Local development
-        "https://eaglecode2.onrender.com",          # Your backend itself
+        "https://eaglecode2-2.onrender.com",          # Your backend itself
     ],
     allow_credentials=True,
     allow_methods=["*"],
