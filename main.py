@@ -1815,7 +1815,8 @@ Return ONLY complete HTML. No explanations."""
         import traceback
         traceback.print_exc()
 
-        fallback = f"""<!DOCTYPE html>
+        # Use .format() instead of f-string to avoid backslash issues
+        fallback_template = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -1874,9 +1875,13 @@ Return ONLY complete HTML. No explanations."""
     </script>
 </body>
 </html>"""
+        
+        fallback = fallback_template.format(
+            project_name=project_name,
+            brand_name=brand_name
+        )
+        
         return {"success": True, "preview_html": fallback, "preview_type": "fallback"}
-
-
 
 
 
