@@ -13,15 +13,6 @@ from fastapi import Depends
 
 from bson import ObjectId
 
-
-import asyncio
-import random
-from typing import Dict, List, Optional
-from collections import defaultdict
-from datetime import datetime, timedelta
-from dataclasses import dataclass
-
-
 import motor.motor_asyncio
 
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
@@ -112,420 +103,181 @@ AVAILABLE_MODELS = {
 # Model usage tracking
 model_usage = {model: {"success": 0, "fail": 0, "last_fail": None} for model in AVAILABLE_MODELS.values()}
 
-
-
-
-
-
-
-
-
-
-
-
-import json
-import os
-import re
-import io
-import jwt
-import asyncio
-from html2image import Html2Image
-from pathlib import Path
-
-from fastapi.staticfiles import StaticFiles
-from fastapi import Depends
-from bson import ObjectId
-import random
-from typing import Dict, List, Optional
-from collections import defaultdict
-from datetime import datetime, timedelta
-from dataclasses import dataclass
-
-import motor.motor_asyncio
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
-from routes.auth import router as auth_router, init_oauth
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from starlette.middleware.sessions import SessionMiddleware
-from typing import Dict, Any, List, Set
-
-import cloudinary
-import cloudinary.uploader
-from contextlib import asynccontextmanager
-from sqlalchemy import Date
-import shutil
-from datetime import datetime, date
-import uuid
-from sqlalchemy import Column, String, Text, Integer, DateTime, Boolean, Index, select, desc, func, delete, text
-
-import uvicorn
-from fastapi import FastAPI, WebSocket, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from google import genai
-from dotenv import load_dotenv
-
-import asyncpg
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, sessionmaker
-import json
-
-import requests
-from bs4 import BeautifulSoup
-import base64
-from io import BytesIO
-from PIL import Image
-import hashlib
-from typing import Optional
-import httpx
-import tempfile
-import zipfile
-
-load_dotenv()
-
-# ========== UPDATE YOUR AVAILABLE_MODELS ==========
-AVAILABLE_MODELS = {
-    "flash_lite_latest": "gemini-flash-lite-latest",
-    "flash_lite_25": "gemini-2.5-flash-lite",
-    "flash_25": "gemini-2.5-flash",
-    "flash_latest": "gemini-flash-latest",
-}
-
-model_usage = {model: {"success": 0, "fail": 0, "last_fail": None} for model in AVAILABLE_MODELS.values()}
-
-# ========== SMART LOAD BALANCER ==========
-
-@dataclass
-class KeyStats:
-    success_count: int = 0
-    fail_count: int = 0
-    rate_limit_count: int = 0
-    last_used: Optional[datetime] = None
-    cooldown_until: Optional[datetime] = None
-    success_rate: float = 0.5
-    weight: float = 1.0
-    requests_this_minute: int = 0
-    rate_limit_reset: datetime = None
-    
-    def __post_init__(self):
-        if self.rate_limit_reset is None:
-            self.rate_limit_reset = datetime.now()
-
-class SmartLoadBalancer:
-    """Intelligent load balancer for multiple API keys with weighted random selection"""
-    
-    def __init__(self):
-        self.api_keys = []
-        key_index = 1
-        while True:
-            api_key = os.environ.get(f"GEMINI_API_KEY_{key_index}", "")
-            if not api_key:
-                break
-            self.api_keys.append(api_key)
-            key_index += 1
-        
-        if not self.api_keys:
-            single_key = os.environ.get("GEMINI_API_KEY", "")
-            if single_key:
-                self.api_keys = [single_key]
-                print("⚠️ Using single GEMINI_API_KEY (no numbered keys found)")
-        
-        if not self.api_keys:
-            raise ValueError("No API keys configured! Set GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.")
-        
-        self.models = [
-            os.environ.get("MODEL_PRIMARY", "gemini-flash-lite-latest"), 
-            os.environ.get("MODEL_SECONDARY", "gemini-2.5-flash-lite"),
-        ]
-        
-        self.key_stats: Dict[int, KeyStats] = {}
-        for i in range(len(self.api_keys)):
-            self.key_stats[i] = KeyStats()
-        
-        self.model_failures = defaultdict(lambda: {"count": 0, "last_fail": None})
-        self.total_requests = 0
-        self.successful_requests = 0
-        self.failed_requests = 0
-        
-        self._update_weights()
-        
-        print(f"\n{'='*60}")
-        print(f"🚀 SMART LOAD BALANCER INITIALIZED")
-        print(f"{'='*60}")
-        print(f"📊 Total API Keys Loaded: {len(self.api_keys)}")
-        print(f"🤖 Models per key: {self.models}")
-        print(f"{'='*60}\n")
-    
-    def _update_weights(self):
-        total_weight = 0
-        
-        for i, stats in self.key_stats.items():
-            if stats.cooldown_until and datetime.now() < stats.cooldown_until:
-                stats.weight = 0
-                continue
-            
-            total_attempts = stats.success_count + stats.fail_count
-            if total_attempts > 0:
-                stats.success_rate = stats.success_count / total_attempts
-                if total_attempts < 10:
-                    stats.success_rate = max(stats.success_rate, 0.3)
-            else:
-                stats.success_rate = 0.5
-            
-            stats.weight = max(0.1, stats.success_rate)
-            total_weight += stats.weight
-        
-        if total_weight > 0:
-            for i in self.key_stats:
-                self.key_stats[i].normalized_weight = self.key_stats[i].weight / total_weight
-    
-    def _select_key(self) -> int:
-        available_keys = []
-        weights = []
-        
-        for i, stats in self.key_stats.items():
-            if stats.cooldown_until and datetime.now() < stats.cooldown_until:
-                continue
-            available_keys.append(i)
-            weights.append(stats.weight)
-        
-        if not available_keys:
-            earliest_key = min(self.key_stats.items(), key=lambda x: x[1].cooldown_until or datetime.min)
-            return earliest_key[0]
-        
-        return random.choices(available_keys, weights=weights, k=1)[0]
-    
-    def _check_rate_limit(self, key_index: int) -> bool:
-        stats = self.key_stats[key_index]
-        now = datetime.now()
-        
-        if now - stats.rate_limit_reset > timedelta(minutes=1):
-            stats.requests_this_minute = 0
-            stats.rate_limit_reset = now
-        
-        if stats.requests_this_minute >= 60:
-            return False
-        
-        stats.requests_this_minute += 1
-        return True
-    
-    def _record_success(self, key_index: int, model: str, response_length: int = 0):
-        stats = self.key_stats[key_index]
-        stats.success_count += 1
-        stats.last_used = datetime.now()
-        
-        self.total_requests += 1
-        self.successful_requests += 1
-        self._update_weights()
-        
-        print(f"✅ Key {key_index + 1} | Model: {model} | Success | Rate: {stats.success_rate:.1%}")
-    
-    def _record_failure(self, key_index: int, model: str, error_msg: str):
-        stats = self.key_stats[key_index]
-        stats.fail_count += 1
-        stats.last_used = datetime.now()
-        
-        self.total_requests += 1
-        self.failed_requests += 1
-        
-        model_key = f"{key_index}_{model}"
-        self.model_failures[model_key]["count"] += 1
-        self.model_failures[model_key]["last_fail"] = datetime.now()
-        
-        consecutive_failures = stats.fail_count - stats.success_count
-        if consecutive_failures >= 3:
-            cooldown_seconds = min(30, 5 * (consecutive_failures - 2))
-            stats.cooldown_until = datetime.now() + timedelta(seconds=cooldown_seconds)
-            print(f"⚠️ Key {key_index + 1} on cooldown for {cooldown_seconds}s")
-        
-        if "429" in error_msg or "quota" in error_msg.lower():
-            stats.rate_limit_count += 1
-            stats.cooldown_until = datetime.now() + timedelta(seconds=10)
-            print(f"🚫 Key {key_index + 1} rate limited, cooldown 10s")
-        
-        print(f"❌ Key {key_index + 1} | Model: {model} | Failed: {error_msg[:80]}")
-        self._update_weights()
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    async def generate_stream(self, prompt: str, config: dict):
-        """Stream generation with smart load balancing"""
-        last_error = None
-        
-        for attempt in range(3):
-            key_index = self._select_key()
-            api_key = self.api_keys[key_index]
-            
-            if not self._check_rate_limit(key_index):
-                continue
-            
-            for model in self.models:
-                try:
-                    print(f"📡 Streaming | Key {key_index + 1} | Model: {model}")
-                    
-                    client = genai.Client(api_key=api_key)
-                    
-                    response = client.models.generate_content_stream(
-                        model=model,
-                        contents=prompt,
-                        config=config
-                    )
-                    
-                    # Use regular for loop (NOT async for) - exactly like original working code
-                    first_chunk = None
-                    for chunk in response:
-                        if first_chunk is None:
-                            first_chunk = chunk
-                            print(f"✅ Model {model} working")
-                        yield chunk
-                    
-                    if first_chunk:
-                        self._record_success(key_index, model)
-                        return
-                        
-                except Exception as e:
-                    error_msg = str(e)
-                    self._record_failure(key_index, model, error_msg)
-                    last_error = e
-                    
-                    if "429" in error_msg or "quota" in error_msg.lower():
-                        break
-                    
-                    continue
-        
-        raise Exception(f"All streaming attempts failed. Last error: {last_error}")
-    
-    
-    
-    
-    
-    
-    async def generate_content(self, prompt: str, config: dict) -> str:
-        """Generate content using smart load balancing"""
-        last_error = None
-        
-        for attempt in range(3):
-            key_index = self._select_key()
-            api_key = self.api_keys[key_index]
-            
-            if not self._check_rate_limit(key_index):
-                print(f"⏭️ Key {key_index + 1} rate limited, selecting another...")
-                continue
-            
-            for model in self.models:
-                try:
-                    print(f"🎯 Attempt {attempt + 1} | Key {key_index + 1} | Model: {model}")
-                    
-                    client = genai.Client(api_key=api_key)
-                    
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=prompt,
-                        config=config
-                    )
-                    
-                    self._record_success(key_index, model, len(response.text))
-                    return response.text
-                    
-                except Exception as e:
-                    error_msg = str(e)
-                    self._record_failure(key_index, model, error_msg)
-                    last_error = e
-                    
-                    if "429" in error_msg or "quota" in error_msg.lower():
-                        break
-                    
-                    continue
-        
-        raise Exception(f"All API keys exhausted. Last error: {last_error}")
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    def get_stats(self) -> dict:
-        stats = {
-            "total_keys": len(self.api_keys),
-            "total_requests": self.total_requests,
-            "successful_requests": self.successful_requests,
-            "failed_requests": self.failed_requests,
-            "success_rate": self.successful_requests / max(1, self.total_requests),
-            "keys": {}
-        }
-        
-        for i, key_stats in self.key_stats.items():
-            stats["keys"][f"key_{i + 1}"] = {
-                "success_count": key_stats.success_count,
-                "fail_count": key_stats.fail_count,
-                "success_rate": round(key_stats.success_rate, 3),
-                "weight": round(key_stats.weight, 3),
-                "on_cooldown": key_stats.cooldown_until and datetime.now() < key_stats.cooldown_until,
-                "cooldown_until": key_stats.cooldown_until.isoformat() if key_stats.cooldown_until else None,
-                "requests_this_minute": key_stats.requests_this_minute,
-                "rate_limit_count": key_stats.rate_limit_count
-            }
-        
-        return stats
-
-# Initialize the smart load balancer
-smart_balancer = SmartLoadBalancer()
-
 class GeminiModelRouter:
-    """Wrapper for the smart load balancer"""
-    
-    def __init__(self, balancer: SmartLoadBalancer):
-        self.balancer = balancer
-    
-    async def generate_content(self, prompt: str, config: dict) -> str:
-        return await self.balancer.generate_content(prompt, config)
+    def __init__(self, client):
+        self.client = client
+        # Priority order - try models with highest quotas first
+        self.model_order = [
+            
+            
+            AVAILABLE_MODELS["flash_lite_latest"],   # Highest quota (free tier)               
+            AVAILABLE_MODELS["flash_lite_25"],       # Gemini 2.5 Flash Lite              
+            
+         
+            AVAILABLE_MODELS["flash_25"],            # Gemini 2.5 Flash
+          
+            
+
+
+            AVAILABLE_MODELS["flash_latest"],        # Latest flash
+        ]
     
     async def generate_stream(self, prompt: str, config: dict):
-        async for chunk in self.balancer.generate_stream(prompt, config):
-            yield chunk
+        """Stream generation with automatic fallback"""
+        last_error = None
+        
+        for model in self.model_order:
+            try:
+                print(f"📡 Trying model: {model}")
+                
+                response = self.client.models.generate_content_stream(
+                    model=model,
+                    contents=prompt,
+                    config=config
+                )
+                
+                # Test first chunk
+                first_chunk = None
+                for chunk in response:  # Use regular for loop
+                    if first_chunk is None:
+                        first_chunk = chunk
+                        print(f"✅ Model {model} working")
+                    yield chunk
+                
+                if first_chunk:
+                    model_usage[model]["success"] += 1
+                    return
+                    
+            except Exception as e:
+                error_msg = str(e)
+                
+                # Handle rate limit (429)
+                if "429" in error_msg:
+                    print(f"⚠️ Model {model} rate limited (quota exceeded)")
+                elif "404" in error_msg:
+                    print(f"⚠️ Model {model} not found, skipping")
+                else:
+                    print(f"⚠️ Model {model} failed: {error_msg[:100]}")
+                
+                model_usage[model]["fail"] += 1
+                model_usage[model]["last_fail"] = error_msg
+                last_error = e
+                continue
+        
+        raise Exception(f"All models failed. Last error: {last_error}")
     
-    def get_stats(self) -> dict:
-        return self.balancer.get_stats()
-
+    async def generate_content(self, prompt: str, config: dict):
+        """Non-streaming generation with fallback"""
+        last_error = None
+        
+        for model in self.model_order:
+            try:
+                print(f"🤖 Trying model: {model}")
+                
+                response = self.client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=config
+                )
+                
+                model_usage[model]["success"] += 1
+                print(f"✅ Model {model} succeeded")
+                return response.text
+                
+            except Exception as e:
+                error_msg = str(e)
+                
+                if "429" in error_msg:
+                    print(f"⚠️ Model {model} rate limited (quota exceeded)")
+                elif "404" in error_msg:
+                    print(f"⚠️ Model {model} not found, skipping")
+                else:
+                    print(f"⚠️ Model {model} failed: {error_msg[:100]}")
+                
+                model_usage[model]["fail"] += 1
+                model_usage[model]["last_fail"] = error_msg
+                last_error = e
+                continue
+        
+        raise Exception(f"All models failed. Last error: {last_error}")
     
+    def get_stats(self):
+        """Get model usage statistics"""
+        return model_usage
     
 
-# Initialize the router with the smart balancer
-model_router = GeminiModelRouter(smart_balancer)
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    async def generate_stream(self, prompt: str, config: dict):
+        """Stream generation with automatic fallback"""
+        last_error = None
+        
+        for model in self.model_order:
+            try:
+                print(f"📡 Trying model: {model}")
+                
+                response = self.client.models.generate_content_stream(
+                    model=model,
+                    contents=prompt,
+                    config=config
+                )
+                
+                # Test first chunk - use regular for loop, NOT async for
+                first_chunk = None
+                for chunk in response:  # Changed from async for to for
+                    if first_chunk is None:
+                        first_chunk = chunk
+                        print(f"✅ Model {model} working")
+                    yield chunk
+                
+                if first_chunk:
+                    model_usage[model]["success"] += 1
+                    return
+                    
+            except Exception as e:
+                error_msg = str(e)
+                print(f"⚠️ Model {model} failed: {error_msg[:100]}")
+                model_usage[model]["fail"] += 1
+                model_usage[model]["last_fail"] = error_msg
+                last_error = e
+                continue
+        
+        raise Exception(f"All models failed. Last error: {last_error}")
+    
+    async def generate_content(self, prompt: str, config: dict):
+        """Non-streaming generation with fallback"""
+        last_error = None
+        
+        for model in self.model_order:
+            try:
+                print(f"🤖 Trying model: {model}")
+                
+                response = self.client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=config
+                )
+                
+                model_usage[model]["success"] += 1
+                print(f"✅ Model {model} succeeded")
+                return response.text
+                
+            except Exception as e:
+                error_msg = str(e)
+                print(f"⚠️ Model {model} failed: {error_msg[:100]}")
+                model_usage[model]["fail"] += 1
+                model_usage[model]["last_fail"] = error_msg
+                last_error = e
+                continue
+        
+        raise Exception(f"All models failed. Last error: {last_error}")
+    
+    def get_stats(self):
+        """Get model usage statistics"""
+        return model_usage
 
 
 
@@ -1086,6 +838,17 @@ async def update_image_references_in_code(files: Dict[str, Any], image_urls: Dic
 
 
 
+
+
+
+
+
+
+# Initialize Gemini Client
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+# Initialize the router AFTER client is created
+model_router = GeminiModelRouter(client)
 
 
 
