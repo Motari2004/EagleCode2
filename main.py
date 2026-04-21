@@ -9247,6 +9247,25 @@ async def upload_payment_proof(
 
 
 
+@app.get("/api/test-all-keys")
+async def test_all_keys():
+    results = []
+    for i, key in enumerate(smart_balancer.api_keys):
+        try:
+            from google import genai
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                contents="Say 'OK'",
+                config={"max_output_tokens": 5}
+            )
+            results.append({"key": i+1, "status": "WORKING"})
+        except Exception as e:
+            results.append({"key": i+1, "status": "ERROR", "error": str(e)[:50]})
+    return {"results": results}
+
+
+
 
 @app.get("/api/key-stats")
 async def get_key_stats():
