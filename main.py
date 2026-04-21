@@ -100,84 +100,10 @@ import zipfile
 
 
 
-# ========== UPDATE YOUR AVAILABLE_MODELS ==========
-# These are the actual model names from your list
-AVAILABLE_MODELS = {
-    "flash_lite_latest": "gemini-flash-lite-latest", # Latest flash lite
-    "flash_lite_25": "gemini-2.5-flash-lite",    # Gemini 2.5 Flash Lite
-    "flash_25": "gemini-2.5-flash",              # Your primary
-    "flash_latest": "gemini-flash-latest",       # Latest flash version
-}
-
-# Model usage tracking
-model_usage = {model: {"success": 0, "fail": 0, "last_fail": None} for model in AVAILABLE_MODELS.values()}
 
 
 
 
-
-
-
-
-
-
-
-
-import json
-import os
-import re
-import io
-import jwt
-import asyncio
-from html2image import Html2Image
-from pathlib import Path
-
-from fastapi.staticfiles import StaticFiles
-from fastapi import Depends
-from bson import ObjectId
-import random
-from typing import Dict, List, Optional
-from collections import defaultdict
-from datetime import datetime, timedelta
-from dataclasses import dataclass
-
-import motor.motor_asyncio
-from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
-from routes.auth import router as auth_router, init_oauth
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from starlette.middleware.sessions import SessionMiddleware
-from typing import Dict, Any, List, Set
-
-import cloudinary
-import cloudinary.uploader
-from contextlib import asynccontextmanager
-from sqlalchemy import Date
-import shutil
-from datetime import datetime, date
-import uuid
-from sqlalchemy import Column, String, Text, Integer, DateTime, Boolean, Index, select, desc, func, delete, text
-
-import uvicorn
-from fastapi import FastAPI, WebSocket, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from google import genai
-from dotenv import load_dotenv
-
-import asyncpg
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import declarative_base, sessionmaker
-import json
-
-import requests
-from bs4 import BeautifulSoup
-import base64
-from io import BytesIO
-from PIL import Image
-import hashlib
-from typing import Optional
-import httpx
-import tempfile
-import zipfile
 
 load_dotenv()
 
@@ -232,8 +158,8 @@ class SmartLoadBalancer:
             raise ValueError("No API keys configured! Set GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.")
         
         self.models = [
-            os.environ.get("MODEL_PRIMARY", "gemini-2.5-flash-lite"),
-            os.environ.get("MODEL_SECONDARY", "gemini-flash-lite-latest"), 
+            os.environ.get("MODEL_PRIMARY", "gemini-flash-lite-latest"),
+            os.environ.get("MODEL_SECONDARY", "gemini-2.5-flash-lite"), 
             
         ]
         
