@@ -25,3 +25,7 @@ aiosqlite
 
 playwright
 Pillow
+
+
+bson
+pymongo
