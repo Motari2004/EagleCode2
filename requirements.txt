@@ -29,3 +29,6 @@ Pillow
 
 bson
 pymongo
+
+motor
+starlette
