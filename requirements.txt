@@ -27,8 +27,8 @@ playwright
 Pillow
 
 
-bson
 
+pymongo
 
 motor
 starlette
