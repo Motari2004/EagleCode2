@@ -9,8 +9,21 @@ from pathlib import Path
 
 from fastapi.staticfiles import StaticFiles
 
-# Then import and initialize auth router
+from fastapi import Depends
+
+from bson import ObjectId
+
+import motor.motor_asyncio
+
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form
+
 from routes.auth import router as auth_router, init_oauth
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from fastapi import FastAPI, Depends, HTTPException, status
+
+
 
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -22,7 +35,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy import Date  # ← Add this import
 
-
+import shutil
 from datetime import datetime, date
 
 # Add these imports at the top if not already there
@@ -546,6 +559,9 @@ try:
         message = Column(Text, nullable=True)
         status = Column(String, default="pending", index=True)
         admin_notes = Column(Text, nullable=True)
+        payment_screenshot_url = Column(String(500), nullable=True)  # ✅ Add this line
+        email_sent = Column(Boolean, default=False)  # ✅ NEW: Track if email was sent
+        email_sent_at = Column(DateTime, nullable=True)  # ✅ NEW: When email was sent
         created_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
         updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
     
@@ -606,6 +622,71 @@ except Exception as e:
     async def init_db():
         print("⚠️ Database not available")
 
+
+
+
+
+
+
+
+
+
+# ========== SECURITY SETUP ==========
+security = HTTPBearer()
+
+
+
+
+
+
+
+async def get_db():
+    client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URL", "mongodb://localhost:27017"))
+    db = client["eaglecode"]
+    try:
+        yield db
+    finally:
+        client.close()
+
+
+
+
+
+
+
+# ========== ADMIN AUTH FUNCTION (ADD THIS HERE) ==========
+async def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Check if the current user is an admin"""
+    token = credentials.credentials
+    
+    try:
+        # Decode JWT token
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "secret"), algorithms=["HS256"])
+        user_id = payload.get("user_id")
+        
+        # Get database connection
+        db = await anext(get_db())
+        
+        # Check if user exists and is admin
+        from bson import ObjectId
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+        
+        if not user or user.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+        return user
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e)
+        )
 
 
 
@@ -1051,6 +1132,8 @@ app.add_middleware(
         "https://eaglecode.vercel.app",  # Your Vercel frontend URL
         "http://localhost:3000",                    # Local development
         "https://eaglecode2-2.onrender.com",          # Your backend itself
+        
+        "https://*.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -8478,6 +8561,13 @@ async def request_upgrade(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+
+
+
+
+
+
 @app.get("/api/admin/upgrade-requests")
 async def get_upgrade_requests(request: Request):
     """Admin: Get all upgrade requests"""
@@ -8499,6 +8589,10 @@ async def get_upgrade_requests(request: Request):
             result = await session.execute(stmt)
             requests = result.scalars().all()
             
+            # Debug: Print screenshot URLs
+            for r in requests:
+                print(f"📸 Request {r.id}: screenshot_url = {r.payment_screenshot_url}")
+            
             return {
                 "success": True,
                 "requests": [
@@ -8508,18 +8602,38 @@ async def get_upgrade_requests(request: Request):
                         "user_email": r.user_email,
                         "user_name": r.user_name,
                         "requested_plan": r.requested_plan,
+                        "payment_screenshot_url": r.payment_screenshot_url,  # ✅ Fixed: was 'req' now 'r'
+                        "email_sent": r.email_sent,  # ✅ Add this
+                        "email_sent_at": r.email_sent_at.isoformat() if r.email_sent_at else None, 
                         "message": r.message,
                         "status": r.status,
                         "admin_notes": r.admin_notes,
-                        "created_at": r.created_at.isoformat()
+                        "created_at": r.created_at.isoformat() if r.created_at else None
                     }
                     for r in requests
                 ]
             }
             
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
     except Exception as e:
         print(f"❌ Get upgrade requests error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @app.post("/api/admin/update-request-status")
@@ -8590,6 +8704,58 @@ async def update_request_status(request: Request):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.post("/api/admin/send-payment-email")
+async def send_payment_email(request: Request):
+    """Admin: Mark email as sent for an upgrade request"""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "")
+    
+    # Verify admin access
+    admin_emails = ["admin@eaglecode.com", "hopefreymosingi1@gmail.com"]
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        admin_email = payload.get('email')
+        
+        if admin_email not in admin_emails:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        body = await request.json()
+        request_id = body.get("request_id")
+        
+        async with AsyncSessionLocal() as session:
+            stmt = select(UpgradeRequest).where(UpgradeRequest.id == request_id)
+            result = await session.execute(stmt)
+            upgrade_request = result.scalar_one_or_none()
+            
+            if upgrade_request:
+                upgrade_request.email_sent = True
+                upgrade_request.email_sent_at = datetime.now()
+                await session.commit()
+                return {"success": True, "message": "Email marked as sent"}
+            else:
+                return {"success": False, "message": "Request not found"}
+        
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return {"success": False, "message": str(e)}
 
 
 
@@ -8669,6 +8835,115 @@ async def notify_projects_updated(project_name: str = None):
     
     if active_project_connections:
         print(f"📡 Notified {len(active_project_connections)} clients about project update")
+
+
+
+
+
+
+
+
+
+
+@app.delete("/api/admin/delete-request/{request_id}")
+async def delete_request(request_id: str, request: Request):
+    """Admin: Delete an upgrade request"""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "")
+    
+    # Verify admin access
+    admin_emails = ["admin@eaglecode.com", "hopefreymosingi1@gmail.com"]
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        admin_email = payload.get('email')
+        
+        if admin_email not in admin_emails:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Delete the request
+        async with AsyncSessionLocal() as session:
+            stmt = delete(UpgradeRequest).where(UpgradeRequest.id == request_id)
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            if result.rowcount > 0:
+                return {"success": True, "message": "Request deleted successfully"}
+            else:
+                return {"success": False, "message": "Request not found"}
+            
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        print(f"❌ Delete request error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+@app.post("/api/upload-payment-proof")
+async def upload_payment_proof(
+    request_id: str = Form(...),
+    payment_screenshot: UploadFile = File(...),
+    user_id: str = Form(None),
+):
+    """Upload payment proof screenshot to Cloudinary"""
+    try:
+        # Read the file content
+        content = await payment_screenshot.read()
+        
+        # Upload to Cloudinary
+        import cloudinary.uploader
+        from io import BytesIO
+        
+        # Create a unique filename
+        timestamp = int(datetime.now().timestamp())
+        public_id = f"payment_proofs/{request_id}_{timestamp}"
+        
+        # Upload to Cloudinary
+        upload_result = cloudinary.uploader.upload(
+            BytesIO(content),
+            folder="payment_proofs",
+            public_id=f"{request_id}_{timestamp}",
+            allowed_formats=["jpg", "jpeg", "png", "webp"],
+            transformation=[
+                {"quality": "auto"},
+                {"fetch_format": "auto"}
+            ]
+        )
+        
+        cloudinary_url = upload_result['secure_url']
+        print(f"☁️ Uploaded to Cloudinary: {cloudinary_url}")
+        
+        # Update database with Cloudinary URL
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(UpgradeRequest).where(UpgradeRequest.id == request_id)
+            )
+            upgrade_request = result.scalar_one_or_none()
+            
+            if upgrade_request:
+                upgrade_request.payment_screenshot_url = cloudinary_url
+                upgrade_request.status = "payment_received"
+                upgrade_request.updated_at = datetime.now()
+                await session.commit()
+                print(f"✅ Database updated for request {request_id}")
+            else:
+                print(f"⚠️ Request {request_id} not found")
+        
+        return {
+            "success": True, 
+            "message": "Payment proof uploaded to Cloudinary",
+            "screenshot_url": cloudinary_url
+        }
+        
+    except Exception as e:
+        print(f"❌ Upload error: {str(e)}")
+        return {"success": False, "message": str(e)}
+
 
 
 
