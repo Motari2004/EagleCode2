@@ -9266,6 +9266,12 @@ async def upload_payment_proof(
 
 
 
+@app.get("/api/key-stats")
+async def get_key_stats():
+    return model_router.get_stats()
+
+
+
 @app.get("/health")
 async def health_check():
     return {
