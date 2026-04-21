@@ -255,44 +255,85 @@ class SmartLoadBalancer:
         print(f"🤖 Models per key: {self.models}")
         print(f"{'='*60}\n")
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
     def _update_weights(self):
+        """Update weights for all keys based on success rate"""
         total_weight = 0
         
         for i, stats in self.key_stats.items():
+            # Check if key is on cooldown
             if stats.cooldown_until and datetime.now() < stats.cooldown_until:
                 stats.weight = 0
                 continue
             
+            # Calculate success rate
             total_attempts = stats.success_count + stats.fail_count
             if total_attempts > 0:
                 stats.success_rate = stats.success_count / total_attempts
+                # Boost new keys slightly to give them a chance
                 if total_attempts < 10:
                     stats.success_rate = max(stats.success_rate, 0.3)
             else:
-                stats.success_rate = 0.5
+                stats.success_rate = 0.5  # Neutral for untested keys
             
-            stats.weight = max(0.1, stats.success_rate)
+            # ✅ Ensure minimum weight even for failing keys
+            stats.weight = max(0.05, stats.success_rate)  # Minimum 0.05 weight
             total_weight += stats.weight
         
-        if total_weight > 0:
+        # ✅ Log warning if total weight is too low
+        if total_weight < 0.1:
+            print(f"⚠️ Warning: Total weight is very low ({total_weight:.4f}), resetting all weights")
             for i in self.key_stats:
-                self.key_stats[i].normalized_weight = self.key_stats[i].weight / total_weight
+                self.key_stats[i].weight = 0.5
+                self.key_stats[i].cooldown_until = None
+                total_weight = len(self.key_stats) * 0.5
+    
+    
+    
+    
+    
+    
     
     def _select_key(self) -> int:
+        """Select a key using weighted random selection"""
+        # Build list of available keys (not on cooldown)
         available_keys = []
         weights = []
         
         for i, stats in self.key_stats.items():
+            # Skip keys on cooldown
             if stats.cooldown_until and datetime.now() < stats.cooldown_until:
                 continue
             available_keys.append(i)
             weights.append(stats.weight)
         
+        # ✅ FIX: If no keys available, pick the one with earliest cooldown
         if not available_keys:
+            print("⚠️ No available keys, picking key with earliest cooldown")
             earliest_key = min(self.key_stats.items(), key=lambda x: x[1].cooldown_until or datetime.min)
             return earliest_key[0]
         
+        # ✅ FIX: If total weight is zero, use equal weights
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            print("⚠️ Total weight is zero, using equal distribution")
+            return random.choice(available_keys)
+        
+        # Weighted random selection
         return random.choices(available_keys, weights=weights, k=1)[0]
+    
+    
+    
+    
+    
     
     def _check_rate_limit(self, key_index: int) -> bool:
         stats = self.key_stats[key_index]
@@ -348,7 +389,14 @@ class SmartLoadBalancer:
     
     
     
-    
+    def reset_all_keys(self):
+        """Reset all keys when they are all exhausted"""
+        print("🔄 Resetting all API keys (removing cooldowns)")
+        for i in self.key_stats:
+            self.key_stats[i].cooldown_until = None
+            self.key_stats[i].weight = 0.5
+            self.key_stats[i].requests_this_minute = 0
+        self._update_weights()    
     
     
     
@@ -357,6 +405,15 @@ class SmartLoadBalancer:
     async def generate_stream(self, prompt: str, config: dict):
         """Stream generation with smart load balancing"""
         last_error = None
+        
+        # ✅ ADD THIS CHECK AT THE START
+        all_on_cooldown = all(
+            stats.cooldown_until and datetime.now() < stats.cooldown_until 
+            for stats in self.key_stats.values()
+        )
+        if all_on_cooldown:
+            print("⚠️ All keys on cooldown, resetting...")
+            self.reset_all_keys()
         
         for attempt in range(3):
             key_index = self._select_key()
@@ -377,7 +434,7 @@ class SmartLoadBalancer:
                         config=config
                     )
                     
-                    # Use regular for loop (NOT async for) - exactly like original working code
+                    # Use regular for loop (NOT async for)
                     first_chunk = None
                     for chunk in response:
                         if first_chunk is None:
@@ -406,9 +463,29 @@ class SmartLoadBalancer:
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     async def generate_content(self, prompt: str, config: dict) -> str:
         """Generate content using smart load balancing"""
         last_error = None
+        
+        # ✅ ADD THIS CHECK AT THE START
+        all_on_cooldown = all(
+            stats.cooldown_until and datetime.now() < stats.cooldown_until 
+            for stats in self.key_stats.values()
+        )
+        if all_on_cooldown:
+            print("⚠️ All keys on cooldown, resetting...")
+            self.reset_all_keys()
         
         for attempt in range(3):
             key_index = self._select_key()
@@ -444,7 +521,6 @@ class SmartLoadBalancer:
                     continue
         
         raise Exception(f"All API keys exhausted. Last error: {last_error}")
-    
     
     
     
