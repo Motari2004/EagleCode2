@@ -232,8 +232,9 @@ class SmartLoadBalancer:
             raise ValueError("No API keys configured! Set GEMINI_API_KEY_1, GEMINI_API_KEY_2, etc.")
         
         self.models = [
-            os.environ.get("MODEL_PRIMARY", "gemini-flash-lite-latest"), 
-            os.environ.get("MODEL_SECONDARY", "gemini-2.5-flash-lite"),
+            os.environ.get("MODEL_PRIMARY", "gemini-2.5-flash-lite"),
+            os.environ.get("MODEL_SECONDARY", "gemini-flash-lite-latest"), 
+            
         ]
         
         self.key_stats: Dict[int, KeyStats] = {}
