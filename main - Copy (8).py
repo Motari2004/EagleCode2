@@ -4382,6 +4382,24 @@ ROOT LAYOUT - WITH RELATIVE IMPORTS:
 
 
 ================================================================================
+ERROR PAGE - WITH USE CLIENT:
+================================================================================
+
+"app/error.tsx": "\"use client\";\\n\\nimport { useEffect } from 'react';\\n\\nexport default function Error({\\n  error,\\n  reset,\\n}: {\\n  error: Error & { digest?: string };\\n  reset: () => void;\\n}) {\\n  useEffect(() => {\\n    console.error(error);\\n  }, [error]);\\n\\n  return (\\n    <div className=\\"min-h-screen flex items-center justify-center\\">\\n      <div className=\\"text-center space-y-4\\">\\n        <h2 className=\\"text-2xl font-bold text-red-500\\">Something went wrong!</h2>\\n        <p className=\\"text-gray-400\\">{error.message || 'An unexpected error occurred'}</p>\\n        <button\\n          onClick={reset}\\n          className=\\"px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors\\"\\n        >\\n          Try again\\n        </button>\\n      </div>\\n    </div>\\n  );\\n}"
+
+================================================================================
+LOADING PAGE:
+================================================================================
+
+"app/loading.tsx": "export default function Loading() {\\n  return (\\n    <div className=\\"min-h-screen flex items-center justify-center\\">\\n      <div className=\\"animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent\\"></div>\\n    </div>\\n  );\\n}"
+
+================================================================================
+NOT FOUND PAGE:
+================================================================================
+
+"app/not-found.tsx": "import Link from 'next/link';\\n\\nexport default function NotFound() {\\n  return (\\n    <div className=\\"min-h-screen flex items-center justify-center\\">\\n      <div className=\\"text-center space-y-4\\">\\n        <h1 className=\\"text-6xl font-bold text-purple-500\\">404</h1>\\n        <h2 className=\\"text-2xl font-semibold\\">Page Not Found</h2>\\n        <p className=\\"text-gray-400\\">The page you're looking for doesn't exist.</p>\\n        <Link\\n          href=\\"/\\"\\n          className=\\"inline-block px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors\\"\\n        >\\n          Return Home\\n        </Link>\\n      </div>\\n    </div>\\n  );\\n}"
+
+================================================================================
 BUTTON COMPONENT - WITH RELATIVE IMPORTS:
 ================================================================================
 
