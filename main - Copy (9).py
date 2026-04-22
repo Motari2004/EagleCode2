@@ -1816,6 +1816,7 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
+
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
     """Generate fully interactive HTML preview using AI"""
     try:
@@ -1923,263 +1924,102 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
             if href not in page_contents:
                 page_contents[href] = f'<div class="text-center py-20"><h1 class="text-5xl font-bold gradient-text">{label}</h1><p class="text-gray-400 mt-4">Explore our {label.lower()} collection.</p></div>'
 
+        # Global CSS
+        global_css = files.get("app/globals.css", "")[:2000]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         # Available images
         available_images = [f for f in files.keys() if f.startswith("public/images/")]
         image_paths = [f"/{f.replace('public/', '')}" for f in available_images]
 
-        # ========== IMPROVED IMAGE INSTRUCTION ==========
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # Build image instruction - STRICT
         image_instruction = ""
         if image_paths:
-            image_paths_list = '\n'.join([f'  - {path}' for path in image_paths])
             image_instruction = f"""
-🚨 CRITICAL - IMAGE USAGE RULES 🚨
+🚨 CRITICAL - IMAGE REQUIREMENT 🚨
+You MUST use ONLY these exact image paths. DO NOT use Unsplash, Pexels, or any external URLs.
 
-AVAILABLE IMAGES:
-{image_paths_list}
+AVAILABLE IMAGES (use these EXACT paths):
+{image_paths}
 
-RULES FOR HOME PAGE HERO:
-1. Use the FIRST image (image_1.jpg) as the FULL-SCREEN BACKGROUND in the hero section
-2. The image should cover the entire hero section with object-cover
-3. Add a DARK OVERLAY (bg-black/50 or bg-gradient-to-b from-black/70 to-black/50) over the image so text is readable
-4. DO NOT make the overlay too bright - keep it dark and subtle
+REQUIREMENTS:
+- Use src="/images/image_1.jpg" for the main hero image
+- Use src="/images/image_2.jpg" for secondary images
+- DO NOT generate any other image URLs
+- DO NOT use images.unsplash.com or any external domains
+-
 
-CORRECT HERO EXAMPLE:
-<section class="relative h-screen flex items-center justify-center overflow-hidden">
-  <img src="/images/image_1.jpg" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />
-  <div class="absolute inset-0 bg-black/60"></div>
-  <div class="relative z-10 text-center text-white px-4">
-    <h1 class="text-6xl font-bold">Title</h1>
-    <p class="text-xl mt-4">Description</p>
-  </div>
-</section>
+Example of CORRECT usage:
+<img src="/images/image_1.jpg" alt="Hero" class="w-full h-96 object-cover rounded-xl" />
 
-WRONG (NEVER DO):
-- Using Unsplash/Pexels URLs
-- Using image_2.jpg in hero (use only image_1.jpg)
-- Making overlay too bright or transparent
-- Placing image in cards or features sections
-
-For ALL OTHER SECTIONS (cards, features, testimonials):
-- DO NOT use images
-- Use gradient-card classes with icons from lucide-react or SVG
+Example of WRONG usage (NEVER do this):
+<img src="https://images.unsplash.com/..." />
 """
-        
-        # ========== SUBTLE GRADIENT STYLES (NOT TOO BRIGHT) ==========
-        gradient_styles = """
-<style>
-    /* ========== SUBTLE GRADIENT BACKGROUNDS (NOT TOO BRIGHT) ========== */
-    
-    /* Main body - Dark subtle mesh gradient */
-    .gradient-mesh {
-        background: 
-            radial-gradient(circle at 20% 30%, rgba(88, 28, 135, 0.15) 0%, transparent 40%),
-            radial-gradient(circle at 80% 70%, rgba(219, 39, 119, 0.1) 0%, transparent 40%),
-            linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%);
-        min-height: 100vh;
-    }
-    
-    /* Subtle card gradient - dark and elegant */
-    .gradient-card {
-        background: linear-gradient(135deg, rgba(30, 27, 46, 0.8) 0%, rgba(20, 20, 35, 0.9) 100%);
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(139, 92, 246, 0.15);
-        transition: all 0.3s ease;
-    }
-    
-    .gradient-card:hover {
-        border-color: rgba(139, 92, 246, 0.3);
-        background: linear-gradient(135deg, rgba(40, 35, 60, 0.9) 0%, rgba(30, 30, 45, 0.95) 100%);
-        transform: translateY(-3px);
-    }
-    
-    /* Subtle gradient text - not too flashy */
-    .gradient-text {
-        background: linear-gradient(135deg, #c084fc 0%, #e879f9 50%, #f472b6 100%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-    }
-    
-    /* Navbar - solid dark, no hover effects */
-    nav {
-        background: rgba(10, 10, 18, 0.95);
-        backdrop-filter: blur(8px);
-        border-bottom: 1px solid rgba(139, 92, 246, 0.15);
-        position: relative;
-        width: 100%;
-        z-index: 100;
-    }
-    
-    /* Nav links - simple, no hover effects */
-    .nav-link {
-        color: #a1a1aa;
-        text-decoration: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        transition: none;
-        cursor: pointer;
-    }
-    
-    .nav-link.active {
-        color: #c084fc;
-    }
-    
-    /* Footer - solid dark, no hover effects */
-    footer {
-        background: rgba(10, 10, 18, 0.95);
-        border-top: 1px solid rgba(139, 92, 246, 0.1);
-        margin-top: 4rem;
-        padding: 2rem 0;
-    }
-    
-    /* Button gradient - subtle */
-    .gradient-neon {
-        background: linear-gradient(90deg, #7c3aed, #db2777);
-        transition: opacity 0.2s ease;
-    }
-    
-    .gradient-neon:hover {
-        opacity: 0.9;
-        transform: none;
-        box-shadow: none;
-    }
-    
-    /* Page transitions */
-    .page {
-        display: none;
-        animation: fadeIn 0.25s ease;
-    }
-    
-    .page.active {
-        display: block;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(8px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    /* Custom scrollbar - subtle */
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #1a1a2e;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: #4c1d95;
-        border-radius: 3px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: #6d28d9;
-    }
-    
-    /* Selection color */
-    ::selection {
-        background: #7c3aed;
-        color: white;
-    }
-    
-    /* Smooth scroll */
-    html {
-        scroll-behavior: smooth;
-    }
-    
-    /* Mobile menu */
-    .hamburger {
-        display: none;
-        flex-direction: column;
-        cursor: pointer;
-        padding: 0.5rem;
-        background: transparent;
-        border: none;
-        z-index: 101;
-    }
-    
-    .hamburger span {
-        width: 24px;
-        height: 2px;
-        background: #a1a1aa;
-        margin: 3px 0;
-        transition: 0.3s;
-        border-radius: 2px;
-    }
-    
-    .mobile-menu {
-        position: fixed;
-        top: 0;
-        right: -280px;
-        width: 280px;
-        height: 100vh;
-        background: rgba(10, 10, 18, 0.98);
-        backdrop-filter: blur(12px);
-        border-left: 1px solid rgba(139, 92, 246, 0.15);
-        z-index: 99;
-        transition: right 0.3s ease;
-        padding: 80px 24px 24px 24px;
-    }
-    
-    .mobile-menu.active {
-        right: 0;
-    }
-    
-    .mobile-nav-link {
-        display: block;
-        padding: 12px 16px;
-        color: #a1a1aa;
-        text-decoration: none;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        margin-bottom: 8px;
-    }
-    
-    .mobile-nav-link.active {
-        color: #c084fc;
-        background: rgba(124, 58, 237, 0.1);
-    }
-    
-    .mobile-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 98;
-        display: none;
-    }
-    
-    .mobile-overlay.active {
-        display: block;
-    }
-    
-    @media (max-width: 768px) {
-        .nav-links {
-            display: none;
-        }
-        .hamburger {
-            display: flex;
-        }
-    }
-    
-    .container {
-        max-width: 1280px;
-        margin: 0 auto;
-        padding: 0 1.5rem;
-    }
-    
-    @media (max-width: 640px) {
-        .container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-    }
-</style>
-"""
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # ========== LET AI GENERATE PREVIEW ==========
         prompt = f"""You are an expert frontend developer. Create a STUNNING, MODERN, FULLY INTERACTIVE standalone HTML preview.
@@ -2194,69 +2034,70 @@ PAGE CONTENTS (use EXACTLY these):
 {image_instruction}
 
 DESIGN REQUIREMENTS:
+- **NORMAL SCROLLING NAVIGATION BAR** - The navbar scrolls away with the page (NOT sticky, NOT fixed)
+- Regular navigation bar at the top (position: relative, NOT fixed)
+- Brand name on left (clickable, goes to home)
+- Navigation links on right
+- Home page visible by default
+- Smooth page transitions
+- Dark theme with purple-pink gradients
+- Mobile responsive with hamburger menu
+- Click to other pages work
 
-1. **HERO SECTION WITH IMAGE BACKGROUND**:
-   - Use image_1.jpg as FULL-SCREEN background in hero
-   - Add dark overlay (bg-black/60) over image for text readability
-   - Text should be white with gradient-text for headings
-   - NO gradient orbs or bright effects in hero
 
-2. **NAVBAR (NO HOVER EFFECTS)**:
-   - Solid dark background (not gradient)
-   - No hover effects on links
-   - Simple, clean, professional
-   - Position: relative (not sticky/fixed)
-   - Brand on left, links on right
 
-3. **FOOTER (NO HOVER EFFECTS)**:
-   - Solid dark background
-   - No hover effects on links
-   - Simple copyright and links
-   - Same footer on all pages
 
-4. **GRADIENTS (SUBTLE, NOT BRIGHT)**:
-   - Use gradient-text for headings only
-   - Use gradient-card for cards (dark, subtle)
-   - NO bright neon effects
-   - NO floating orbs or animations
-   - Keep it elegant and professional
 
-5. **MOBILE RESPONSIVE**:
-   - Hamburger menu on mobile
-   - Menu slides from right
-   - Click outside to close
 
-6. **PAGE NAVIGATION**:
-   - Clicking links switches pages smoothly
-   - Home page visible by default
-   - Use the exact page contents provided
 
-7. **NO INVENTED CONTENT**:
-   - Use ONLY the page contents provided
-   - DO NOT add fake taglines or marketing text
+
+
+
+🚨 FOOTER (REQUIRED ON EVERY PAGE):
+- Footer.tsx component MUST be imported and used on ALL pages
+- Footer appears at the bottom of every page
+- Contains: Quick links, Contact info, Social media, Copyright
+- Same footer across all pages (consistent)
+
+PAGE STRUCTURE:
+- Home page visible by default
+- Smooth page transitions between routes
+- Dark theme with purple-pink gradients throughout
+
+
+
+
+
+
+
+
+🚨🚨🚨 CRITICAL - NO INVENTED CONTENT 🚨🚨🚨
+The HTML preview is for TESTING ONLY. The actual Vercel deployment will use the Next.js files.
+DO NOT add invented taglines, fake brand names, or marketing text like:
+- "Sanctuary Design"
+- "Crafting high-end digital experiences"
+- "neon-infused aesthetics"
+- "precision design"
+- Any text NOT present in the PAGE CONTENTS above
+
+
+
+The home page content MUST come ONLY from the PAGE CONTENTS provided.
+If the user didn't specify a tagline, DO NOT invent one.
+
+
+
+
+
 
 Return ONLY complete HTML. No explanations."""
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.2, "max_output_tokens": 28000}
+            config={"temperature": 0.2, "max_output_tokens": 48000}
         )
 
         preview_html = clean_html_response(response_text)
-
-        # ========== INJECT GRADIENT STYLES ==========
-        if '<style>' in preview_html:
-            preview_html = preview_html.replace('<style>', gradient_styles + '<style>')
-        elif '</head>' in preview_html:
-            preview_html = preview_html.replace('</head>', gradient_styles + '</head>')
-        else:
-            preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{gradient_styles}</head>')
-
-        # ========== ENSURE BODY HAS GRADIENT CLASS ==========
-        if 'class="' in preview_html and 'body' in preview_html.lower():
-            preview_html = preview_html.replace('<body', '<body class="gradient-mesh"')
-        else:
-            preview_html = preview_html.replace('<body>', '<body class="gradient-mesh">')
 
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
@@ -2274,8 +2115,30 @@ Return ONLY complete HTML. No explanations."""
             raw_b64 = content[len("__binary_base64__"):]
             data_uri = f"data:image/jpeg;base64,{raw_b64}"
             
-            preview_html = re.sub(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
-            preview_html = re.sub(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
+            count = 0
+            preview_html, cnt = re.subn(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
+            count += cnt
+            preview_html, cnt = re.subn(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
+            count += cnt
+            preview_html, cnt = re.subn(public_path, data_uri, preview_html)
+            count += cnt
+            
+            if count > 0:
+                print(f"  ✅ Injected {public_path} ({count} references)")
+            else:
+                print(f"  ⚠️ No references found for {public_path}")
+
+
+
+
+
+
+
+
+
+
+        # ========== NO SPACING INJECTION NEEDED - Navbar is NOT fixed ==========
+        # The navbar scrolls normally with the page, so no padding-top required
         
         print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
@@ -2285,270 +2148,63 @@ Return ONLY complete HTML. No explanations."""
         import traceback
         traceback.print_exc()
 
-        # Clean fallback with image background support
+        # Use .format() instead of f-string to avoid backslash issues
         fallback_template = """<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{project_name}</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        body {{ 
+            background: radial-gradient(ellipse at top, #0a0212, #1a052a); 
+            color: #e2e8f0; 
+            font-family: 'Inter', sans-serif; 
         }}
-        
-        body {{
-            font-family: 'Inter', sans-serif;
-            background: #0a0a0f;
-            color: #e4e4e7;
-            min-height: 100vh;
+        .gradient-text {{ 
+            background: linear-gradient(135deg, #a855f7, #ec4899); 
+            -webkit-background-clip: text; 
+            background-clip: text; 
+            color: transparent; 
         }}
-        
-        .gradient-text {{
-            background: linear-gradient(135deg, #c084fc, #e879f9, #f472b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
+        .page {{ display: none; animation: fadeIn 0.3s ease; }}
+        .page.active {{ display: block; }}
+        @keyframes fadeIn {{ 
+            from {{ opacity: 0; transform: translateY(10px); }} 
+            to {{ opacity: 1; transform: translateY(0); }} 
         }}
-        
-        .gradient-card {{
-            background: rgba(30, 27, 46, 0.8);
-            border: 1px solid rgba(139, 92, 246, 0.15);
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            transition: all 0.2s ease;
-        }}
-        
-        .gradient-card:hover {{
-            border-color: rgba(139, 92, 246, 0.3);
-            background: rgba(40, 35, 60, 0.9);
-        }}
-        
+        /* Normal scrolling navbar - NOT fixed */
         nav {{
-            background: rgba(10, 10, 18, 0.95);
-            border-bottom: 1px solid rgba(139, 92, 246, 0.15);
-            position: relative;
-            width: 100%;
-            z-index: 100;
-        }}
-        
-        .nav-link {{
-            color: #a1a1aa;
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            cursor: pointer;
-        }}
-        
-        .nav-link.active {{
-            color: #c084fc;
-        }}
-        
-        footer {{
-            background: rgba(10, 10, 18, 0.95);
-            border-top: 1px solid rgba(139, 92, 246, 0.1);
-            margin-top: 4rem;
-            padding: 2rem 0;
-        }}
-        
-        .page {{
-            display: none;
-            animation: fadeIn 0.25s ease;
-        }}
-        
-        .page.active {{
-            display: block;
-        }}
-        
-        @keyframes fadeIn {{
-            from {{ opacity: 0; transform: translateY(8px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
-        }}
-        
-        .hamburger {{
-            display: none;
-            flex-direction: column;
-            cursor: pointer;
-            padding: 0.5rem;
-            background: transparent;
-            border: none;
-            z-index: 101;
-        }}
-        
-        .hamburger span {{
-            width: 24px;
-            height: 2px;
-            background: #a1a1aa;
-            margin: 3px 0;
-            transition: 0.3s;
-            border-radius: 2px;
-        }}
-        
-        .mobile-menu {{
-            position: fixed;
-            top: 0;
-            right: -280px;
-            width: 280px;
-            height: 100vh;
-            background: rgba(10, 10, 18, 0.98);
+            background: rgba(0,0,0,0.8);
             backdrop-filter: blur(12px);
-            border-left: 1px solid rgba(139, 92, 246, 0.15);
-            z-index: 99;
-            transition: right 0.3s ease;
-            padding: 80px 24px 24px 24px;
-        }}
-        
-        .mobile-menu.active {{
-            right: 0;
-        }}
-        
-        .mobile-nav-link {{
-            display: block;
-            padding: 12px 16px;
-            color: #a1a1aa;
-            text-decoration: none;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            margin-bottom: 8px;
-        }}
-        
-        .mobile-nav-link.active {{
-            color: #c084fc;
-            background: rgba(124, 58, 237, 0.1);
-        }}
-        
-        .mobile-overlay {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 98;
-            display: none;
-        }}
-        
-        .mobile-overlay.active {{
-            display: block;
-        }}
-        
-        @media (max-width: 768px) {{
-            .nav-links {{
-                display: none;
-            }}
-            .hamburger {{
-                display: flex;
-            }}
-        }}
-        
-        .container {{
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 0 1.5rem;
-        }}
-        
-        @media (max-width: 640px) {{
-            .container {{
-                padding-left: 1rem;
-                padding-right: 1rem;
-            }}
-        }}
-        
-        .hero-image {{
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }}
-        
-        .hero-overlay {{
-            position: absolute;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.6);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }}
     </style>
 </head>
 <body>
-    <nav>
-        <div class="container">
-            <div class="flex justify-between items-center py-4">
-                <div class="text-xl font-bold gradient-text cursor-pointer" onclick="showPage('/')">{brand_name}</div>
-                
-                <div class="nav-links" id="desktopNav">
-                    <a class="nav-link active" onclick="showPage('/')">Home</a>
-                </div>
-                
-                <button class="hamburger" id="hamburgerBtn">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </button>
+    <nav class="py-4">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center">
+                <div class="text-2xl font-bold gradient-text cursor-pointer" onclick="showPage('/')">{brand_name}</div>
             </div>
         </div>
     </nav>
-    
-    <div class="mobile-overlay" id="mobileOverlay"></div>
-    <div class="mobile-menu" id="mobileMenu">
-        <a class="mobile-nav-link active" onclick="showPage('/'); closeMobileMenu()">Home</a>
-    </div>
-    
     <div class="min-h-screen">
         <div id="page_home" class="page active">
-            <section class="relative h-screen flex items-center justify-center overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1600" alt="Hero" class="hero-image">
-                <div class="hero-overlay"></div>
-                <div class="relative z-10 text-center px-4">
-                    <h1 class="text-5xl md:text-7xl font-bold gradient-text mb-4">{brand_name}</h1>
-                    <p class="text-lg text-gray-300 max-w-2xl mx-auto">Welcome to our digital space</p>
-                </div>
-            </section>
-        </div>
-    </div>
-    
-    <footer>
-        <div class="container">
-            <div class="text-center text-gray-500 text-sm">
-                © 2024 {brand_name}. All rights reserved.
+            <div class="container mx-auto px-4 py-20 text-center">
+                <h1 class="text-6xl font-bold gradient-text">{brand_name}</h1>
+                <p class="text-gray-400 mt-4">Welcome to EagleCode</p>
             </div>
         </div>
-    </footer>
-    
+    </div>
     <script>
-        const pages = {{ '/': 'page_home' }};
-        
-        function showPage(path) {{
-            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-            const pageId = pages[path];
-            if (pageId) document.getElementById(pageId)?.classList.add('active');
-            window.history.pushState({{}}, '', path);
+        function showPage(p) {{
+            document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+            document.getElementById('page_home')?.classList.add('active');
+            window.history.pushState({{}}, '', p);
         }}
-        
-        function openMobileMenu() {{
-            document.getElementById('mobileMenu').classList.add('active');
-            document.getElementById('mobileOverlay').classList.add('active');
-        }}
-        
-        function closeMobileMenu() {{
-            document.getElementById('mobileMenu').classList.remove('active');
-            document.getElementById('mobileOverlay').classList.remove('active');
-        }}
-        
-        document.getElementById('hamburgerBtn').addEventListener('click', () => {{
-            if (document.getElementById('mobileMenu').classList.contains('active')) {{
-                closeMobileMenu();
-            }} else {{
-                openMobileMenu();
-            }}
-        }});
-        
-        document.getElementById('mobileOverlay').addEventListener('click', closeMobileMenu);
-        window.addEventListener('popstate', () => showPage(window.location.pathname));
-        showPage(window.location.pathname);
     </script>
 </body>
 </html>"""
