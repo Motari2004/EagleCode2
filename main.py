@@ -2861,6 +2861,55 @@ MASTER_BUILD_PROMPT = """You are a Senior Full-Stack Architect and UI/UX Designe
 
 Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object based on the user's request.
 
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: HOME PAGE HERO BACKGROUND - ALWAYS USE IMAGE 🚨
+================================================================================
+
+When generating `app/page.tsx`, you MUST follow these rules:
+
+1. **HERO BACKGROUND**: ALWAYS use `/images/image_1.jpg` as the full-screen background image
+
+2. **STRUCTURE** - Use this EXACT pattern:
+```tsx
+<section className="relative h-screen flex items-center justify-center overflow-hidden">
+  {/* Background Image */}
+  <img 
+    src="/images/image_1.jpg" 
+    alt="Hero background" 
+    className="absolute inset-0 w-full h-full object-cover" 
+  />
+  {/* Dark Overlay for text readability */}
+  <div className="absolute inset-0 bg-black/50" />
+  
+  {/* Content */}
+  <div className="relative z-10 text-center px-4">
+    <h1 className="text-6xl md:text-7xl font-bold text-white mb-6">[Brand Name]</h1>
+    <p className="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[Tagline here]</p>
+    <Link 
+      href="/[first-nav-link]" 
+      className="inline-block px-8 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold hover:from-purple-700 hover:to-pink-700 transition-all"
+    >
+      [CTA Button Text]
+    </Link>
+  </div>
+</section>
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 CRITICAL SITE STRUCTURE & NAVIGATION
 ================================================================================
@@ -3234,7 +3283,7 @@ Also import and include the Footer in app/layout.tsx so it appears consistently 
 
 
 ================================================================================
-🚨 IMAGE USAGE RULE - ONLY 1 IMAGE TOTAL (HERO ONLY) 🚨
+🚨 IMAGE USAGE RULE - ONLY 1 IMAGE TOTAL (HERO ONLY) 🚨(hero is app/page.tsx)
 ================================================================================
 
 IMAGES AVAILABLE: image_1.jpg ONLY (1 image total)
