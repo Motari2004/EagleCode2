@@ -58,6 +58,9 @@ used_names.json
 *.pyo
 *.pyd
 
+
+previews/
+
 # Next.js (if any)
 .next/
 out/
