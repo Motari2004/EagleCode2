@@ -159,7 +159,7 @@ class SmartLoadBalancer:
         
         self.models = [
             os.environ.get("MODEL_PRIMARY", "gemini-flash-lite-latest"),
-            os.environ.get("MODEL_SECONDARY", "gemini-2.5-flash-lite"), 
+            os.environ.get("MODEL_SECONDARY", "gemini-2.5-flash-lite-"), 
             
         ]
         
@@ -2042,6 +2042,7 @@ DESIGN REQUIREMENTS:
 - Smooth page transitions
 - Dark theme with purple-pink gradients
 - Mobile responsive with hamburger menu
+-Click to other pages work
 
 
 
@@ -2087,7 +2088,7 @@ Return ONLY complete HTML. No explanations."""
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.15, "max_output_tokens": 48000}
+            config={"temperature": 0.25, "max_output_tokens": 48000}
         )
 
         preview_html = clean_html_response(response_text)
@@ -3903,11 +3904,10 @@ DYNAMIC CONTENT GENERATION - CREATE UNIQUE PAGES FOR EACH REQUEST:
 **Generate UNIQUE, CREATIVE names based on the specific project:**
 
 For SCHOOL websites:
-- Instead of "Programs" → Use: "Academics", "Courses", "Learning Paths", "Curriculum", "Majors", "Studies"
-- Instead of "Admissions" → Use: "Apply", "Join Us", "Enrollment", "Be a Student", "Get Started"
-- Instead of "Faculty" → Use: "Our Teachers", "Staff", "Mentors", "Instructors", "Academic Team"
-- Instead of "Events" → Use: "Calendar", "Activities", "Announcements", "School Life", "News & Events"
-- Instead of "Contact" → Use: "Visit Us", "Get in Touch", "Reach Out", "Connect"
+- "Admissions" → Use: "Apply", "Join Us", "Enrollment", "Be a Student", "Get Started"
+- "Faculty" → Use: "Our Teachers", "Staff", "Mentors", "Instructors", "Academic Team"
+-  "Events" → Use: "Calendar", "Activities", "Announcements", "School Life", "News & Events"
+-  "Contact" → Use: "Visit Us", "Get in Touch", "Reach Out", "Connect"
 
 For HOTEL websites:
 - Instead of "Rooms" → Use: "Suites", "Accommodations", "Stays", "Lodging", "Guest Rooms"
@@ -9196,6 +9196,34 @@ async def test_all_keys():
 @app.get("/api/key-stats")
 async def get_key_stats():
     return model_router.get_stats()
+
+
+
+
+
+
+
+# ========== KEEP ALIVE ENDPOINTS (For external uptime monitoring) ==========
+
+@app.get("/api/keep-alive")
+async def keep_alive():
+    """Simple endpoint to keep the service awake on Render"""
+    return {
+        "status": "alive",
+        "timestamp": datetime.now().isoformat(),
+        "message": "Service is running"
+    }
+
+@app.get("/api/ping")
+async def ping():
+    """Ultra-simple ping endpoint for uptime monitoring"""
+    return {"pong": True, "timestamp": datetime.now().isoformat()}
+
+
+
+
+
+
 
 
 
