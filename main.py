@@ -135,6 +135,12 @@ class KeyStats:
         if self.rate_limit_reset is None:
             self.rate_limit_reset = datetime.now()
 
+
+
+
+
+
+
 class SmartLoadBalancer:
     """Intelligent load balancer for multiple API keys with weighted random selection"""
     
@@ -378,7 +384,7 @@ class SmartLoadBalancer:
                     last_error = e
                     
                     if "429" in error_msg or "quota" in error_msg.lower():
-                        break
+                        print(f"🚫 Key {key_index + 1} | Model {model} quota exceeded, trying next model...")
                     
                     continue
         
@@ -442,7 +448,7 @@ class SmartLoadBalancer:
                     last_error = e
                     
                     if "429" in error_msg or "quota" in error_msg.lower():
-                        break
+                        print(f"🚫 Key {key_index + 1} | Model {model} quota exceeded, trying next model...")
                     
                     continue
         
@@ -1808,17 +1814,6 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
-
-
-
-
-
-
-
-import re
-import json
-from typing import Dict, Any
-
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
     """Generate fully interactive HTML preview using AI"""
     try:
@@ -1832,843 +1827,677 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     nav_content = content
                     break
 
+        # Extract brand and navigation links
         brand_name = project_name
         nav_links = []
-
+        
         if nav_content:
-            # Extract brand name - try multiple patterns
-            for pattern in [
-                r'<span[^>]*>([^<]{2,40})</span>',
-                r'className=["\'][^"\']*font-bold[^"\']*["\'][^>]*>([^<]{2,40})<',
-                r'<Link[^>]*href="/"[^>]*>(?:[^<]*<[^>]+>)?([^<]{2,40})',
-            ]:
-                m = re.search(pattern, nav_content)
-                if m:
-                    candidate = m.group(1).strip()
-                    if 2 < len(candidate) < 50 and candidate != brand_name:
-                        brand_name = candidate
-                        break
-
-            # Extract nav links
-            link_pattern = r'<Link\s+href="/([^"]+)"[^>]*>\s*([^<]{1,30})\s*</Link>'
-            for href, text in re.findall(link_pattern, nav_content):
-                text = text.strip()
-                if href and href != "/" and text and text != brand_name and len(text) < 30:
-                    nav_links.append((href, text))
-
+            brand_match = re.search(r'<Link[^>]*href="/"[^>]*>.*?<[^>]+>([^<]+)</', nav_content, re.DOTALL)
+            if brand_match:
+                brand_name = brand_match.group(1).strip()
+            
+            link_pattern = r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>'
+            nav_links = [(href, text.strip()) for href, text in re.findall(link_pattern, nav_content) 
+                        if href != "/" and text.strip() and text.strip() != brand_name]
+        
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
-        # ========== CONTENT EXTRACTION ==========
-        def clean_jsx_to_html(jsx: str) -> str:
-            """Convert JSX content to clean HTML"""
-
-            # Expand .map() loops with data arrays
-            def expand_data_map(content: str) -> str:
-                # Pattern: array of objects .map(item => (...))
-                obj_pattern = r'\{(\[[^\]]{20,}\])\s*\.map\(\(?(\w+)(?:,\s*\w+)?\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}'
-                def replace_obj_map(match):
-                    try:
-                        array_str = match.group(1)
-                        var_name = match.group(2)
-                        template = match.group(3)
-                        # Parse simple object arrays
-                        items = re.findall(r'\{([^{}]+)\}', array_str)
-                        if not items:
-                            return match.group(0)
-                        result = ""
-                        for item_str in items[:8]:  # max 8 items
-                            item_html = template
-                            # Replace {varName.property} with actual values
-                            props = dict(re.findall(r'(\w+):\s*["\']?([^,\'"}\n]+)["\']?', item_str))
-                            for prop, val in props.items():
-                                val = val.strip().strip('"\'')
-                                item_html = re.sub(rf'\{{{var_name}\.{prop}\}}', val, item_html)
-                                item_html = re.sub(rf'\{{ {var_name}\.{prop} \}}', val, item_html)
-                            # Remove remaining JSX expressions
-                            item_html = re.sub(r'\{[^{}]{0,100}\}', '', item_html)
-                            result += item_html
-                        return result
-                    except Exception:
-                        return match.group(0)
-                content = re.sub(obj_pattern, replace_obj_map, content, flags=re.DOTALL)
-
-                # Pattern: simple array [1,2,3] or ['a','b'] .map
-                simple_pattern = r'\{\[([^\]]{1,200})\]\s*\.map\(\(?(\w+)(?:,\s*\w+)?\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}'
-                def replace_simple_map(match):
-                    array_expr = match.group(1)
-                    var_name = match.group(2)
-                    template = match.group(3)
-                    items = [x.strip().strip('"\'') for x in array_expr.split(',') if x.strip()]
-                    if not items:
-                        return match.group(0)
-                    result = ""
-                    for idx, item in enumerate(items[:8]):
-                        item_html = template
-                        item_num = item if item.isdigit() else str(idx + 1)
-                        item_html = re.sub(rf'\{{{var_name}\}}', item, item_html)
-                        item_html = re.sub(rf'\{{ {var_name} \}}', item, item_html)
-                        item_html = item_html.replace('{i}', item_num)
-                        item_html = item_html.replace('{idx}', str(idx))
-                        item_html = item_html.replace('{index}', str(idx))
-                        item_html = re.sub(r'\{[^{}]{0,100}\}', '', item_html)
-                        result += item_html
-                    return result
-                content = re.sub(simple_pattern, replace_simple_map, content, flags=re.DOTALL)
-                return content
-
-            # Expand all map loops
-            jsx = expand_data_map(jsx)
-
-            # Remove imports and exports
-            jsx = re.sub(r"'use client'[\s;]*", '', jsx)
-            jsx = re.sub(r'import\s+.*?from\s+["\'][^"\']+["\'];?\n?', '', jsx, flags=re.DOTALL)
-            jsx = re.sub(r'export\s+default\s+function\s+\w+[^{]*\{', '', jsx)
-            jsx = re.sub(r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{', '', jsx)
-            jsx = re.sub(r'const\s+\w+\s*[:=][^;{]{0,100}[;{]\n?', '', jsx)
-
-            # Extract return statement content
-            return_match = re.search(r'return\s*\(\s*([\s\S]+?)\s*\)\s*;?\s*\}?\s*$', jsx, re.DOTALL)
-            if return_match:
-                jsx = return_match.group(1)
-
-            # Fix React/JSX specific patterns
-            jsx = jsx.replace('className=', 'class=')
-            jsx = jsx.replace('htmlFor=', 'for=')
-            jsx = re.sub(r'\bkey=\{[^}]+\}', '', jsx)
-            jsx = re.sub(r'\bkey="[^"]*"', '', jsx)
-            jsx = re.sub(r'\bonClick=\{[^}]+\}', '', jsx)
-            jsx = re.sub(r'\bonChange=\{[^}]+\}', '', jsx)
-            jsx = re.sub(r'\bonSubmit=\{[^}]+\}', '', jsx)
-
-            # Fix self-closing tags
-            jsx = re.sub(r'<(br|hr|input|img|meta|link)([^>]*?)(?<!/)>', r'<\1\2 />', jsx)
-
-            # Replace Next.js Link with anchor
-            jsx = re.sub(r'<Link\s+href="([^"]+)"([^>]*)>', r'<a href="\1"\2>', jsx)
-            jsx = re.sub(r'</Link>', '</a>', jsx)
-
-            # Replace Next.js Image with img
-            jsx = re.sub(r'<Image\s+src="([^"]+)"\s+alt="([^"]*)"[^/]*/>', r'<img src="\1" alt="\2" />', jsx)
-
-            # Fix SVG paths (strokeLinecap, strokeLinejoin, etc.)
-            jsx = jsx.replace('strokeLinecap=', 'stroke-linecap=')
-            jsx = jsx.replace('strokeLinejoin=', 'stroke-linejoin=')
-            jsx = jsx.replace('strokeWidth=', 'stroke-width=')
-            jsx = jsx.replace('fillRule=', 'fill-rule=')
-            jsx = jsx.replace('clipRule=', 'clip-rule=')
-            jsx = jsx.replace('viewBox=', 'viewBox=')
-
-            # Remove remaining JSX expressions but preserve text content
-            jsx = re.sub(r'\{/\*[\s\S]*?\*/\}', '', jsx)  # JSX comments
-            jsx = re.sub(r'\{`[^`]*`\}', '', jsx)  # template literals
-            jsx = re.sub(r'\{[^{}]{0,200}\}', '', jsx)  # remaining expressions
-
-            # Clean up excessive whitespace
-            jsx = re.sub(r'\n{3,}', '\n\n', jsx)
-            jsx = re.sub(r'  +', ' ', jsx)
-
-            return jsx.strip()
-
-        # ========== PROCESS ALL PAGES ==========
-        page_contents = {}
-
-        for file_path, content in files.items():
-            if not file_path.endswith(("page.tsx", "page.jsx")):
-                continue
-            if not isinstance(content, str):
-                continue
-
-            route = (file_path
-                     .replace("app/", "")
-                     .replace("/page.tsx", "")
-                     .replace("/page.jsx", "")
-                     .strip("/"))
-            route_key = route or "home"
-
-            cleaned = clean_jsx_to_html(content)
-            page_contents[route_key] = cleaned
-            print(f"📄 {route_key}: {len(cleaned)} chars extracted")
-
-        # ========== EXTRACT FOOTER ==========
+        # ========== COLLECT FOOTER CONTENT ==========
         footer_html = ""
-        footer_content = files.get("components/Footer.tsx", "")
-        if footer_content and isinstance(footer_content, str):
-            footer_html = clean_jsx_to_html(footer_content)
-            # Keep only the footer element
-            footer_match = re.search(r'(<footer[\s\S]*?</footer>)', footer_html, re.DOTALL)
-            if footer_match:
-                footer_html = footer_match.group(1)
-            print(f"✅ Footer extracted: {len(footer_html)} chars")
+        for fp, content in files.items():
+            if "Footer" in fp and fp.endswith((".tsx", ".jsx")):
+                print(f"📄 Found Footer: {fp}")
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', content, re.DOTALL)
+                if match:
+                    footer_html = match.group(1)
+                    footer_html = re.sub(r'className=', 'class=', footer_html)
+                    footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1" class="cursor-pointer">', footer_html)
+                    footer_html = re.sub(r'</Link>', r'</a>', footer_html)
+                    footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
+                    footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
+                    footer_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', footer_html)
+                    print(f"📄 Extracted Footer HTML: {len(footer_html)} chars")
+                else:
+                    match = re.search(r'<footer[\s\S]*?</footer>', content, re.DOTALL)
+                    if match:
+                        footer_html = match.group(0)
+                        footer_html = re.sub(r'className=', 'class=', footer_html)
+                        print(f"📄 Extracted Footer from tags: {len(footer_html)} chars")
+                break
 
-        # Fallback footer
         if not footer_html:
-            footer_html = f'''<footer style="background:rgba(10,10,18,0.95);border-top:1px solid rgba(139,92,246,0.15);padding:2rem 0;margin-top:4rem;">
-                <div class="container" style="text-align:center;color:#71717a;font-size:0.875rem;">
-                    © 2025 {brand_name}. All rights reserved. · Crafted in Nairobi 🇰🇪
+            footer_html = f'''
+            <footer class="bg-zinc-900/50 border-t border-white/10 py-8 mt-16">
+                <div class="container mx-auto px-4 text-center">
+                    <p class="text-gray-500 text-sm">© 2024 {brand_name}. All rights reserved.</p>
                 </div>
-            </footer>'''
+            </footer>
+            '''
+            print("⚠️ No Footer found, using simple fallback")
 
-        # Ensure home page exists
-        if "home" not in page_contents:
-            page_contents["home"] = f'''
-                <section style="min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem;">
-                    <div>
-                        <h1 style="font-size:clamp(2.5rem,8vw,5rem);font-weight:900;" class="gradient-text">{brand_name}</h1>
-                        <p style="color:#a1a1aa;margin-top:1rem;font-size:1.125rem;">Welcome to our digital space.</p>
-                    </div>
-                </section>'''
+        # ========== PARSE ARRAY ITEMS HELPER ==========
+        def parse_array_items(array_body: str) -> List[Dict]:
+            """Parse array items from a string into list of dicts"""
+            items = []
+            
+            depth = 0
+            current_obj = ""
+            in_string = False
+            escape_next = False
+            
+            for char in array_body:
+                if escape_next:
+                    current_obj += char
+                    escape_next = False
+                    continue
+                
+                if char == '\\':
+                    escape_next = True
+                    current_obj += char
+                    continue
+                
+                if char == '"' or char == "'":
+                    in_string = not in_string
+                    current_obj += char
+                    continue
+                
+                if not in_string:
+                    if char == '{':
+                        if depth == 0:
+                            current_obj = ""
+                        depth += 1
+                        current_obj += char
+                    elif char == '}':
+                        depth -= 1
+                        current_obj += char
+                        if depth == 0:
+                            item = {}
+                            kv_pattern = r'(\w+):\s*["\']([^"\']+)["\']'
+                            for kv in re.finditer(kv_pattern, current_obj):
+                                item[kv.group(1)] = kv.group(2)
+                            kv_pattern2 = r'(\w+):\s*(\d+|true|false)'
+                            for kv in re.finditer(kv_pattern2, current_obj):
+                                item[kv.group(1)] = kv.group(2)
+                            if item:
+                                items.append(item)
+                                print(f"  📍 Parsed item: {item}")
+                            current_obj = ""
+                    else:
+                        current_obj += char
+                else:
+                    current_obj += char
+            
+            return items
 
-        # Add missing nav pages
+        def parse_simple_array(array_body: str) -> List[str]:
+            """Parse simple array values (strings, numbers)"""
+            items = []
+            # Remove brackets and split by comma
+            # Handle quoted strings
+            pattern = r'["\']([^"\']+)["\']|\b(\d+)\b'
+            for match in re.finditer(pattern, array_body):
+                value = match.group(1) or match.group(2)
+                if value:
+                    items.append(value)
+            return items
+
+        # ========== EXPAND MAP LOOPS (SUPPORTS ALL FORMS) ==========
+        def expand_all_map_loops(jsx: str, full_content: str = "") -> str:
+            """Expand ALL map loops - handles inline, named, and arrays inside component"""
+            
+            # Step 1: Extract ALL arrays from full content (including inside component)
+            arrays = {}
+            
+            # Pattern for const array = [ ... ]; (inside or outside component)
+            const_pattern = r'const\s+(\w+)\s*=\s*\[([\s\S]*?)\];'
+            
+            for match in re.finditer(const_pattern, full_content):
+                array_name = match.group(1)
+                array_body = match.group(2)
+                
+                # Try to parse as objects first
+                items = parse_array_items(array_body)
+                
+                # If no objects, try simple values
+                if not items:
+                    simple_items = parse_simple_array(array_body)
+                    if simple_items:
+                        items = simple_items
+                        print(f"📦 Found simple named array '{array_name}' with {len(items)} items: {items}")
+                
+                if items:
+                    arrays[array_name] = items
+                    print(f"📦 Found named array '{array_name}' with {len(items)} items")
+            
+            # Step 2: Remove array definitions from JSX
+            for match in re.finditer(const_pattern, full_content):
+                jsx = jsx.replace(match.group(0), '')
+            
+            # Step 3: Handle inline arrays {[ ... ].map(...)}
+            inline_pattern = r'\{\[([\s\S]*?)\]\s*\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}'
+            
+            def replace_inline(match):
+                array_body = match.group(1)
+                var_name = match.group(2).strip('()')
+                template = match.group(3)
+                
+                print(f"  🔍 Inline map - var_name: '{var_name}'")
+                
+                # Try to parse as objects first
+                items = parse_array_items(array_body)
+                
+                # If no objects, try simple values
+                if not items:
+                    items = parse_simple_array(array_body)
+                
+                if not items:
+                    return match.group(0)
+                
+                result = ""
+                for idx, item in enumerate(items):
+                    item_html = template
+                    
+                    if isinstance(item, dict):
+                        for key, value in item.items():
+                            item_html = item_html.replace(f'{{{var_name}.{key}}}', str(value))
+                            item_html = item_html.replace(f'{{ {var_name}.{key} }}', str(value))
+                            if var_name in ['item', 'p', 'i', 'pillar', 'program', 'pillars']:
+                                item_html = item_html.replace(f'{{{key}}}', str(value))
+                                item_html = item_html.replace(f'{{ {key} }}', str(value))
+                    else:
+                        item_html = item_html.replace(f'{{{var_name}}}', str(item))
+                        item_html = item_html.replace(f'{{ {var_name} }}', str(item))
+                    
+                    item_html = item_html.replace('{i}', str(idx))
+                    item_html = item_html.replace('{index}', str(idx))
+                    item_html = item_html.replace('{idx}', str(idx))
+                    item_html = re.sub(r'\{[^}]+\}', '', item_html)
+                    item_html = item_html.replace('className=', 'class=')
+                    item_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', item_html)
+                    item_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', item_html)
+                    
+                    result += item_html
+                
+                print(f"  ✅ Expanded {len(items)} items from inline map")
+                return result
+            
+            # Process inline arrays
+            for _ in range(5):
+                new_jsx = re.sub(inline_pattern, replace_inline, jsx, flags=re.DOTALL)
+                if new_jsx == jsx:
+                    break
+                jsx = new_jsx
+            
+            # Step 4: Handle named array maps {arrayName.map(...)}
+            for array_name, items in arrays.items():
+                named_pattern = rf'\{{{array_name}\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}}'
+                
+                def replace_named(match, items=items, array_name=array_name):
+                    var_name = match.group(1).strip('()')
+                    template = match.group(2)
+                    result = ""
+                    
+                    for idx, item in enumerate(items):
+                        item_html = template
+                        
+                        if isinstance(item, dict):
+                            for key, value in item.items():
+                                item_html = item_html.replace(f'{{{var_name}.{key}}}', str(value))
+                                item_html = item_html.replace(f'{{ {var_name}.{key} }}', str(value))
+                                if var_name in ['item', 'p', 'i', 'pillar', 'program', 'pillars']:
+                                    item_html = item_html.replace(f'{{{key}}}', str(value))
+                                    item_html = item_html.replace(f'{{ {key} }}', str(value))
+                        else:
+                            item_html = item_html.replace(f'{{{var_name}}}', str(item))
+                            item_html = item_html.replace(f'{{ {var_name} }}', str(item))
+                        
+                        item_html = item_html.replace('{i}', str(idx))
+                        item_html = item_html.replace('{index}', str(idx))
+                        item_html = item_html.replace('{idx}', str(idx))
+                        item_html = re.sub(r'\{[^}]+\}', '', item_html)
+                        item_html = item_html.replace('className=', 'class=')
+                        item_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', item_html)
+                        item_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', item_html)
+                        
+                        result += item_html
+                    
+                    return result
+                
+                jsx = re.sub(named_pattern, replace_named, jsx, flags=re.DOTALL)
+            
+            return jsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== PROCESS PAGES ==========
+        page_contents = {}
+        
+        for file_path, content in files.items():
+            if file_path.endswith(("page.tsx", "page.jsx")):
+                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").strip("/")
+                route_name = route or "home"
+                
+                # Clean the content
+                clean = content
+                clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];?\s*$', '', clean, flags=re.MULTILINE)
+                clean = re.sub(r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean)
+                clean = re.sub(r'export\s+default\s+const\s+\w+\s*=\s*\(\)\s*=>\s*{?', '', clean)
+                
+                # Extract return JSX
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
+                if not match:
+                    match = re.search(r'\(\s*<[\w\s\S]+?>\s*\)', clean, re.DOTALL)
+                
+                if match:
+                    jsx = match.group(1) if match.lastindex else match.group(0)
+                    
+                    # Expand ALL map loops (inline + named)
+                    jsx = expand_all_map_loops(jsx)
+                    
+                    # Final cleanup
+                    jsx = re.sub(r'\{[^}]+\}', '', jsx)
+                    jsx = jsx.replace('className=', 'class=')
+                    
+                    page_contents[route_name] = jsx[:8000]
+                    print(f"📄 {route_name}: {len(jsx)} chars extracted")
+                    
+                    # Debug print first 500 chars
+                    print(f"🔍 Preview of {route_name}:\n{jsx[:500]}\n...\n")
+                else:
+                    page_contents[route_name] = clean[:3000]
+                    print(f"⚠️ Could not extract content from {route_name}")
+
+
+
+
+            
+
+        # Add missing navigation pages
         for href, label in nav_links:
             if href not in page_contents:
                 page_contents[href] = f'''
-                    <div style="min-height:100vh;padding:6rem 1.5rem 4rem;max-width:1280px;margin:0 auto;">
-                        <h1 style="font-size:clamp(2rem,5vw,3.5rem);font-weight:800;" class="gradient-text">{label}</h1>
-                        <p style="color:#a1a1aa;margin-top:1rem;">Content coming soon.</p>
-                    </div>'''
+                <div class="container mx-auto px-4 py-16">
+                    <h1 class="text-4xl md:text-5xl font-bold gradient-text mb-6">{label}</h1>
+                    <div class="gradient-card p-8">
+                        <p class="text-gray-300">Explore our {label.lower()} collection and discover amazing offerings.</p>
+                    </div>
+                </div>
+                '''
 
-        # ========== IMAGES ==========
-        image_paths = [f"/{f.replace('public/', '')}" for f in files.keys()
-                       if f.startswith("public/images/")]
+        # Available images
+        available_images = [f for f in files.keys() if f.startswith("public/images/")]
+        image_paths = [f"/{f.replace('public/', '')}" for f in available_images]
 
+        # ========== IMAGE INSTRUCTION ==========
         image_instruction = ""
         if image_paths:
+            image_paths_list = '\n'.join([f'  - {path}' for path in image_paths])
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             image_instruction = f"""
-IMAGE RULES:
-- Use {image_paths[0]} as FULL-SCREEN background ONLY on the home page hero
-- Add overlay: background: linear-gradient(to bottom, rgba(10,10,15,0.7) 0%, rgba(10,10,15,0.4) 50%, rgba(10,10,15,0.9) 100%)
-- NO images on any other page
-- Gradient backgrounds only on inner pages
+            
+🚨 CRITICAL - IMAGE USAGE RULES 🚨
+
+AVAILABLE IMAGES:
+{image_paths_list}
+
+RULES:
+1. **HOME PAGE ONLY**: The hero image should ONLY appear on the home page
+2. **OTHER PAGES**: Do NOT show the hero image on any other page
+3. Use the FIRST image as FULL-SCREEN BACKGROUND in home page hero section
+4. Add dark overlay (bg-black/60) over the image so text is readable
 """
 
-        # ========== MOBILE-FIRST CSS ==========
-        base_styles = """
+        # ========== GRADIENT STYLES ==========
+        gradient_styles = """
 <style>
-/* ===== RESET & BASE ===== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html { scroll-behavior: smooth; font-size: 16px; }
-
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #09090b;
-    color: #e4e4e7;
-    min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
-}
-
-/* ===== CONTAINER ===== */
-.container {
-    width: 100%;
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 0 1rem;
-}
-@media (min-width: 640px) { .container { padding: 0 1.5rem; } }
-@media (min-width: 1024px) { .container { padding: 0 2rem; } }
-
-/* ===== TYPOGRAPHY ===== */
-h1 { font-size: clamp(2rem, 8vw, 5rem); font-weight: 900; line-height: 1.1; letter-spacing: -0.02em; }
-h2 { font-size: clamp(1.5rem, 5vw, 3rem); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; }
-h3 { font-size: clamp(1.1rem, 3vw, 1.5rem); font-weight: 700; line-height: 1.3; }
-p { line-height: 1.7; color: #a1a1aa; }
-a { color: inherit; text-decoration: none; }
-
-/* ===== GRADIENT UTILITIES ===== */
-.gradient-text {
-    background: linear-gradient(135deg, #c084fc 0%, #e879f9 50%, #f472b6 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    background-size: 200% auto;
-    animation: shimmer 3s ease infinite;
-}
-
-@keyframes shimmer {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-/* ===== SECTIONS ===== */
-section, .section {
-    padding: 4rem 1rem;
-}
-@media (min-width: 768px) {
-    section, .section { padding: 6rem 1.5rem; }
-}
-@media (min-width: 1024px) {
-    section, .section { padding: 8rem 2rem; }
-}
-
-/* ===== CARDS ===== */
-.gradient-card, [class*="rounded-xl"], [class*="rounded-2xl"] {
-    background: linear-gradient(135deg, rgba(30,27,46,0.8) 0%, rgba(20,20,35,0.9) 100%);
-    border: 1px solid rgba(139,92,246,0.15);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    transition: all 0.3s ease;
-    width: 100%;
-}
-@media (min-width: 640px) {
-    .gradient-card, [class*="rounded-xl"], [class*="rounded-2xl"] { padding: 1.5rem; }
-}
-
-[class*="rounded-xl"]:hover, [class*="rounded-2xl"]:hover {
-    border-color: rgba(139,92,246,0.35);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(139,92,246,0.12);
-}
-
-/* ===== GRID SYSTEM — MOBILE FIRST ===== */
-/* Default: single column */
-[class*="grid"] {
-    display: grid !important;
-    gap: 1rem;
-}
-@media (min-width: 640px) {
-    [class*="grid"] { gap: 1.25rem; }
-}
-@media (min-width: 768px) {
-    [class*="grid"] { gap: 1.5rem; }
-}
-
-/* 2-col grids */
-[class*="md:grid-cols-2"],
-[class*="sm:grid-cols-2"] {
-    grid-template-columns: 1fr !important;
-}
-@media (min-width: 640px) {
-    [class*="sm:grid-cols-2"] { grid-template-columns: repeat(2, 1fr) !important; }
-}
-@media (min-width: 768px) {
-    [class*="md:grid-cols-2"] { grid-template-columns: repeat(2, 1fr) !important; }
-}
-
-/* 3-col grids */
-[class*="md:grid-cols-3"],
-[class*="lg:grid-cols-3"] {
-    grid-template-columns: 1fr !important;
-}
-@media (min-width: 768px) {
-    [class*="md:grid-cols-3"] { grid-template-columns: repeat(2, 1fr) !important; }
-}
-@media (min-width: 1024px) {
-    [class*="md:grid-cols-3"],
-    [class*="lg:grid-cols-3"] { grid-template-columns: repeat(3, 1fr) !important; }
-}
-
-/* 4-col grids */
-[class*="md:grid-cols-4"],
-[class*="lg:grid-cols-4"] {
-    grid-template-columns: 1fr !important;
-}
-@media (min-width: 640px) {
-    [class*="md:grid-cols-4"],
-    [class*="lg:grid-cols-4"] { grid-template-columns: repeat(2, 1fr) !important; }
-}
-@media (min-width: 1024px) {
-    [class*="md:grid-cols-4"],
-    [class*="lg:grid-cols-4"] { grid-template-columns: repeat(4, 1fr) !important; }
-}
-
-/* Flex → wrap on mobile */
-[class*="flex"] {
-    flex-wrap: wrap;
-}
-[class*="md:flex-row"] {
-    flex-direction: column !important;
-}
-@media (min-width: 768px) {
-    [class*="md:flex-row"] { flex-direction: row !important; }
-}
-
-/* ===== BUTTONS ===== */
-button, [class*="btn"], a[class*="px-"] {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-    border: none;
-    font-size: 0.9rem;
-    padding: 0.65rem 1.25rem;
-    min-height: 44px; /* touch target */
-}
-
-[class*="from-purple"][class*="to-pink"],
-[class*="bg-gradient"] {
-    background: linear-gradient(135deg, #7c3aed, #db2777) !important;
-    color: #fff !important;
-    box-shadow: 0 4px 15px rgba(124,58,237,0.3);
-}
-[class*="from-purple"][class*="to-pink"]:hover {
-    transform: translateY(-1px) scale(1.02);
-    box-shadow: 0 6px 20px rgba(124,58,237,0.45);
-}
-
-/* ===== NAVBAR ===== */
-nav, #navbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
-    background: rgba(9,9,11,0.9);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(139,92,246,0.12);
-    height: 64px;
-    display: flex;
-    align-items: center;
-}
-
-.nav-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 0 1rem;
-    height: 100%;
-}
-@media (min-width: 640px) { .nav-inner { padding: 0 1.5rem; } }
-
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    cursor: pointer;
-    user-select: none;
-    flex-shrink: 0;
-}
-.brand-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #7c3aed, #db2777);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #fff;
-    flex-shrink: 0;
-}
-.brand-name {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #f4f4f5;
-    white-space: nowrap;
-}
-@media (min-width: 640px) { .brand-name { font-size: 1.125rem; } }
-
-.nav-links {
-    display: none;
-    align-items: center;
-    gap: 0.25rem;
-}
-@media (min-width: 768px) { .nav-links { display: flex; } }
-
-.nav-link {
-    padding: 0.45rem 0.875rem;
-    border-radius: 0.5rem;
-    color: #a1a1aa;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-    min-height: 36px;
-    display: flex;
-    align-items: center;
-}
-.nav-link:hover { color: #e4e4e7; background: rgba(255,255,255,0.05); }
-.nav-link.active { color: #c084fc; }
-
-.nav-cta {
-    padding: 0.45rem 1rem;
-    border-radius: 0.5rem;
-    background: linear-gradient(135deg, #7c3aed, #db2777);
-    color: #fff !important;
-    font-size: 0.875rem;
-    font-weight: 600;
-    box-shadow: 0 2px 10px rgba(124,58,237,0.3);
-}
-.nav-cta:hover { transform: scale(1.03); box-shadow: 0 4px 15px rgba(124,58,237,0.45); }
-
-/* ===== HAMBURGER ===== */
-.hamburger {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    width: 40px;
-    height: 40px;
-    cursor: pointer;
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
-    padding: 8px;
-    transition: all 0.2s;
-    flex-shrink: 0;
-}
-@media (min-width: 768px) { .hamburger { display: none; } }
-
-.hamburger span {
-    display: block;
-    width: 100%;
-    height: 2px;
-    background: #a1a1aa;
-    border-radius: 2px;
-    transition: all 0.3s ease;
-}
-.hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
-.hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
-.hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
-
-/* ===== MOBILE DRAWER ===== */
-.mobile-drawer {
-    position: fixed;
-    top: 0;
-    right: -100%;
-    width: min(280px, 85vw);
-    height: 100dvh;
-    background: rgba(9,9,11,0.98);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-left: 1px solid rgba(139,92,246,0.15);
-    z-index: 999;
-    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    padding: 80px 1.25rem 1.5rem;
-    overflow-y: auto;
-}
-.mobile-drawer.open { right: 0; }
-
-.mobile-nav-link {
-    display: flex;
-    align-items: center;
-    padding: 0.875rem 1rem;
-    border-radius: 0.625rem;
-    color: #a1a1aa;
-    font-size: 0.9375rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-bottom: 4px;
-    min-height: 48px;
-}
-.mobile-nav-link:hover { color: #e4e4e7; background: rgba(255,255,255,0.04); }
-.mobile-nav-link.active { color: #c084fc; background: rgba(124,58,237,0.1); }
-
-.drawer-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 998;
-    display: none;
-    backdrop-filter: blur(2px);
-}
-.drawer-overlay.open { display: block; }
-
-/* ===== PAGE LAYOUT ===== */
-.page-wrapper {
-    display: none;
-    min-height: 100dvh;
-    padding-top: 64px;
-}
-.page-wrapper.active { display: block; animation: fadeUp 0.25s ease; }
-
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-#page-home { padding-top: 0; }
-
-/* ===== HERO ===== */
-.hero-bg {
-    position: relative;
-    min-height: 100dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-.hero-bg img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-}
-.hero-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-        to bottom,
-        rgba(9,9,11,0.65) 0%,
-        rgba(9,9,11,0.35) 40%,
-        rgba(9,9,11,0.8) 100%
-    );
-}
-.hero-content {
-    position: relative;
-    z-index: 10;
-    text-align: center;
-    padding: 2rem 1rem;
-    max-width: 900px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-/* ===== STATS ===== */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-}
-@media (min-width: 768px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
-
-/* ===== INNER PAGE HERO ===== */
-.page-hero {
-    padding: 3rem 1rem 2rem;
-    background: linear-gradient(135deg, rgba(88,28,135,0.2) 0%, rgba(9,9,11,0) 60%);
-    border-bottom: 1px solid rgba(139,92,246,0.1);
-}
-@media (min-width: 768px) { .page-hero { padding: 4rem 2rem 3rem; } }
-
-/* ===== FOOTER ===== */
-footer {
-    background: linear-gradient(to bottom, rgba(15,15,25,0.8), rgba(9,9,11,1));
-    border-top: 1px solid rgba(139,92,246,0.12);
-    padding: 3rem 0 1.5rem;
-    margin-top: 0;
-}
-
-footer .container {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 2rem;
-}
-@media (min-width: 640px) {
-    footer .container { grid-template-columns: repeat(2, 1fr); }
-}
-@media (min-width: 1024px) {
-    footer .container { grid-template-columns: repeat(3, 1fr); gap: 3rem; }
-}
-
-footer h3, footer h4 {
-    color: #e4e4e7;
-    font-size: 0.875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 1rem;
-}
-
-footer a, footer p, footer span {
-    color: #71717a;
-    font-size: 0.875rem;
-    line-height: 1.8;
-    cursor: pointer;
-    display: block;
-    transition: color 0.2s;
-}
-footer a:hover { color: #c084fc; }
-
-.footer-bottom {
-    border-top: 1px solid rgba(255,255,255,0.05);
-    padding-top: 1.25rem;
-    margin-top: 2.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    align-items: center;
-    text-align: center;
-    color: #52525b;
-    font-size: 0.8125rem;
-}
-@media (min-width: 640px) {
-    .footer-bottom { flex-direction: row; justify-content: space-between; text-align: left; }
-}
-
-/* ===== SPACING FIXES ===== */
-[class*="py-20"] { padding-top: 3rem !important; padding-bottom: 3rem !important; }
-[class*="py-24"] { padding-top: 4rem !important; padding-bottom: 4rem !important; }
-[class*="py-32"] { padding-top: 4rem !important; padding-bottom: 4rem !important; }
-@media (min-width: 768px) {
-    [class*="py-20"] { padding-top: 5rem !important; padding-bottom: 5rem !important; }
-    [class*="py-24"] { padding-top: 6rem !important; padding-bottom: 6rem !important; }
-    [class*="py-32"] { padding-top: 8rem !important; padding-bottom: 8rem !important; }
-}
-
-/* ===== IMAGE OVERFLOW FIX ===== */
-img { max-width: 100%; height: auto; display: block; }
-img[class*="h-screen"], img[class*="object-cover"] { width: 100%; }
-
-/* ===== TEXT OVERFLOW ===== */
-h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; word-break: break-word; }
-
-/* ===== HIDDEN CLASSES ===== */
-[class*="hidden"] { display: none !important; }
-@media (min-width: 768px) {
-    [class*="md:block"] { display: block !important; }
-    [class*="md:flex"] { display: flex !important; }
-    [class*="md:grid"] { display: grid !important; }
-    [class*="hidden md:flex"] { display: flex !important; }
-    [class*="hidden md:block"] { display: block !important; }
-}
-
-/* ===== BACKDROP BLUR ===== */
-[class*="backdrop-blur"] {
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-
-/* ===== SCROLLBAR ===== */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #09090b; }
-::-webkit-scrollbar-thumb { background: linear-gradient(#7c3aed, #db2777); border-radius: 3px; }
+    .gradient-mesh {
+        background: radial-gradient(circle at 20% 30%, rgba(88, 28, 135, 0.15) 0%, transparent 40%),
+                    radial-gradient(circle at 80% 70%, rgba(219, 39, 119, 0.1) 0%, transparent 40%),
+                    linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%);
+        min-height: 100vh;
+    }
+    .gradient-card {
+        background: linear-gradient(135deg, rgba(30, 27, 46, 0.8) 0%, rgba(20, 20, 35, 0.9) 100%);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(139, 92, 246, 0.15);
+        border-radius: 0.75rem;
+        transition: all 0.3s ease;
+    }
+    .gradient-card:hover {
+        border-color: rgba(139, 92, 246, 0.3);
+        transform: translateY(-3px);
+    }
+    .gradient-text {
+        background: linear-gradient(135deg, #c084fc 0%, #e879f9 50%, #f472b6 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    nav {
+        background: rgba(10, 10, 18, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+    }
+    .nav-link {
+        color: #a1a1aa;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+    }
+    .nav-link.active {
+        color: #c084fc;
+    }
+    .brand-link {
+        cursor: pointer;
+    }
+    .page {
+        display: none;
+        animation: fadeIn 0.25s ease;
+        min-height: 100vh;
+        padding-top: 70px;
+    }
+    .page.active {
+        display: block;
+    }
+    #page_home {
+        padding-top: 0;
+    }
+    .page:not(#page_home) {
+        background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%);
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .hero-section {
+        position: relative;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .hero-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .hero-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+    }
+    .hamburger {
+        display: none;
+        flex-direction: column;
+        cursor: pointer;
+        padding: 0.5rem;
+        background: transparent;
+        border: none;
+        z-index: 101;
+    }
+    .hamburger span {
+        width: 24px;
+        height: 2px;
+        background: #a1a1aa;
+        margin: 3px 0;
+        transition: 0.3s;
+        border-radius: 2px;
+    }
+    .mobile-menu {
+        position: fixed;
+        top: 0;
+        right: -280px;
+        width: 280px;
+        height: 100vh;
+        background: rgba(10, 10, 18, 0.98);
+        backdrop-filter: blur(12px);
+        border-left: 1px solid rgba(139, 92, 246, 0.15);
+        z-index: 99;
+        transition: right 0.3s ease;
+        padding: 80px 24px 24px 24px;
+    }
+    .mobile-menu.active {
+        right: 0;
+    }
+    .mobile-nav-link {
+        display: block;
+        padding: 12px 16px;
+        color: #a1a1aa;
+        text-decoration: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        margin-bottom: 8px;
+    }
+    .mobile-nav-link.active {
+        color: #c084fc;
+        background: rgba(124, 58, 237, 0.1);
+    }
+    .mobile-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 98;
+        display: none;
+    }
+    .mobile-overlay.active {
+        display: block;
+    }
+    @media (max-width: 768px) {
+        .nav-links { display: none; }
+        .hamburger { display: flex; }
+    }
+    .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 0 1.5rem;
+    }
 </style>
 """
 
-        # ========== BUILD AI PROMPT ==========
-        prompt = f"""You are an expert frontend developer. Create a PIXEL-PERFECT, FULLY RESPONSIVE standalone HTML preview.
+        # ========== AI PROMPT ==========
+        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview.
 
-Project: {brand_name}
-Navigation: {json.dumps(nav_links)}
+PROJECT: {brand_name}
+NAVIGATION LINKS: {json.dumps(nav_links)}
 
-PAGE CONTENTS (render EXACTLY — do not invent content):
-{json.dumps({k: v[:3000] for k, v in page_contents.items()}, indent=2)}
+PAGE CONTENTS (USE THESE EXACTLY):
+{json.dumps(page_contents, indent=2)[:15000]}
+
+FOOTER HTML (USE THIS EXACT FOOTER - DO NOT CREATE YOUR OWN):
+{footer_html}
 
 {image_instruction}
 
-CRITICAL REQUIREMENTS:
+================================================================================
+CRITICAL RULES:
+================================================================================
 
-1. STRUCTURE:
-   - Single HTML file, all CSS inline in <style>, all JS in <script>
-   - Use Tailwind CDN: <script src="https://cdn.tailwindcss.com"></script>
-   - Google Fonts Inter: <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+1. **USE THE PROVIDED FOOTER ABOVE** - Copy it EXACTLY as shown.
 
-2. NAVBAR (fixed, 64px tall):
-   - Brand icon (gradient square with first letter) + brand name → clicks to home
-   - Desktop: links in a row on right, last link as CTA button (gradient bg)
-   - Mobile: hamburger button (3 lines → X animation when open)
-   - Slide-in drawer from right on mobile with overlay
+2. **PAGE CONTENTS** - Use the EXACT HTML from page_contents for each page.
 
-3. HOME PAGE HERO (WITH IMAGE):
-   - Full viewport height hero with image_1.jpg background
-   - Two overlays: dark gradient + bottom fade to body color
-   - Large gradient title, subtitle, 2 CTA buttons
-   - Eyebrow badge above title
-   - Render ALL subsequent sections from page_contents["home"] below hero
+3. **HOME PAGE HERO**:
+   - If images exist: Use first image as full-screen background with dark overlay
+   - The hero content should come from page_contents["home"]
 
-4. INNER PAGES (NO IMAGE):
-   - 64px top padding to clear navbar
-   - Small gradient page-hero div with breadcrumb + page title
-   - Then render full page content from page_contents[route]
-   - Clean gradient section background
+4. **NAVBAR**:
+   - Brand name on left (clickable to home)
+   - Navigation links from NAVIGATION LINKS
+   - Active page highlighting
+   - Mobile hamburger menu
 
-5. FOOTER (SAME ON ALL PAGES):
-   - Render the ACTUAL footer content: {footer_html[:2000] if footer_html else "Brand name, links, © 2025, Crafted in Nairobi"}
-   - 3-column grid → 2-col on tablet → 1-col on mobile
-   - Never cut off — show complete footer
+5. **PAGE SWITCHING**:
+   - JavaScript function showPage(path) that switches between pages
+   - Update URL without reload
 
-6. MOBILE RESPONSIVENESS (CRITICAL):
-   - ALL grids: 1 column on mobile, 2 on tablet (≥640px), 3+ on desktop (≥1024px)
-   - NEVER show cards side by side on screens < 640px
-   - Font sizes: clamp() or responsive scale
-   - Buttons: full width on mobile, auto on desktop
-   - Min touch target: 44px height on all interactive elements
-   - No horizontal scroll on any screen size
-   - Images: max-width: 100%, object-fit: cover
-
-7. PAGE SWITCHING (JavaScript):
-   - showPage(route) function hides all, shows target
-   - Update nav-link active states
-   - Update mobile-nav-link active states
-   - Smooth fadeUp animation on page show
-   - Browser back/forward support with popstate
-
-8. CONTENT FIDELITY:
-   - Render EVERY section from the page content
-   - Keep all card data, feature text, testimonials, pricing, etc.
-   - Do NOT skip or summarize any content
-   - Preserve all Tailwind classes but add responsive overrides
-
-Return ONLY the complete HTML document. No explanation, no markdown."""
+Return ONLY complete HTML. No explanations."""
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.15, "max_output_tokens": 32000}
+            config={"temperature": 0.2, "max_output_tokens": 28000}
         )
 
         preview_html = clean_html_response(response_text)
 
-        # ========== INJECT BASE STYLES BEFORE CLOSING HEAD ==========
-        if '</head>' in preview_html:
-            preview_html = preview_html.replace('</head>', base_styles + '</head>')
-        elif '<body' in preview_html:
-            preview_html = preview_html.replace('<body', base_styles + '<body')
+        # Inject gradient styles
+        if '<style>' in preview_html:
+            preview_html = preview_html.replace('<style>', gradient_styles + '<style>')
+        elif '</head>' in preview_html:
+            preview_html = preview_html.replace('</head>', gradient_styles + '</head>')
         else:
-            preview_html = base_styles + preview_html
+            preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{gradient_styles}</head>')
 
-        # ========== INJECT BASE64 IMAGES ==========
+        # Ensure body has gradient class
+        if 'class="' in preview_html and 'body' in preview_html.lower():
+            preview_html = preview_html.replace('<body', '<body class="gradient-mesh"')
+        else:
+            preview_html = preview_html.replace('<body>', '<body class="gradient-mesh">')
+
+        if not preview_html.lower().startswith("<!doctype"):
+            preview_html = "<!DOCTYPE html>\n" + preview_html
+
+        # Inject base64 images
+        print("🖼️ Injecting images into preview...")
+        
         for file_key, content in files.items():
             if not file_key.startswith("public/images/") or not isinstance(content, str):
                 continue
             if not content.startswith("__binary_base64__"):
                 continue
+            
             public_path = "/" + file_key[len("public/"):]
             raw_b64 = content[len("__binary_base64__"):]
             data_uri = f"data:image/jpeg;base64,{raw_b64}"
-            preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
-            preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
-
-        # ========== ENSURE DOCTYPE ==========
-        if not preview_html.lower().startswith("<!doctype"):
-            preview_html = "<!DOCTYPE html>\n" + preview_html
-
-        print(f"✅ Preview generated: {len(preview_html):,} chars")
+            
+            preview_html = re.sub(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
+            preview_html = re.sub(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
+        
+        print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
 
     except Exception as e:
-        print(f"❌ Preview Error: {e}")
+        print(f"❌ AI Preview Error: {e}")
         import traceback
         traceback.print_exc()
 
-        # ========== FALLBACK ==========
-        fallback = f"""<!DOCTYPE html>
+        fallback_template = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{project_name}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body {{ font-family: sans-serif; background: #09090b; color: #e4e4e7; }}
-        .gradient-text {{
-            background: linear-gradient(135deg, #c084fc, #f472b6);
-            -webkit-background-clip: text; background-clip: text; color: transparent;
-        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e4e4e7; }}
+        .gradient-text {{ background: linear-gradient(135deg, #c084fc, #e879f9, #f472b6); -webkit-background-clip: text; background-clip: text; color: transparent; }}
+        .gradient-card {{ background: rgba(30, 27, 46, 0.8); border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 0.75rem; padding: 1.5rem; }}
+        nav {{ background: rgba(10, 10, 18, 0.95); border-bottom: 1px solid rgba(139, 92, 246, 0.15); position: fixed; top: 0; left: 0; right: 0; z-index: 100; }}
+        .nav-link {{ color: #a1a1aa; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; }}
+        .nav-link.active {{ color: #c084fc; }}
+        .brand-link {{ cursor: pointer; }}
+        .page {{ display: none; animation: fadeIn 0.25s ease; min-height: 100vh; padding-top: 70px; }}
+        .page.active {{ display: block; }}
+        #page_home {{ padding-top: 0; }}
+        @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+        .hero-section {{ position: relative; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }}
+        .hero-image {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
+        .hero-overlay {{ position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); }}
+        .container {{ max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }}
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
-    <div class="text-center">
-        <h1 class="text-4xl sm:text-6xl font-black gradient-text mb-4">{project_name}</h1>
-        <p class="text-zinc-400">Preview temporarily unavailable. Your project was built successfully.</p>
+<body>
+    <nav>
+        <div class="container">
+            <div class="flex justify-between items-center py-4">
+                <div class="text-xl font-bold gradient-text brand-link" onclick="showPage('/')">{brand_name}</div>
+                <div class="nav-links" id="desktopNav"></div>
+                <button class="hamburger" id="hamburgerBtn" style="display: none;">☰</button>
+            </div>
+        </div>
+    </nav>
+    
+    <div id="page_home" class="page active">
+        <div class="hero-section">
+            <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1600" alt="Hero" class="hero-image">
+            <div class="hero-overlay"></div>
+            <div class="relative z-10 text-center px-4">
+                <h1 class="text-5xl md:text-7xl font-bold gradient-text mb-4">{brand_name}</h1>
+                <p class="text-lg text-gray-300">Welcome to our digital space</p>
+            </div>
+        </div>
     </div>
+    
+    {footer_html}
+    
+    <script>
+        const pages = {{ '/': 'page_home' }};
+        function showPage(path) {{
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const pageId = pages[path];
+            if (pageId) document.getElementById(pageId)?.classList.add('active');
+            window.history.pushState({{}}, '', path);
+        }}
+        const currentPath = window.location.pathname || '/';
+        showPage(currentPath);
+    </script>
 </body>
 </html>"""
-
+        
+        fallback = fallback_template.format(
+            project_name=project_name,
+            brand_name=brand_name,
+            footer_html=footer_html
+        )
+        
         return {"success": True, "preview_html": fallback, "preview_type": "fallback"}
-
 
 
 
@@ -3026,607 +2855,1937 @@ def clean_html_response(text: str) -> str:
 
 
 
+
+
 MASTER_BUILD_PROMPT = """You are a Senior Full-Stack Architect and UI/UX Designer specializing in Next.js 14.
 
-Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object.
+Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object based on the user's request.
 
 ================================================================================
-OUTPUT FORMAT — CRITICAL
+CRITICAL SITE STRUCTURE & NAVIGATION
+================================================================================
+- SITE SCOPE: You are strictly limited to a 3-page architecture. DO NOT generate additional pages.
+- REQUIRED ROUTES:
+    1. app/page.tsx (Home/Landing - Bold title, rich content)
+
+- NAVIGATION LOGIC (components/Navigation.tsx):
+    1. THE BRAND NAME IS THE HOME LINK: Do not include a separate "Home" text link. The user clicks the Brand Name/Logo to return to "/".
+    2. TOTAL LINKS: There should only be [Brand Name (links to /) and other 2.
+    3. BRAND ICON: The brand icon MUST be included next to the Brand Name in Navigation.tsx ONLY.
+    4. FOOTER ARCHITECTURE (components/Footer.tsx):
+       - The Footer must be a separate component included in the root layout.
+       - It must contain the Brand Name, a brief description, and a copyright notice with the current year (2026).
+       - Should be haivng the social media icons and links
+       - Style the footer with a "glass" effect or a clean, dark aesthetic to match the senior designer requirements.
+
+================================================================================
+TECHNICAL BUILD RULES — NO EXCEPTIONS
+================================================================================
+- 'use client' MUST be the absolute first line in any file using hooks (useState, useEffect) or events (onClick).
+- EVERY component used (Link, Image, Icons) MUST be imported at the top of the file.
+- Use 'lucide-react' for all icons. Example: import { Check, Mail } from 'lucide-react';
+- ALL imports must be relative (e.g., ../../components/Footer), NOT using @/ aliases.
+
+================================================================================
+OUTPUT FORMAT — RAW JSON ONLY
 ================================================================================
 - Output ONLY raw valid JSON. No markdown, no explanations, no code blocks.
-- Keys = file paths, Values = full file content as strings
-- Newlines in strings: \\n
-- Double quotes in strings: \\"
-- Backslashes in strings: \\\\
-- NEVER output raw newlines or unescaped quotes inside JSON string values
-- Backticks in JSX/TS are fine as-is
+- Keys = file paths (strings), Values = full file content as strings.
+- Escape double quotes as \" and newlines as \\n.
+- NEVER output raw newlines or unescaped quotes inside JSON string values.
+
+
+
+
+
 
 ================================================================================
-EXACT PACKAGE VERSIONS — NEVER CHANGE THESE
+🛠️ THE "ZERO-CRASH" IMPORT PROTOCOL 🛠️
 ================================================================================
-Use ONLY these pinned versions. Never invent or bump versions:
+Every file must be "Self-Sufficient." You MUST verify these imports for every string value:
 
-  "next": "14.2.35"
-  "react": "18.3.1"
-  "react-dom": "18.3.1"
-  "lucide-react": "0.446.0"
-  "@radix-ui/react-slot": "1.1.0"
-  "clsx": "2.1.1"                  ← NEVER use 4.x, 3.x — only 2.1.1
-  "tailwind-merge": "2.5.0"
-  "@types/node": "22.9.0"
-  "@types/react": "18.3.12"
-  "@types/react-dom": "18.3.1"
-  "autoprefixer": "10.4.20"
-  "postcss": "8.4.49"
-  "tailwindcss": "3.4.15"
-  "typescript": "5.6.3"
+- IF code contains '<Link': MUST import Link from 'next/link';
+- IF code contains '<Image': MUST import Image from 'next/image';
+- IF code contains Lucide icons (e.g., <Check />, <Mail />): MUST import from 'lucide-react';
+- IF code contains hooks (useState, useEffect) or event handlers (onClick, onSubmit): 
+    - MUST import { useState/useEffect } from 'react';
+    - MUST have 'use client'; as the ABSOLUTE FIRST LINE (Line 1).
 
-package.json MUST be exactly:
-{
-  "name": "generated-app",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+
+
+================================================================================
+🚨 CRITICAL: YOU MUST GENERATE COMPLETE FULL PAGES - NO EXCEPTIONS 🚨
+================================================================================
+
+For EVERY navigation link, you MUST create a COMPLETE page file with:
+
+
+❌ NEVER create empty or placeholder pages:
+export default function Courses() { return <div>Courses</div>; }
+export default function Shop() { return <div>Shop Page</div>; }
+export default function About() { return <div>About Us</div>; }
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: UNIQUE CONTENT FOR EACH PROGRAM/PRODUCT/SERVICE 🚨🚨🚨
+================================================================================
+
+When generating arrays of items (programs, courses, products, services, team members):
+
+**YOU MUST generate DIFFERENT content for EACH item - NO duplicate descriptions**
+
+Example - FOR A SCHOOL WEBSITE with 3 programs:
+
+❌ WRONG (same description for all):
+```tsx
+const programs = [
+  { title: "Classical Performance", description: "Master your craft with world-class mentors." },
+  { title: "Jazz Studies", description: "Master your craft with world-class mentors." },
+  { title: "Music Production", description: "Master your craft with world-class mentors." }
+]
+
+✅ CORRECT (unique description for each):
+const programs = [
+  { 
+    title: "Classical Performance", 
+    description: "Master classical techniques with world-class mentors. Focus on piano, violin, cello, and orchestral instruments.",
+    duration: "4 Years",
+    career: "Orchestral Musician, Solo Performer"
   },
-  "dependencies": {
-    "next": "14.2.35",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "lucide-react": "0.446.0",
-    "@radix-ui/react-slot": "1.1.0",
-    "clsx": "2.1.1",
-    "tailwind-merge": "2.5.0"
+  { 
+    title: "Jazz Studies", 
+    description: "Immerse yourself in improvisation, harmony, and rhythm. Learn from professional jazz musicians.",
+    duration: "4 Years",
+    career: "Jazz Musician, Composer, Band Leader"
   },
-  "devDependencies": {
-    "@types/node": "22.9.0",
-    "@types/react": "18.3.12",
-    "@types/react-dom": "18.3.1",
-    "autoprefixer": "10.4.20",
-    "postcss": "8.4.49",
-    "tailwindcss": "3.4.15",
-    "typescript": "5.6.3"
+  { 
+    title: "Music Production", 
+    description: "Learn modern recording techniques, mixing, mastering, and digital audio workstations.",
+    duration: "3 Years",
+    career: "Music Producer, Sound Engineer"
   }
+]
+
+
+RULES:
+
+   1. Each program MUST have a UNIQUE description (different words, different focus)
+
+   2. Each program MUST have UNIQUE details (duration, career path, requirements)
+
+   3. Each program MUST have UNIQUE icons or visual elements
+
+   4. NEVER repeat the exact same text across multiple items
+
+   5. Vary the length and content of each description
+
+For different project types:
+
+SCHOOL PROGRAMS (vary by):
+
+    Classical vs Modern vs Technology focus
+
+    Different durations (3 years, 4 years, 2 years)
+
+    Different career paths (Performer, Producer, Educator)
+
+    Different prerequisites (Portfolio, Audition, Interview)
+
+COFFEE PRODUCTS (vary by):
+
+    Origin (Ethiopia, Colombia, Brazil)
+
+    Roast level (Light, Medium, Dark)
+
+    Flavor notes (Citrus, Chocolate, Berry)
+
+    Price points ($15, $18, $22)
+
+HOTEL ROOMS (vary by):
+
+    Room type (Standard, Deluxe, Suite)
+
+    View (City, Ocean, Garden)
+
+    Size (300 sq ft, 500 sq ft, 800 sq ft)
+
+    Amenities (Mini-bar, Jacuzzi, Balcony)
+
+GYM CLASSES (vary by):
+
+    Class type (Yoga, HIIT, Pilates)
+
+    Difficulty (Beginner, Intermediate, Advanced)
+
+    Duration (45min, 60min, 90min)
+
+    Instructor specialties
+
+REMEMBER: Each array item = UNIQUE content. No duplicates allowed!
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Generate a COMPLETE Next.js 14 home page (app/page.tsx) for a website based on the user's request.
+
+================================================================================
+PROJECT TYPE DETECTION
+================================================================================
+First, identify the PROJECT TYPE from the user prompt:
+- SCHOOL/ACADEMY: Music school, coding bootcamp, university, training center
+- COFFEE/ROASTERY: Coffee shop, roastery, cafe
+- HOTEL/RESORT: Hotel, lodge, resort, accommodation
+- RESTAURANT: Restaurant, bistro, dining, eatery
+- GYM/FITNESS: Gym, fitness center, yoga studio
+- E-COMMERCE: Online store, shop, marketplace
+- PORTFOLIO: Designer, developer, creative agency
+- TECH/SAAS: Software company, app, platform
+
+================================================================================
+CRITICAL: HOW TO CREATE THE 3 PILLARS/FEATURES SECTION
+================================================================================
+
+✅ ALWAYS DO THIS - Define array FIRST, then map:
+
+
+const pillars = [
+  { 
+    id: 1, 
+    emoji: "🎓", 
+    title: "Music Theory & Composition", 
+    description: "Master the fundamentals of music theory, harmony, and composition techniques from industry professionals with decades of experience." 
+  },
+  { 
+    id: 2, 
+    emoji: "🎛️", 
+    title: "Audio Engineering", 
+    description: "Learn professional recording, mixing, and mastering using industry-standard equipment in our state-of-the-art studios." 
+  },
+  { 
+    id: 3, 
+    emoji: "🎹", 
+    title: "Digital Production", 
+    description: "Create beats, produce tracks, and master modern production tools like Ableton, Logic Pro, and FL Studio." 
+  },
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: CREATE EVERY NAVIGATION LINK PAGE 🚨🚨🚨
+================================================================================
+
+**For EVERY link in Navigation.tsx, you MUST create a corresponding page file with RICH CONTENT.**
+
+Example Navigation.tsx:
+```tsx
+<Link href="/features">Features</Link>
+<Link href="/pricing">Pricing</Link>
+<Link href="/about">About</Link>
+<Link href="/contact">Contact</Link>
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+STYLED MAP PLACEHOLDER - USE THIS INSTEAD OF BLACK CARDS
+================================================================================
+
+**Location Page Map Component (app/locations/page.tsx or contact page):**
+
+Instead of a black card or empty div, use this beautiful styled map placeholder:
+
+```tsx
+// components/StyledMap.tsx
+'use client';
+
+interface StyledMapProps {
+  address?: string;
+  className?: string;
 }
 
-================================================================================
-REQUIRED FILES — LEAN SET (15-20 files max)
-================================================================================
-Always generate EXACTLY these — no more:
-
-  package.json
-  postcss.config.mjs
-  tailwind.config.ts
-  tsconfig.json
-  next.config.js
-  app/globals.css
-  app/layout.tsx
-  app/page.tsx
-  components/Navigation.tsx
-  components/Footer.tsx
-  lib/utils.ts
-  + one page file per nav link (max 4 nav links = max 4 inner pages)
-
-DO NOT generate:
-  - components/ui/ folder (Button, Card, Modal, etc.)
-  - hooks/ folder
-  - lib/constants.ts, lib/metadata.ts, lib/api.ts
-  - types/ folder
-  - components/Hero.tsx, Features.tsx, CTA.tsx (inline in pages instead)
-  - app/blog/[slug]/page.tsx or any dynamic routes
-  - next-env.d.ts, .gitignore, .env.example
-  - components/StyledMap.tsx (inline map placeholder directly in contact page)
-  - app/(marketing)/ or app/(dashboard)/ route groups
-
-================================================================================
-NAMING & BRANDING
-================================================================================
-Generate a UNIQUE business name every time: [Adjective] + [Noun] + [Type]
-
-Adjectives (pick randomly, NEVER default to "Apex"):
-  Aurora, Ember, Whisper, Celestial, Luminous, Noble, Horizon, Radiant,
-  Evergreen, Starlight, Mystic, Phoenix, Vivid, Coastal, Sterling, Onyx,
-  Indigo, Eclipse, Willow, Cedar, Iron, Crimson, Cobalt, Amber, Slate
-
-Nouns:
-  Valley, Forge, Ridge, Hollow, Grove, Harbor, Crest, Peak, Loft, Mill,
-  Foundry, Orchard, Meadow, Falls, Works, Republic, Citadel, Spire, Haven
-
-Business types:
-  School     → Academy / Institute / Learning Hub / Campus
-  Coffee     → Roastery / Brew Co. / Beanery / Coffee House
-  Hotel      → Resort / Lodge / Retreat / Villas / Suites
-  Gym        → Fitness / Athletic Club / Performance / Strength
-  Restaurant → Bistro / Kitchen / Grill / Eatery / Table
-  Portfolio  → Studio / Creative / Lab / Collective
-  E-commerce → Market / Emporium / Boutique / Goods
-
-BANNED names (never use): Summit Peak Academy, Golden Bean Roastery,
-  Crystal Bay Resort, Bright Future Academy, Apex Valley Academy
-
-================================================================================
-NAVIGATION — MAX 4 LINKS
-================================================================================
-- Brand icon in Navigation.tsx ONLY — never in app/page.tsx
-- Labels: 1-3 words max, never paste user prompt as label
-- MAXIMUM 4 nav links → max 4 inner pages
-
-Pick ONE set randomly per project type:
-
-SCHOOL:
-  A: [Programs, Apply, Faculty, Contact]
-  B: [Courses, Admissions, Staff, Visit]
-  C: [Academics, Enroll, Mentors, Connect]
-
-COFFEE:
-  A: [Our Coffees, Brew Guide, Story, Contact]
-  B: [Shop, Recipes, About, Locations]
-  C: [Blends, Methods, Heritage, Visit Us]
-
-HOTEL:
-  A: [Rooms, Amenities, Reservations, Contact]
-  B: [Suites, Gallery, Book Now, Location]
-  C: [Stays, Dining, Offers, Reach Out]
-
-RESTAURANT:
-  A: [Menu, Reservations, About, Contact]
-  B: [Dining, Book a Table, Story, Visit]
-  C: [Cuisine, Reserve, Our Story, Find Us]
-
-GYM:
-  A: [Classes, Trainers, Membership, Contact]
-  B: [Workouts, Coaches, Pricing, Schedule]
-  C: [Programs, Experts, Join Now, Reach Out]
-
-E-COMMERCE:
-  A: [Shop, About, Journal, Contact]
-  B: [Products, Story, Blog, Reach Out]
-
-PORTFOLIO:
-  A: [Work, Services, About, Contact]
-  B: [Projects, Expertise, Story, Connect]
-
-For EVERY href in Navigation.tsx → create exactly one page file.
-
-================================================================================
-ADAPTIVE ICON — NAVIGATION ONLY
-================================================================================
-School/Academy  → GraduationCap  (text-purple-400)
-Coffee/Cafe     → Coffee         (text-amber-400)
-Hotel/Resort    → Hotel          (text-blue-400)
-Restaurant      → Utensils       (text-orange-400)
-Gym/Fitness     → Dumbbell       (text-green-400)
-E-commerce      → ShoppingBag    (text-pink-400)
-Portfolio       → Sparkles       (text-purple-400)
-Technology      → Cpu            (text-cyan-400)
-Health/Medical  → Heart          (text-red-400)
-Travel          → Plane          (text-sky-400)
-
-================================================================================
-IMAGE RULES
-================================================================================
-ONE image exists: /images/image_1.jpg
-
-  ✅ Hero section ONLY — full-screen background with dark overlay
-  ❌ Never in features, team cards, inner pages, or any other section
-  ❌ Never reference image_2.jpg, image_3.jpg (they don't exist)
-
-Team/staff avatars → gradient circle with initials letter
-Feature cards → Lucide icons on gradient icon backgrounds
-No gallery sections (no extra images available)
-
-================================================================================
-UI/UX DESIGN SYSTEM — PREMIUM QUALITY
-================================================================================
-
-TYPOGRAPHY SCALE:
-  Hero title:      text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight
-  Section title:   text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight
-  Card title:      text-xl md:text-2xl font-semibold
-  Subtitle:        text-lg md:text-xl text-gray-300 leading-relaxed
-  Body:            text-base text-gray-400 leading-relaxed
-  Label/Badge:     text-xs font-semibold uppercase tracking-widest
-
-SPACING RHYTHM:
-  Section padding: py-24 md:py-32 px-4 sm:px-6 lg:px-8
-  Container:       max-w-7xl mx-auto
-  Card padding:    p-6 md:p-8
-  Grid gaps:       gap-6 md:gap-8
-
-BACKGROUND GRADIENTS (vary between sections, never repeat same):
-  Primary:    bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
-  Alt 1:      bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950
-  Alt 2:      bg-gradient-to-bl from-zinc-950 via-purple-950/50 to-indigo-950
-  Alt 3:      bg-gradient-to-r from-purple-950/80 via-zinc-950 to-fuchsia-950/30
-  Dark base:  bg-zinc-950
-
-CARD STYLES (use variety, not the same style for every card):
-  Glass card:     bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6
-  Gradient card:  bg-gradient-to-br from-purple-600/15 to-pink-600/15 border border-purple-500/20 rounded-2xl p-6
-  Solid card:     bg-zinc-900/80 border border-zinc-800 rounded-2xl p-6
-  Glow card:      bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-500/30 rounded-2xl p-6 shadow-lg shadow-purple-500/10
-
-BUTTON STYLES:
-  Primary:   px-8 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-500 hover:via-fuchsia-500 hover:to-pink-500 text-white font-semibold transition-all duration-300 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 active:scale-95
-  Secondary: px-8 py-3.5 rounded-xl border border-white/20 hover:border-purple-400/60 hover:bg-white/5 text-white font-medium transition-all duration-300 hover:scale-105 active:scale-95
-  Ghost:     px-6 py-2.5 rounded-lg text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 transition-all duration-200
-
-BADGE/TAG STYLES:
-  Feature badge: inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-medium
-  Status badge:  inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-green-500/15 text-green-400 text-xs font-medium
-
-ICON CONTAINERS (for feature cards):
-  Large:  w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-600/30 to-pink-600/30 border border-purple-500/30 flex items-center justify-center
-  Medium: w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center
-  Small:  w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center
-
-DIVIDERS & ACCENTS:
-  Section divider: <div className="h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent my-2" />
-  Top accent line: <div className="h-1 w-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mb-4" />
-  Glow orb:        <div className="absolute w-96 h-96 bg-purple-600/10 rounded-full blur-3xl -z-10" />
-
-HOVER EFFECTS (add to all interactive cards):
-  card-hover class: transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20 hover:border-purple-500/40 cursor-pointer
-
-DECORATIVE ELEMENTS (use in sections to add depth):
-  Grid pattern overlay: <div className="absolute inset-0 grid-pattern opacity-[0.03] pointer-events-none" />
-  Gradient orbs (top-right): <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
-  Gradient orbs (bottom-left): <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-pink-600/20 rounded-full blur-3xl pointer-events-none" />
-
-================================================================================
-HERO SECTION TEMPLATE
-================================================================================
-'use client' required if using any interaction.
-
-<section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-  {/* Background image */}
-  <div className="absolute inset-0 z-0">
-    <img src="/images/image_1.jpg" alt="Hero" className="w-full h-full object-cover" />
-    <div className="absolute inset-0 bg-gradient-to-br from-purple-950/80 via-zinc-950/70 to-pink-950/80" />
-    <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-transparent" />
-  </div>
-  {/* Decorative orbs */}
-  <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
-  <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-600/10 rounded-full blur-3xl pointer-events-none" />
-  {/* Content */}
-  <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-    {/* Eyebrow label */}
-    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-sm font-medium mb-6">
-      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-      Welcome to [Brand]
-    </div>
-    {/* Main title */}
-    <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight mb-6">
-      <span className="bg-gradient-to-r from-white via-purple-100 to-white bg-clip-text text-transparent">First Line</span>
-      <br />
-      <span className="bg-gradient-to-r from-purple-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent animate-gradient">Second Line</span>
-    </h1>
-    {/* Subtitle */}
-    <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto leading-relaxed mb-10">
-      Compelling subtitle that explains the value proposition clearly.
-    </p>
-    {/* CTAs */}
-    <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-      <a href="/primary" className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold transition-all duration-300 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:scale-105 active:scale-95 w-full sm:w-auto text-center">
-        Primary Action
-      </a>
-      <a href="/secondary" className="px-8 py-3.5 rounded-xl border border-white/20 hover:border-purple-400/60 hover:bg-white/5 text-white font-medium transition-all duration-300 hover:scale-105 w-full sm:w-auto text-center">
-        Secondary Action
-      </a>
-    </div>
-    {/* Trust indicators */}
-    <div className="flex flex-wrap justify-center gap-6 mt-12 text-gray-400 text-sm">
-      <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-400" /> Benefit One</span>
-      <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-400" /> Benefit Two</span>
-      <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-400" /> Benefit Three</span>
-    </div>
-  </div>
-  {/* Scroll indicator */}
-  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-gray-500 text-xs animate-bounce">
-    <span>Scroll</span>
-    <ChevronDown className="w-4 h-4" />
-  </div>
-</section>
-
-================================================================================
-HOME PAGE SECTIONS (app/page.tsx) — ALL REQUIRED
-================================================================================
-Include ALL sections in this order:
-
-1. HERO           — image bg, eyebrow label, split gradient title, subtitle, 2 CTAs, trust indicators, scroll hint
-2. SOCIAL PROOF   — stats bar: 4 numbers in gradient cards (e.g. "2,500+ Clients", "12 Years", "98% Satisfaction", "24/7 Support")
-3. FEATURES       — section label + title + subtitle + 3 icon cards (each UNIQUE: icon, title, description, 3 bullet points)
-4. HOW IT WORKS   — numbered steps (3) with connecting line decoration, each with icon + title + description
-5. TESTIMONIALS   — 3 quote cards: star rating, quote text, avatar initial circle, name, role, company
-6. CTA BANNER     — full-width gradient section with headline, subtext, 2 buttons
-7. FOOTER         — <Footer /> component (import from '../components/Footer')
-
-Each section MUST have:
-- Decorative background gradient (vary between sections)
-- Subtle glow orbs or grid pattern overlay
-- Section eyebrow label above title
-- Smooth visual hierarchy
-
-================================================================================
-INNER PAGE STRUCTURE
-================================================================================
-Every inner page: 3 sections minimum + Footer at bottom.
-
-Section 1 — Page hero (gradient bg, NO image, eyebrow label, large title, subtitle, breadcrumb)
-Section 2 — Main content (cards grid, form, list, tabs — depends on page type)
-Section 3 — CTA linking to another page or contact
-
-Import Footer: import Footer from '../../components/Footer'
-
-Content guidelines per page type:
-  /about      → mission statement + 3 values cards + team grid (4 members, initials avatars) + timeline (3 milestones)
-  /contact    → 3 contact info cards (email/phone/address) + inline contact form (useState) + inline map placeholder div
-  /menu       → category tabs (useState) + dish cards (name, price, description, dietary badges)
-  /rooms      → room cards (name, size, price/night, 4 amenity icon badges, Book Now button)
-  /classes    → class cards (name, duration, level badge, instructor name, schedule time, Join button)
-  /shop       → filter tabs (useState) + product grid (name, price, category, Add to Cart button)
-  /projects   → project cards (title, category tag, tech stack badges, description, View button)
-  /programs   → program cards (title, duration, level, description, bullet points, Apply button)
-  /trainers   → trainer cards (initials avatar, name, specialty badge, certifications, bio, social links)
-  /membership → 3 pricing plan cards (name, price, billing period, feature list, CTA button, highlight middle plan)
-
-NO placeholder content. Every array item = unique text, unique details.
-
-================================================================================
-NAVIGATION COMPONENT TEMPLATE
-================================================================================
-'use client'
-
-Fixed sticky nav with backdrop blur:
-<nav className="fixed top-0 w-full z-50 border-b border-white/5">
-  <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-xl" />
-  <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="flex items-center justify-between h-16 md:h-20">
-      {/* Brand */}
-      <Link href="/" className="flex items-center gap-2.5 group">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
-          <ICON className="w-4 h-4 text-white" />
-        </div>
-        <span className="text-lg font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Brand Name</span>
-      </Link>
-      {/* Desktop links */}
-      <div className="hidden md:flex items-center gap-1">
-        <Link href="/page" className="px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-all duration-200 text-sm font-medium">Label</Link>
-        {/* ... more links */}
-        <Link href="/contact" className="ml-4 px-5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-sm font-semibold transition-all duration-200 shadow-md shadow-purple-500/20">Contact</Link>
-      </div>
-      {/* Mobile hamburger */}
-      <button onClick={() => setIsOpen(!isOpen)} className="md:hidden p-2 rounded-lg hover:bg-white/5 transition-colors">
-        {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
-    </div>
-    {/* Mobile menu */}
-    {isOpen && (
-      <div className="md:hidden border-t border-white/5 py-4 space-y-1">
-        <Link href="/page" onClick={() => setIsOpen(false)} className="block px-4 py-2.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-all">Label</Link>
-      </div>
-    )}
-  </div>
-</nav>
-<div className="h-16 md:h-20" /> {/* Spacer */}
-
-================================================================================
-FOOTER COMPONENT TEMPLATE
-================================================================================
-'use client' (useState for newsletter)
-
-3-column desktop grid, stacks on mobile:
-- Top gradient divider line
-- Column 1: Brand icon + name + tagline + 3 social icon buttons (Github/Twitter/Instagram style)
-- Column 2: Quick Links (4 nav links) + Company links (About, Blog, Careers, Press)
-- Column 3: Contact info (Mail, Phone, MapPin icons) + Newsletter (email input + Subscribe button)
-- Decorative gradient orbs (absolute positioned)
-- Bottom bar: © 2025 [Brand] · Privacy · Terms · "Crafted in Nairobi 🇰🇪"
-
-Background: bg-gradient-to-br from-purple-950/50 via-zinc-950 to-pink-950/30
-Border top: h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent
-
-================================================================================
-MOBILE RESPONSIVENESS — REQUIRED EVERYWHERE
-================================================================================
-  Text scaling:  text-4xl sm:text-5xl md:text-6xl lg:text-7xl
-  Grids:         grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8
-  Padding:       px-4 sm:px-6 lg:px-8  |  py-16 md:py-24 lg:py-32
-  Nav:           hamburger (Menu/X icons) on mobile, horizontal on md+
-  Footer:        grid-cols-1 md:grid-cols-3
-  Buttons:       w-full sm:w-auto on mobile
-  Hero title:    text-5xl sm:text-6xl md:text-7xl lg:text-8xl
-
-================================================================================
-USE CLIENT DIRECTIVE
-================================================================================
-Add 'use client' at top of file when using:
-  - useState, useEffect, or any React hook
-  - onClick, onChange, onSubmit event handlers
-  - Forms, inputs, mobile menus, tabs, accordions, newsletter forms
-
-Static display-only pages → no 'use client' needed.
-
-================================================================================
-IMPORT RULES — RELATIVE ONLY
-================================================================================
-NEVER use @/ aliases. Always relative:
-
-  app/layout.tsx          → '../components/Navigation'  '../components/Footer'
-  app/page.tsx            → '../components/Footer'
-  app/[slug]/page.tsx     → '../../components/Footer'
-  components/*.tsx        → '../lib/utils'
-
-================================================================================
-CONFIG FILES — COPY EXACTLY
-================================================================================
-
-postcss.config.mjs:
-export default { plugins: { tailwindcss: {}, autoprefixer: {} } }
-
-next.config.js:
-/** @type {import('next').NextConfig} */
-const nextConfig = { images: { unoptimized: true } }
-module.exports = nextConfig
-
-tsconfig.json:
-{
-  "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [{"name": "next"}],
-    "esModuleInterop": true
-  },
-  "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
-
-tailwind.config.ts:
-import type { Config } from 'tailwindcss';
-const config: Config = {
-  darkMode: 'class',
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
-  theme: {
-    extend: {
-      animation: {
-        'gradient': 'gradient 3s ease infinite',
-        'shimmer': 'shimmer 3s ease infinite',
-        'float': 'float 6s ease-in-out infinite',
-        'pulse-slow': 'pulse-slow 3s ease-in-out infinite',
-      },
-      keyframes: {
-        gradient: { '0%,100%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' } },
-        shimmer: { '0%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' }, '100%': { backgroundPosition: '0% 50%' } },
-        float: { '0%,100%': { transform: 'translateY(0px)' }, '50%': { transform: 'translateY(-20px)' } },
-        'pulse-slow': { '0%,100%': { opacity: '0.5' }, '50%': { opacity: '1' } },
-      },
-    },
-  },
-  plugins: [],
-};
-export default config;
-
-lib/utils.ts:
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
-
-app/layout.tsx:
-import type { Metadata } from 'next';
-import './globals.css';
-import Navigation from '../components/Navigation';
-import Footer from '../components/Footer';
-export const metadata: Metadata = { title: 'Site Name', description: 'Site description' };
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function StyledMap({ address = "123 Main Street, City", className = "" }: StyledMapProps) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-zinc-950 text-white antialiased">
-        <Navigation />
-        <main>{children}</main>
-        <Footer />
-      </body>
-    </html>
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-950/40 via-zinc-900 to-pink-950/30 border border-white/10 ${className}`}>
+      {/* Decorative grid pattern */}
+      <div className="absolute inset-0 grid-pattern opacity-20" />
+      
+      {/* Animated gradient orbs */}
+      <div className="absolute top-0 -left-20 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl animate-pulse-slow" />
+      <div className="absolute bottom-0 -right-20 w-72 h-72 bg-pink-500/20 rounded-full blur-3xl animate-pulse-slow" />
+      
+      {/* Map SVG placeholder */}
+      <div className="relative z-10 p-8 text-center">
+        <svg className="w-20 h-20 mx-auto mb-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        
+        <h3 className="text-xl font-semibold mb-2 gradient-text">Our Location</h3>
+        <p className="text-gray-400 mb-4">{address}</p>
+        
+        {/* Decorative location dots */}
+        <div className="flex justify-center gap-2 mt-4">
+          <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+          <div className="w-2 h-2 rounded-full bg-pink-400 animate-pulse delay-150" />
+          <div className="w-2 h-2 rounded-full bg-purple-400 animate-pulse delay-300" />
+        </div>
+        
+        {/* Interactive button */}
+        <button className="mt-6 px-6 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm transition-all duration-300">
+          Get Directions
+        </button>
+      </div>
+      
+      {/* Bottom decorative line */}
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent" />
+    </div>
   );
 }
 
-app/globals.css — FULL VERSION, never simplify:
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
-@layer base {
-  * { border-color: hsl(var(--border)); }
-  body {
-    @apply bg-zinc-950 text-white antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Create a premium, elegant Footer component for the Next.js website.
+
+File path: "components/Footer.tsx"
+
+Requirements:
+- Make it a modern glassmorphism-style footer with subtle backdrop blur.
+- Use the project's purple-pink gradient theme: bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
+- Include a decorative top border with gradient: bg-gradient-to-r from-transparent via-purple-500 to-transparent
+- Responsive grid layout: 4 columns on large screens (Brand | Quick Links | Company | Contact + Newsletter)
+- Brand section: Show the same logo/icon as Navigation.tsx + short tagline about the business.
+- Quick Links and Company sections: Use Next.js Link components with hover effects that change to purple-400.
+- Contact section: Include email, phone, and location with Lucide icons (Mail, Phone, MapPin).
+- Newsletter signup: A beautiful glass card with email input and a gradient "Subscribe" button (from-purple-600 to-pink-600).
+- Bottom bar: Copyright with current year, legal links (Privacy, Terms), and a small "Crafted in Nairobi" note.
+- Add subtle decorative elements: soft glowing orbs, grid pattern overlay (opacity 10-20%), and a thin gradient line at the very bottom.
+- Make it fully responsive (stack on mobile).
+- Use Tailwind classes only, no extra libraries except Lucide icons.
+- Add smooth hover transitions and maintain the overall dark luxurious aesthetic (no solid black or white backgrounds).
+- Ensure the footer looks rich and complete so the home page (app/page.tsx) ends beautifully when the footer is placed at the bottom.
+
+In app/page.tsx, place this Footer at the very end of the main content, after all sections (hero, features, gallery, testimonials, etc.), so it sits naturally at the bottom of the home page.
+
+Also import and include the Footer in app/layout.tsx so it appears consistently across all pages.
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 IMAGE USAGE RULE - ONLY 1 IMAGE TOTAL (HERO ONLY) 🚨
+================================================================================
+
+IMAGES AVAILABLE: image_1.jpg ONLY (1 image total)
+
+RULES:
+- image_1.jpg → HERO section ONLY (full screen background)
+- NO image_2.jpg (does not exist)
+- FEATURES/PRODUCTS section → RICH CONTENT, NO images
+-- NO images in Courses,Apply,Faculty,Events,Visit or any other page
+- NO gallery section
+- Total appearances: 1 (hero only)
+
+✅ CORRECT - Hero with image ONLY, Features with RICH content (no images):
+```tsx
+{/* ONLY image - Hero with image_1.jpg */}
+<section className="relative h-screen flex items-center justify-center overflow-hidden">
+  <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
+  <div className="absolute inset-0 bg-black/40" />
+  <div className="relative z-10 text-center">
+    <h1 className="text-6xl font-bold text-white">Project Name</h1>
+    <p className="text-gray-200 mt-4">Welcome to our website</p>
+  </div>
+</section>
+
+{/* Features Section - RICH CONTENT, NO images at all */}
+<section className="py-20 px-4 bg-gradient-to-br from-purple-950 to-pink-950">
+  <div className="container mx-auto">
+    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Features</h2>
+    <div className="grid md:grid-cols-3 gap-8">
+      
+      {/* Feature 1 - Rich content, NO image */}
+      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
+        <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-white">...</svg>
+        </div>
+        <h3 className="text-xl font-bold mb-3">Premium Quality</h3>
+        <p className="text-gray-300 mb-4">High-grade materials ensuring durability and performance.</p>
+        <ul className="text-gray-400 text-sm space-y-2">
+          <li>✓ Lifetime warranty</li>
+          <li>✓ Certified quality</li>
+          <li>✓ 24/7 support</li>
+        </ul>
+      </div>
+
+      {/* Feature 2 - Rich content, NO image */}
+      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
+        <div className="w-12 h-12 bg-pink-500 rounded-lg flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-white">...</svg>
+        </div>
+        <h3 className="text-xl font-bold mb-3">Expert Team</h3>
+        <p className="text-gray-300 mb-4">Professional trainers with years of experience.</p>
+        <ul className="text-gray-400 text-sm space-y-2">
+          <li>✓ Certified coaches</li>
+          <li>✓ Personalized plans</li>
+          <li>✓ Progress tracking</li>
+        </ul>
+      </div>
+
+      {/* Feature 3 - Rich content, NO image */}
+      <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 hover:scale-105 transition">
+        <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-white">...</svg>
+        </div>
+        <h3 className="text-xl font-bold mb-3">Best Value</h3>
+        <p className="text-gray-300 mb-4">Affordable plans with maximum benefits.</p>
+        <ul className="text-gray-400 text-sm space-y-2">
+          <li>✓ Competitive pricing</li>
+          <li>✓ Flexible memberships</li>
+          <li>✓ Free trial available</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+{/* Team Section - NO images, use icons or gradients */}
+<section className="py-20 px-4">
+  <div className="container mx-auto">
+    <h2 className="text-3xl font-bold text-center mb-12 gradient-text">Our Team</h2>
+    <div className="grid md:grid-cols-4 gap-6">
+      {['Sarah Johnson', 'Mike Chen', 'Emma Davis', 'Alex Rodriguez'].map(name => (
+        <div key={name} className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6 text-center">
+          <div className="w-24 h-24 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <span className="text-2xl text-white">{name[0]}</span>
+          </div>
+          <h3 className="font-bold">{name}</h3>
+          <p className="text-purple-400 text-sm">Expert Trainer</p>
+          <p className="text-gray-400 text-xs mt-2">5+ years experience</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+{/* Team/Cards/Testimonials - NO images at all */}
+<div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-xl p-6">
+  <h3>Team Member Name</h3>
+  <p>Role - NO image here</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 FIXED: NO PINK BACKGROUND + UNIQUE CONTENT FOR EACH COLLECTION 🚨
+================================================================================
+
+1. BACKGROUND COLOR: Use DARK/NEUTRAL colors, NOT pink:
+   ✅ bg-gray-900, bg-zinc-900, bg-black, bg-slate-900
+   ❌ NO pink, purple-pink, or pink gradients
+
+2. EACH COLLECTION MUST HAVE UNIQUE CONTENT:
+   - 3 Collection  → UNIQUE description (different from others)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+🚨 CRITICAL - NO COLOR OVERLAY ON HERO IMAGES 🚨
+
+DO NOT add gradient overlays on hero images:
+❌ <div className="absolute inset-0 bg-gradient-to-br from-purple-950/70 to-pink-950/70" />
+❌ <div className="absolute inset-0 bg-black/50" />
+
+USE original image as-is:
+✅ <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
+✅ Text should be readable with text-shadow or white color
+
+CORRECT:
+```tsx
+<section className="relative h-screen">
+  <img src="/images/image_1.jpg" className="absolute inset-0 w-full h-full object-cover" />
+  <div className="relative z-10 flex items-center justify-center h-full">
+    <h1 className="text-white text-6xl font-bold drop-shadow-lg">Title</h1>
+  </div>
+</section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: DO NOT COPY EXAMPLES 🚨🚨🚨
+================================================================================
+
+The examples shown (like "Summit Peak Academy", "Golden Bean Roastery", etc.) 
+are for ILLUSTRATION ONLY to show the PATTERN.
+
+YOU MUST generate YOUR OWN unique combinations using the word banks below.
+
+NEVER use:
+- "Summit Peak Academy" (overused example)
+- "Golden Bean Roastery" (overused example)  
+- "Crystal Bay Resort" (overused example)
+- "Bright Future Academy" (overused example)
+
+INSTEAD, create fresh combinations like:
+- "Apex Valley Academy"
+- "Starlight Harbor Resort"
+- "Evergreen Forge Gym"
+- "Radiant Bean Roastery"
+
+ALWAYS generate NEW, UNIQUE names for EVERY request.
+================================================================================
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: PROPER NAVIGATION LABELS 🚨
+================================================================================
+
+**NEVER use long prompt text as button labels. Generate SHORT, CLEAN navigation labels based on the PROJECT TYPE.**
+
+For COFFEE/ROASTERY websites:
+- DO NOT use: "home brewing enthusiasts, focusing on a rustic"
+- USE: "Shop", "Coffee", "Subscription", "Learn", "About", "Contact"
+- Examples: "Our Coffees", "Subscribe", "Brew Guide", "Story", "Wholesale"
+
+
+
+
+
+
+
+For SCHOOL websites (choose DIFFERENT each time):
+- Option A: ["Courses", "Enrollment", "Faculty", "Events", "Visit"]
+- Option B: ["Programs", "Admissions", "Staff", "Calendar", "Connect"]
+- Option C: ["Academics", "Apply", "Teachers", "Activities", "Directions"]
+- Option D: ["Classes", "Join", "Mentors", "Schedule", "Location"]
+- Option E: ["Studies", "Register", "Instructors", "News", "Contact"]
+
+
+
+
+For HOTEL websites:
+- USE: "Suites", "Amenities", "Gallery", "Book Now"
+
+For E-COMMERCE websites:
+- USE: "Shop", "Catalog", "Cart", "Checkout"
+
+For PORTFOLIO websites:
+- USE: "Work", "About", "Services", "Contact"
+
+**MAXIMUM 2-3 WORDS per button label. Keep them SHORT and PROFESSIONAL.**
+
+
+
+
+
+
+
+================================================================================
+NAVIGATION GENERATION RULES - MUST VARY EACH TIME:
+================================================================================
+
+1. Extract the PROJECT TYPE from user prompt (e.g., "coffee roastery", "school", "hotel", "e-commerce")
+
+2. Based on project type, generate DIFFERENT navigation labels EACH TIME. Choose RANDOMLY from these options:
+
+   SCHOOL websites (pick a DIFFERENT set each time):
+   - Option A: ["Courses", "Enroll", "Faculty", "Events", "Visit"]
+   - Option B: ["Programs", "Admissions", "Staff", "Calendar", "Connect"]
+   - Option C: ["Academics", "Apply", "Teachers", "Activities", "Directions"]
+   - Option D: ["Classes", "Join", "Mentors", "Schedule", "Location"]
+   - Option E: ["Studies", "Register", "Instructors", "News", "Contact"]
+
+   COFFEE/ROASTERY websites (pick a DIFFERENT set each time):
+   - Option A: ["Our Coffees", "Subscribe", "Brew Guide", "Story", "Contact"]
+   - Option B: ["Shop", "Delivery", "Recipes", "About", "Locations"]
+   - Option C: ["Blends", "Membership", "How to Brew", "Heritage", "Visit Us"]
+   - Option D: ["Roasts", "Club", "Methods", "Journal", "Reach Out"]
+   - Option E: ["Beans", "Subscription", "Techniques", "Origins", "Connect"]
+
+   HOTEL websites (pick a DIFFERENT set each time):
+   - Option A: ["Suites", "Amenities", "Gallery", "Reservations", "Location"]
+   - Option B: ["Rooms", "Services", "Moments", "Book Now", "Directions"]
+   - Option C: ["Accommodations", "Facilities", "Photos", "Check Availability", "Map"]
+   - Option D: ["Lodging", "Experiences", "Virtual Tour", "Plan Your Stay", "Contact"]
+   - Option E: ["Stays", "Dining", "Highlights", "Special Offers", "Visit"]
+
+   E-COMMERCE websites (pick a DIFFERENT set each time):
+   - Option A: ["Shop", "Catalog", "Cart", "Checkout"]
+   - Option B: ["Products", "Collections", "Bag", "Secure Checkout"]
+   - Option C: ["Store", "Browse", "Items", "Payment"]
+   - Option D: ["Market", "Categories", "Basket", "Order"]
+   - Option E: ["Goods", "Showcase", "Selections", "Complete Order"]
+
+   PORTFOLIO websites (pick a DIFFERENT set each time):
+   - Option A: ["Projects", "About", "Services", "Contact"]
+   - Option B: ["Work", "Bio", "Expertise", "Connect"]
+   - Option C: ["Creations", "Story", "Offerings", "Reach Out"]
+   - Option D: ["Showcase", "Profile", "Solutions", "Message"]
+   - Option E: ["Gallery", "Info", "What I Do", "Let's Talk"]
+
+   RESTAURANT websites (pick a DIFFERENT set each time):
+   - Option A: ["Menu", "Reservations", "Gallery", "Contact"]
+   - Option B: ["Dining", "Book a Table", "Photos", "Location"]
+   - Option C: ["Cuisine", "Hours", "Moments", "Directions"]
+   - Option D: ["Dishes", "Events", "Interior", "Visit Us"]
+   - Option E: ["Specials", "Private Dining", "Ambiance", "Reserve"]
+
+   GYM/FITNESS websites (pick a DIFFERENT set each time):
+   - Option A: ["Classes", "Trainers", "Membership", "Schedule"]
+   - Option B: ["Workouts", "Coaches", "Plans", "Timetable"]
+   - Option C: ["Sessions", "Experts", "Pricing", "Calendar"]
+   - Option D: ["Training", "Staff", "Join Now", "Hours"]
+   - Option E: ["Programs", "Instructors", "Sign Up", "Class Times"]
+
+3. NEVER include the full user prompt as button text.
+
+4. Brand/Logo name should be a UNIQUE BUSINESS NAME (generate fresh each time, never repeat).
+
+================================================================================
+EXAMPLE - Coffee Roastery Request (DYNAMIC):
+================================================================================
+
+User Prompt: "Develop a coffee roastery website"
+
+CORRECT Navigation (pick RANDOMLY from options):
+- Brand: "Apex Roast Co." or "Radiant Bean Roastery" or "Summit Brew" (generate unique)
+- Buttons: Option A, B, C, D, or E from above
+
+WRONG Navigation (NEVER DO THIS):
+- Using the same "Our Coffees, Subscription, Brew Guide, About, Contact" every time
+- Using the full user prompt as button text
+
+
+
+
+
+
+
+
+================================================================================
+⚠️ IMPORTANT: The examples below are for ILLUSTRATION ONLY ⚠️
+================================================================================
+
+**DO NOT COPY these exact names. They are just to show the PATTERN.**
+
+Generate FRESH combinations using the word banks:
+
+For School websites - generate combinations like:
+- [Random Adjective] + [Random Noun] + "Academy"
+- Examples of possible combinations (but create YOUR OWN):
+  * "Apex Valley Academy" (not "Summit Peak Academy")
+  * "Radiant Grove School" (not "Bright Valley School")
+  * "Noble Crest Institute" (not "Heritage Learning Center")
+
+For Coffee websites - generate combinations like:
+- [Random Adjective] + [Random Noun] + "Roastery"
+- Examples of possible combinations (but create YOUR OWN):
+  * "Starlight Bean Roastery" (not "Golden Bean Roastery")
+  * "Evergreen Brew Coffee" (not "Artisan Brew Coffee")
+  * "Horizon Roast Co." (not "Rustic Roast Co.")
+
+For Hotel websites - generate combinations like:
+- [Random Adjective] + [Random Noun] + "Resort"
+- Examples of possible combinations (but create YOUR OWN):
+  * "Luminous Bay Resort" (not "Crystal Bay Resort")
+  * "Victor Palm Hotel" (not "Royal Palm Hotel")
+  * "Summit View Lodge" (not "Sunset View Lodge")
+
+**THE KEY IS TO MIX AND MATCH RANDOMLY FROM THE BANKS, NOT COPY THE EXAMPLES.**
+
+================================================================================
+HOW TO GENERATE TRULY UNIQUE NAMES (STEP BY STEP):
+================================================================================
+
+1. Pick a random adjective from the ADJECTIVE BANK
+2. Pick a random noun from the NOUN BANK  
+3. Pick a business type from the BUSINESS TYPE BANK
+4. Combine them: [Adjective] + [Noun] + [Business Type]
+
+Example combinations (these are just examples - create your own):
+- "Apex Valley Academy" (Adjective: Apex, Noun: Valley, Type: Academy)
+- "Starlight Harbor Resort" (Adjective: Starlight, Noun: Harbor, Type: Resort)
+- "Evergreen Forge Gym" (Adjective: Evergreen, Noun: Forge, Type: Gym)
+- "Radiant Bean Roastery" (Adjective: Radiant, Noun: Bean, Type: Roastery)
+- "Noble Crest Hotel" (Adjective: Noble, Noun: Crest, Type: Hotel)
+- "Luminous Grove Studio" (Adjective: Luminous, Noun: Grove, Type: Studio)
+
+**NEVER use the same combination twice. Always generate fresh names.**
+
+
+
+
+================================================================================
+WORD BANKS FOR DYNAMIC GENERATION (USE RANDOMLY):
+================================================================================
+
+**CRITICAL: NEVER use "Apex" as the first choice. Randomize properly.**
+
+ADJECTIVES (pick 1 randomly - DO NOT always pick the first one):
+Horizon, Starlight, Evergreen, Radiant, Luminous, Noble, Victor, Summit, 
+Crest, Peak, Valley, River, Lake, Mountain, Ocean, Bay, Harbor, Haven, Refuge, 
+Sanctuary, Oasis, Grove, Meadow, Field, Garden, Park, Square, Plaza, Court, 
+Hall, House, Manor, Estate, Lodge, Inn, Crystal, Serene, Vibrant, Heritage, 
+Legacy, Pioneer, Urban, Modern, Elite, Artisan, Rustic, Industrial, Coastal,
+Aurora, Ember, Whisper, Shadow, Phoenix, Eclipse, Nova, Comet, Orion, Vega,
+Celestial, Mystic, Enchanted, Golden, Silver, Bronze, Iron, Steel, Maple, Oak,
+Willow, Cedar, Pine, Birch, Aspen, Holly, Ivy, Rose, Lily, Iris, Violet
+
+NOUNS (pick 1 randomly - AVOID overused ones):
+Valley, River, Mountain, Ocean, Bay, Peak, Summit, Ridge, Hill, Meadow, Forest, 
+Lake, Harbor, Coast, Heights, Gardens, Park, Square, Point, View, Forge, Works, 
+Collective, Republic, Garage, Studio, Atelier, Workshop, Lab, Hub, Center,
+Loft, Foundry, Mill, Factory, Warehouse, Tower, Spire, Citadel, Fortress,
+Castle, Palace, Manor, Villa, Cottage, Cabin, Lodge, Retreat, Sanctuary,
+Haven, Oasis, Paradise, Garden, Orchard, Vineyard, Grove, Woods, Falls
+
+BUSINESS TYPES (pick 1 randomly based on project):
+School: Academy, School, Institute, Center, Hub, Learning, College Prep, University, Campus
+Coffee: Roastery, Coffee Co., Brew, Cafe, Beanery, Coffee House, Roast, Roasters
+Hotel: Resort, Hotel, Inn, Lodge, Suites, Retreat, Getaway, Spa, Villas
+Gym: Fitness, Gym, Training Center, Athletic Club, Strength, Performance, Athletics
+Restaurant: Bistro, Kitchen, Dining, Restaurant, Eatery, Tavern, Grill, Table
+Portfolio: Studio, Creative, Design, Portfolio, Agency, Collective, Lab
+E-commerce: Market, Store, Shop, Goods, Emporium, Marketplace, Boutique
+
+================================================================================
+FORCED RANDOMIZATION RULES (MUST FOLLOW):
+================================================================================
+
+1. NEVER use "Apex" more than once every 10 projects
+2. NEVER use the same combination twice in a row
+3. Vary the name length (sometimes 2 words, sometimes 3 words)
+4. Mix adjective + noun + type in different orders
+
+Example variations for School websites:
+- "Horizon Valley Academy" (3 words)
+- "Radiant School of Design" (different structure)
+- "Evergreen Learning Center" (type variation)
+- "Noble Crest Institute" (2 words + type)
+- "Summit Oak School" (short and punchy)
+
+Example variations for Coffee websites:
+- "Starlight Bean Roastery"
+- "Ember Coffee Co."
+- "Phoenix Roast Works"
+- "Aurora Brew Lab"
+- "Mystic Bean Cafe"
+
+Example variations for Hotel websites:
+- "Luminous Bay Resort"
+- "Whisper Pines Lodge"
+- "Shadow Mountain Retreat"
+- "Celestial Palace Hotel"
+- "Golden Horizon Villas"
+
+**BEFORE generating a name, consciously pick a random adjective that is NOT "Apex" most of the time.**
+
+
+
+
+
+
+
+
+================================================================================
+NAVIGATION COMPONENT - CRITICAL RULES:
+================================================================================
+
+
+
+
+"components/Navigation.tsx": "import Link from 'next/link';\\nimport { ADAPTIVE_ICON } from 'lucide-react';\\n\\nexport default function Navigation() {\\n  return (\\n    <nav className=\\"flex justify-between items-center p-6 container mx-auto\\">\\n      <Link href=\\"/\\" className=\\"flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent\\">\\n        <ADAPTIVE_ICON className=\\"w-6 h-6 text-purple-400\\" />\\n        {{PROJECT_NAME}}\\n      </Link>\\n      <div className=\\"hidden md:flex space-x-6\\">\\n        <Link href=\\"/NAV_LINK_1\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_1</Link>\\n        <Link href=\\"/NAV_LINK_2\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_2</Link>\\n        <Link href=\\"/NAV_LINK_3\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_3</Link>\\n        <Link href=\\"/NAV_LINK_4\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_4</Link>\\n        <Link href=\\"/NAV_LINK_5\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_5</Link>\\n      </div>\\n    </nav>\\n  );\\n}"
+
+
+
+
+
+
+
+
+
+
+
+
+
+**IMPORTANT:** 
+- Brand name MUST be a short business name (2-4 words max)
+- Navigation labels MUST be short (1-2 words max)
+- NEVER use the full user prompt as button text
+
+
+
+
+
+
+
+
+
+
+================================================================================
+ADAPTIVE ICON SELECTION - CHOOSE BASED ON PROJECT TYPE:
+================================================================================
+
+When generating Navigation.tsx, REPLACE "ADAPTIVE_ICON" with the appropriate icon:
+
+SCHOOL / ACADEMY / UNIVERSITY:
+import { GraduationCap } from 'lucide-react';
+<GraduationCap className="w-6 h-6 text-purple-400" />
+
+COFFEE / ROASTERY / CAFE:
+import { Coffee } from 'lucide-react';
+<Coffee className="w-6 h-6 text-amber-400" />
+
+HOTEL / RESORT / LODGE:
+import { Hotel } from 'lucide-react';
+<Hotel className="w-6 h-6 text-blue-400" />
+
+RESTAURANT / BISTRO / DINING:
+import { Utensils } from 'lucide-react';
+<Utensils className="w-6 h-6 text-orange-400" />
+
+GYM / FITNESS / TRAINING:
+import { Dumbbell } from 'lucide-react';
+<Dumbbell className="w-6 h-6 text-green-400" />
+
+E-COMMERCE / STORE / SHOP:
+import { ShoppingBag } from 'lucide-react';
+<ShoppingBag className="w-6 h-6 text-pink-400" />
+
+PORTFOLIO / CREATIVE / AGENCY:
+import { Sparkles } from 'lucide-react';
+<Sparkles className="w-6 h-6 text-purple-400" />
+
+MOVIES / STREAMING / ENTERTAINMENT:
+import { Film } from 'lucide-react';
+<Film className="w-6 h-6 text-purple-400" />
+
+TECHNOLOGY / SOFTWARE:
+import { Cpu } from 'lucide-react';
+<Cpu className="w-6 h-6 text-cyan-400" />
+
+REAL ESTATE:
+import { Home } from 'lucide-react';
+<Home className="w-6 h-6 text-emerald-400" />
+
+HEALTH / MEDICAL:
+import { Heart } from 'lucide-react';
+<Heart className="w-6 h-6 text-red-400" />
+
+TRAVEL / TOURISM:
+import { Plane } from 'lucide-react';
+<Plane className="w-6 h-6 text-sky-400" />
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+⚠️ CRITICAL: PACKAGE.JSON & POSTCSS CONFIGURATION ⚠️
+================================================================================
+
+**YOU MUST CREATE THESE EXACT FILES FOR VERCEL DEPLOYMENT TO SUCCEED:**
+
+1. **package.json** - MUST include ALL these devDependencies:
+   - tailwindcss: "^3.4.1"
+   - postcss: "^8.4.35"
+   - autoprefixer: "^10.4.18"
+   - typescript: "^5.3.3"
+   - @types/node, @types/react, @types/react-dom
+   - scripts with "next dev", "next build", "next start"
+
+2. **postcss.config.mjs** - MUST use ESM format (NOT CommonJS):
+   - File extension: .mjs (NOT .js)
+   - Use: export default { plugins: { tailwindcss: {}, autoprefixer: {} } }
+   - DO NOT use: module.exports
+
+
+ 
+
+
+
+
+3. **tailwind.config.ts** - MUST have correct content paths:
+   - content: ['./app/**/*.{js,ts,jsx,tsx,mdx}', './components/**/*.{js,ts,jsx,tsx,mdx}']
+
+4. **app/globals.css** - MUST include at minimum:
+   - @tailwind base;
+   - @tailwind components;
+   - @tailwind utilities;
+
+**FAILURE TO FOLLOW THESE RULES WILL CAUSE VERCEL BUILD TO FAIL WITH:**
+- "Cannot find module 'autoprefixer'"
+- "PostCSS config must export a plugins object"
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: "USE CLIENT" DIRECTIVE RULES 🚨🚨🚨
+================================================================================
+
+**FAILURE TO ADD "use client" CORRECTLY WILL CAUSE VERCEL BUILD TO FAIL WITH:**
+- "useState is not defined"
+- "window is not defined" 
+- "localStorage is not defined"
+- "Hydration failed because the initial UI doesn't match what was rendered on the server"
+- "Cannot use import statement outside a module"
+
+================================================================================
+WHEN to ALWAYS use "use client" (CLIENT COMPONENTS):
+================================================================================
+
+**✅ MUST ADD "use client" at the VERY TOP of ANY file that uses:**
+
+1. **React Hooks (ANY of these):**
+   - useState, useEffect, useCallback, useMemo
+   - useRef, useContext, useReducer
+   - useLayoutEffect, useDebugValue, useDeferredValue
+   - useTransition, useId, useSyncExternalStore
+   - useImperativeHandle
+
+2. **Browser APIs (ANY of these):**
+   - window, document, localStorage, sessionStorage
+   - navigator, location, history
+   - fetch (client-side), WebSocket, IndexedDB
+   - requestAnimationFrame, cancelAnimationFrame
+   - setTimeout, setInterval, clearTimeout, clearInterval
+   - addEventListener, removeEventListener
+   - console (when not for debugging)
+
+3. **Event Handlers (ANY of these):**
+   - onClick, onChange, onSubmit, onKeyDown, onKeyUp
+   - onMouseEnter, onMouseLeave, onMouseMove, onMouseDown, onMouseUp
+   - onFocus, onBlur, onScroll, onResize
+   - onDrag, onDrop, onDragStart, onDragEnd
+   - onTouchStart, onTouchMove, onTouchEnd
+   - onAnimationStart, onAnimationEnd, onTransitionEnd
+
+4. **Interactive Component Types (ANY of these):**
+   - Forms, Inputs, Textareas, Selects, Buttons
+   - Modals, Dialogs, Popups, Toasts, Snackbars
+   - Dropdowns, Menus, Selects, Comboboxes
+   - Tabs, Accordions, Carousels, Sliders
+   - Video Players, Audio Players
+   - Charts, Graphs, Maps
+   - Canvases, WebGL, Three.js components
+   - Rich Text Editors, Code Editors
+   - Drag and Drop interfaces
+   - Date Pickers, Time Pickers, Color Pickers
+   - Autocomplete, Typeahead components
+
+5. **Custom Hooks (ANY custom hook):**
+   - useLocalStorage, useSessionStorage
+   - useWindowSize, useScrollPosition
+   - useMediaQuery, useOnlineStatus
+   - useClickOutside, useKeyPress
+   - useDebounce, useThrottle, useInterval, useTimeout
+   - useFetch, useMutation, useQuery
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+CRITICAL: PAGE CONTENT REQUIREMENTS - MUST HAVE RICH CONTENT
+================================================================================
+
+**For EVERY navigation link, you MUST create a corresponding page file with MEANINGFUL, RICH content.**
+
+DO NOT create empty pages or placeholder pages. Each page must have:
+
+1. **Hero Section** - Title, description, and relevant image/icon
+2. **Content Sections** - At least 2-3 sections with actual information
+3. **Interactive Elements** - Buttons, cards, or forms where appropriate
+4. **Visual Elements** - Icons, images, or illustrations
+5. **Call-to-Action** - Buttons or links to other pages
+
+
+**HOME PAGE (app/page.tsx):**
+- Hero section with gradient title, description,image background and CTA button
+- Features section with 2-4 cards (icons, titles, descriptions) with diffrent content
+- Stats section with numbers (e.g., "500+ Students", "10 Years Experience")
+- Testimonials section with 2-3 customer quotes
+- FAQ section with 3-4 questions
+- Footer with links, social icons, copyright
+
+**ABOUT PAGE (app/about/page.tsx):**
+- Hero with mission statement
+- Story section with company history
+- Team section with 3-6 member profiles (name, role, bio, image)
+- Values section with 4-6 core values
+- Timeline of milestones
+- CTA to contact
+
+**SERVICES/PRODUCTS PAGE (app/services/page.tsx):**
+- Hero with service overview
+- Grid of 4-8 service cards (icon, title, description, price)
+- Comparison table or feature list
+- Process section (how it works in 3-5 steps)
+- Client logos section
+- Pricing plans (3 tiers)
+- Contact CTA
+
+**CONTACT PAGE (app/contact/page.tsx):**
+- Hero with contact info
+- Contact form (name, email, message, subject)
+- Map location
+- Hours of operation
+- Social media links
+- FAQ mini section
+
+**BLOG/NEWS PAGE (app/blog/page.tsx):**
+- Hero with latest posts
+- Grid of 3-6 blog cards (image, title, date, excerpt, read more)
+- Sidebar with categories and recent posts
+- Newsletter signup
+- Pagination
+
+**FOR PROJECT TYPE SPECIFIC:**
+
+SCHOOL WEBSITE:
+- Courses page with 4-8 course cards (title, duration, price, description)
+- Admissions page with steps, requirements, deadlines, application form
+- Faculty page with 3-6 teacher profiles
+- Events calendar with upcoming dates
+- Gallery page with 3-5 photos
+
+COFFEE WEBSITE:
+- Menu page with categories (espresso, cold brew, food, pastries)
+- Shop page with products, prices, add to cart
+- Locations page with store hours, addresses, maps
+- Brew guide with step-by-step tutorials
+- Subscription page with 3 plans
+
+HOTEL WEBSITE:
+- Rooms page with 3-6 room types (images, amenities, price, book button)
+- Amenities page with pool, spa, gym, restaurant details
+- Gallery with 8-12 photos
+- Offers page with 3-5 packages
+- Reviews page with 5-10 testimonials
+
+RESTAURANT WEBSITE:
+- Menu page with appetizers, mains, desserts, drinks
+- Reservations page with date/time picker, guest count
+- Events page with private dining, catering
+- Gallery with food and interior photos
+
+GYM WEBSITE:
+- Classes page with schedule, instructor names, times
+- Trainers page with 4-8 profiles (specialties, certs, social)
+- Membership page with 3-4 plans, benefits, pricing
+- Schedule page with weekly calendar
+
+E-COMMERCE WEBSITE:
+- Products page with filters, sorting, 6-12 products
+- Product detail page with description, reviews, related
+- Cart page with quantity updates, remove buttons
+- Checkout page with shipping, payment, order summary
+
+PORTFOLIO WEBSITE:
+- Projects page with 6-9 case studies (image, title, category, link)
+- Project detail page with challenge, solution, results, tech stack
+- Services page with 4-6 service cards
+- Testimonials slider with 5-8 quotes
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+CRITICAL STYLING RULES - MUST FOLLOW:
+================================================================================
+
+1. **GRADIENTS (USE THESE EXACTLY)**:
+   - Button / CTA Gradient: `bg-gradient-to-r from-purple-600 via-fuchsia-600 to-pink-600 hover:from-purple-700 hover:via-fuchsia-700 hover:to-pink-700`
+   - Text / Heading Gradient: `bg-gradient-to-r from-purple-400 via-pink-400 to-violet-400 bg-clip-text text-transparent animate-gradient`
+   - Hero / Section Background: `bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950`
+   - Card Background: `bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-sm`
+   - Glass Effect: `bg-white/5 backdrop-blur-md border border-white/10`
+   - Subtle Accent Gradient: `bg-gradient-to-r from-purple-500/10 via-transparent to-pink-500/10`
+   - Border Gradient (Hover): `border border-transparent bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-border`
+   - Animated Gradient: `bg-gradient-to-r from-purple-900 via-pink-900 to-purple-900 bg-[length:200%_200%] animate-gradient`
+
+2. **CONTAINERS**:
+   - Standard: `container mx-auto px-4 sm:px-6 lg:px-8`
+   - Wide / Full-width: `max-w-7xl mx-auto`
+
+3. **RESPONSIVE DESIGN**:
+   - Mobile-first: `text-sm md:text-base lg:text-lg`
+   - Grid system: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8`
+
+4. **🚨 BACKGROUND RULE - NO BLACK, NO WHITE 🚨**:
+   
+   **FORBIDDEN (NEVER USE):**
+   - ❌ bg-black, bg-zinc-900, bg-gray-900, #000000, black
+   - ❌ bg-white, bg-gray-100, #FFFFFF, white
+   - ❌ Solid backgrounds of any kind
+   
+   **REQUIRED (ALWAYS USE):**
+   - ✅ Hero with Image: `absolute inset-0 bg-gradient-to-br from-purple-950/70 via-zinc-950/50 to-pink-950/70` over image
+   - ✅ Section Background: `bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950`
+   - ✅ Alternating Section: `bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950`
+   - ✅ Card Background: `bg-gradient-to-br from-purple-600/20 to-pink-600/20 backdrop-blur-sm`
+   - ✅ Glass Navbar: `bg-gradient-to-r from-purple-950/80 via-zinc-950/80 to-pink-950/80 backdrop-blur-xl`
+   - ✅ Footer: `bg-gradient-to-t from-purple-950/80 via-zinc-950 to-transparent`
+
+5. **BACKGROUND EXAMPLES**:
+   
+   **Hero with Image (Full Page):**
+   ```tsx
+   <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+     {/* Background Image with Gradient Overlay */}
+     <div className="absolute inset-0 z-0">
+       <img 
+         src="/images/image_1.jpg" 
+         alt="Hero background" 
+         className="w-full h-full object-cover"
+         onError={(e) => {
+           e.currentTarget.style.display = 'none';
+           e.currentTarget.parentElement.classList.add('bg-gradient-to-br', 'from-purple-950', 'via-zinc-950', 'to-pink-950');
+         }}
+       />
+       <div className="absolute inset-0 bg-gradient-to-br from-purple-950/70 via-zinc-950/50 to-pink-950/70" />
+       <div className="absolute inset-0 bg-radial-gradient opacity-50" />
+     </div>
+     
+     {/* Content */}
+     <div className="relative z-10 container mx-auto px-4 text-center text-white">
+       <h1 className="text-6xl md:text-7xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient mb-6">
+         Project Name
+       </h1>
+       <p className="text-xl text-gray-300 mb-8">Welcome to our beautiful website</p>
+       <button className="px-8 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold transition-all duration-300 shadow-lg shadow-purple-500/25">
+         Get Started
+       </button>
+     </div>
+   </section>............
+
+
+
+
+   
+
+
+
+
+
+================================================================================
+📸 IMAGE RESIZING RULES
+================================================================================
+
+ALL images MUST be resized to appropriate dimensions for their usage:
+
+HERO IMAGES:
+- Width: 1920px, Height: 1080px (16:9 aspect ratio)
+- Use: object-cover, w-full, h-screen
+
+PRODUCT/GALLERY IMAGES:
+- Width: 800px, Height: 600px (4:3 aspect ratio)
+- Use: object-cover, rounded-lg
+
+TRAINER/TEAM IMAGES:
+- Width: 400px, Height: 400px (1:1 square)
+- Use: object-cover, rounded-full
+
+LOGO/ICON IMAGES:
+- Width: 64px, Height: 64px
+- Use: w-16 h-16
+
+✅ CORRECT - Responsive images with proper sizing:
+```tsx
+<img 
+  src="/images/hero.jpg" 
+  className="w-full h-screen object-cover"
+  alt="Hero"
+/>
+
+<img 
+  src="/images/product.jpg" 
+  className="w-full h-64 object-cover rounded-lg"
+  alt="Product"
+/>
+
+<img 
+  src="/images/trainer.jpg" 
+  className="w-32 h-32 object-cover rounded-full"
+  alt="Trainer"
+/>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 MANDATORY: COMPLETE GLOBALS.CSS - DO NOT SIMPLIFY 🚨
+================================================================================
+**CRITICAL**: You MUST include the FULL globals.css below. NEVER generate a minimal or simplified version.
+
+The globals.css MUST contain ALL of the following:
+- ✅ Custom scrollbar styles with purple-pink gradient
+- ✅ Glassmorphism classes (.glass, .glass-hover)
+- ✅ Animation keyframes (shimmer, float, pulse-slow, gradient)
+- ✅ Gradient text utility (.gradient-text)
+- ✅ Card hover effects (.card-hover)
+- ✅ Glow effects (.glow, .glow-hover)
+- ✅ Hero gradient utility (.hero-gradient)
+- ✅ Grid pattern utility (.grid-pattern)
+- ✅ Smooth scroll behavior
+- ✅ Custom selection color
+- ✅ Focus rings for accessibility
+
+**FAILURE TO INCLUDE THE COMPLETE globals.css WILL CAUSE THE BUILD TO FAIL ON VERCEL.**
+================================================================================
+
+
+
+
+
+
+
+
+
+================================================================================
+COMPLETE GLOBALS.CSS TEMPLATE - COPY EXACTLY:
+================================================================================
+
+"app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;\\n\\n@layer base {\\n  :root {\\n    --background: 0 0% 100%;\\n    --foreground: 222.2 84% 4.9%;\\n    --card: 0 0% 100%;\\n    --card-foreground: 222.2 84% 4.9%;\\n    --border: 214.3 31.8% 91.4%;\\n    --ring: 222.2 84% 4.9%;\\n  }\\n\\n  .dark {\\n    --background: 222.2 84% 4.9%;\\n    --foreground: 210 40% 98%;\\n    --card: 222.2 84% 4.9%;\\n    --card-foreground: 210 40% 98%;\\n    --border: 217.2 32.6% 17.5%;\\n    --ring: 212.7 26.8% 83.9%;\\n  }\\n\\n  * {\\n    border-color: hsl(var(--border));\\n  }\\n\\n  body {\\n    @apply bg-zinc-950 text-white antialiased;\\n    font-feature-settings: \\\"rlig\\\" 1, \\\"calt\\\" 1;\\n  }\\n}\\n\\n@layer utilities {\\n  html {\\n    scroll-behavior: smooth;\\n  }\\n\\n  ::-webkit-scrollbar {\\n    width: 10px;\\n    height: 10px;\\n  }\\n\\n  ::-webkit-scrollbar-track {\\n    background: #18181b;\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb {\\n    background: linear-gradient(to bottom, #a855f7, #ec4899);\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb:hover {\\n    background: linear-gradient(to bottom, #c084fc, #f472b6);\\n  }\\n\\n  ::selection {\\n    @apply bg-purple-500 text-white;\\n  }\\n\\n  *:focus-visible {\\n    @apply outline-none ring-2 ring-purple-500 ring-offset-2 ring-offset-zinc-950;\\n  }\\n}\\n\\n@layer components {\\n  .glass {\\n    @apply bg-white/5 backdrop-blur-md border border-white/10;\\n  }\\n\\n  .glass-hover {\\n    @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20;\\n  }\\n\\n  .gradient-text {\\n    @apply bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent;\\n    background-size: 200% auto;\\n    animation: shimmer 3s ease infinite;\\n  }\\n\\n  .card-hover {\\n    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20;\\n  }\\n\\n  .glow {\\n    @apply shadow-lg shadow-purple-500/25;\\n  }\\n\\n  .glow-hover {\\n    @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40;\\n  }\\n\\n  .hero-gradient {\\n    background: radial-gradient(ellipse at top, #1e1b4b, transparent),\\n                radial-gradient(ellipse at bottom, #4c1d95, transparent);\\n  }\\n\\n  .grid-pattern {\\n    background-image: linear-gradient(to right, #ffffff0a 1px, transparent 1px),\\n                      linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);\\n    background-size: 50px 50px;\\n  }\\n}\\n\\n@keyframes shimmer {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n@keyframes float {\\n  0%, 100% { transform: translateY(0px); }\\n  50% { transform: translateY(-20px); }\\n}\\n\\n@keyframes pulse-slow {\\n  0%, 100% { opacity: 0.5; }\\n  50% { opacity: 1; }\\n}\\n\\n@keyframes gradient {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n.animate-float {\\n  animation: float 6s ease-in-out infinite;\\n}\\n\\n.animate-pulse-slow {\\n  animation: pulse-slow 3s ease-in-out infinite;\\n}\\n\\n.animate-gradient {\\n  background-size: 200% auto;\\n  animation: gradient 3s ease infinite;\\n}"
+
+
+
+
+
+
+
+
+
+🚨 CRITICAL - NO PLACEHOLDER PAGES ALLOWED 🚨
+
+NEVER create pages like this:
+❌ export default function Shop() { return <div><h1>Shop</h1><p>Browse our collection.</p></div>; }
+❌ export default function About() { return <div>About Us</div>; }
+
+ALWAYS create COMPLETE pages with:
+✅ Minimum 3-4 sections (hero, grid, features, CTA, Footer)
+✅ Real content (product names, prices, images)
+✅ Interactive elements (buttons, forms, cards)
+✅ Proper styling with Tailwind classes
+
+CORRECT Shop page example:
+```tsx
+export default function Shop() {
+  const products = [
+    { id: 1, name: "Premium Wireless Headphones", price: 199, image: "/images/product1.jpg" },
+    { id: 2, name: "Smart Watch Pro", price: 299, image: "/images/product2.jpg" },
+    { id: 3, name: "Ultra HD Camera", price: 499, image: "/images/product3.jpg" }
+  ];
+  
+  return (
+    <div className="min-h-screen bg-gray-900">
+      <section className="bg-gradient-to-r from-purple-600 to-pink-600 py-20">
+        <h1 className="text-4xl font-bold text-center text-white">Shop Our Collection</h1>
+      </section>
+      
+      <section className="container mx-auto px-4 py-12">
+        <div className="grid md:grid-cols-3 gap-8">
+          {products.map(p => (
+            <div key={p.id} className="bg-gray-800 rounded-xl p-4">
+              <img src={p.image} className="w-full h-48 object-cover rounded-lg" />
+              <h3 className="text-xl font-bold mt-4">{p.name}</h3>
+              <p className="text-purple-400">${p.price}</p>
+              <button className="mt-4 w-full bg-purple-600 py-2 rounded-lg">Add to Cart</button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 }
 
-@layer utilities {
-  html { scroll-behavior: smooth; }
-  ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-track { background: #09090b; }
-  ::-webkit-scrollbar-thumb { background: linear-gradient(to bottom, #a855f7, #ec4899); border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(to bottom, #c084fc, #f472b6); }
-  ::selection { background: #a855f7; color: #fff; }
-}
 
-@layer components {
-  .glass { @apply bg-white/5 backdrop-blur-md border border-white/10; }
-  .glass-hover { @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20; }
-  .gradient-text {
-    @apply bg-gradient-to-r from-purple-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent;
-    background-size: 200% auto;
-    animation: shimmer 3s ease infinite;
-  }
-  .card-hover { @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20; }
-  .glow { @apply shadow-lg shadow-purple-500/25; }
-  .glow-hover { @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40; }
-  .hero-gradient {
-    background: radial-gradient(ellipse at top, #1e1b4b 0%, transparent 60%),
-                radial-gradient(ellipse at bottom right, #4c1d95 0%, transparent 60%);
-  }
-  .grid-pattern {
-    background-image:
-      linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
-    background-size: 60px 60px;
-  }
-  .section-padding { @apply py-24 md:py-32 px-4 sm:px-6 lg:px-8; }
-  .container-width { @apply max-w-7xl mx-auto; }
-}
 
-@keyframes shimmer { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-@keyframes pulse-slow { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
-@keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-@keyframes fade-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+NEVER create placeholder/empty pages. Each page MUST have:
+- Real data (products, services, team members)
+- Proper UI components (cards, grids, forms)
+- No "Coming Soon" or placeholder text
+- Complete functionality (buttons, forms, interactive elements)
 
-.animate-float { animation: float 6s ease-in-out infinite; }
-.animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
-.animate-gradient { background-size: 200% auto; animation: gradient 3s ease infinite; }
-.animate-fade-up { animation: fade-up 0.6s ease forwards; }
+
+
+
+
+
+
+
 
 ================================================================================
-PRE-OUTPUT CHECKLIST — RUN THROUGH BEFORE WRITING JSON
+GRADIENT USAGE EXAMPLES:
 ================================================================================
-  [ ] package.json uses EXACT pinned versions (clsx: "2.1.1" not 4.x)
-  [ ] Unique business name generated (not banned names)
-  [ ] Max 4 nav links, each has a page file
-  [ ] Total files ≤ 20
-  [ ] app/page.tsx has all 7 sections + imports Footer
-  [ ] Footer imported in app/layout.tsx (renders on all pages)
-  [ ] app/page.tsx also ends with <Footer /> (so home page footer renders)
-  [ ] Navigation has mobile hamburger (Menu/X icons, useState)
-  [ ] image_1.jpg used ONLY in hero, no other references
-  [ ] No solid bg-black or bg-white anywhere
-  [ ] Every section uses a DIFFERENT background gradient
-  [ ] All array items have UNIQUE content (no copy-paste)
-  [ ] Hero has eyebrow label + split gradient title + trust indicators + scroll hint
-  [ ] 'use client' present wherever hooks or events are used
-  [ ] All imports are relative (zero @/ aliases)
-  [ ] postcss.config.mjs uses ESM export default
-  [ ] globals.css is full version with all custom classes
+
+**Hero Title:**
+<h1 className="text-6xl md:text-7xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient">
+  Your Title Here
+</h1>
+
+**Primary Button:**
+<button className="px-6 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold transition-all duration-300 shadow-lg shadow-purple-500/25">
+  Get Started
+</button>
+
+**Card with Gradient Border:**
+<div className="relative rounded-xl p-6 bg-zinc-900/50 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300">
+  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
+  Card Content
+</div>
+
+**Section Background:**
+<section className="relative overflow-hidden bg-gradient-to-b from-purple-950/20 via-zinc-950 to-zinc-950">
+  <div className="absolute inset-0 grid-pattern opacity-20" />
+  Section Content
+</section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ================================================================================
-Now generate the complete project for this request: [USER_PROMPT_HERE]
+IMPORT RULES - NO PATH ALIASES (@/*):
 ================================================================================
-"""
+
+**CRITICAL: NEVER use @/ path aliases. Use ONLY relative imports.**
+
+Correct imports:
+- In app/layout.tsx: import Navigation from '../components/Navigation'
+- In app/page.tsx: import Button from '../components/ui/Button'
+- In components/: import { cn } from '../lib/utils'
+
+Wrong imports (NEVER use):
+- import Navigation from '@/components/Navigation'
+- import Button from '@/components/ui/Button'
+- import { cn } from '@/lib/utils'
+
+
+
+
+
+
+
+
+================================================================================
+NAVIGATION & PAGE SYNC RULE - CRITICAL:
+================================================================================
+
+**When generating Navigation.tsx with links, you MUST create corresponding page files for EVERY link.**
+
+Example Navigation links:
+- <Link href="/showcase"> → MUST create: app/showcase/page.tsx
+- <Link href="/solutions"> → MUST create: app/solutions/page.tsx  
+- <Link href="/journal"> → MUST create: app/journal/page.tsx
+- <Link href="/connect"> → MUST create: app/connect/page.tsx
+
+**EXCEPTION:** Only exclude external links (href starting with http:// or https://)
+
+**Page Content Requirements:**
+Each page MUST have unique, creative content based on its name and the project type.
+
+
+
+
+
+
+
+
+
+================================================================================
+DYNAMIC CONTENT GENERATION - CREATE UNIQUE PAGES FOR EACH REQUEST:
+================================================================================
+
+**CRITICAL: DO NOT use generic names like "Products" or "Programs" every time.**
+**Generate UNIQUE, CREATIVE names based on the specific project:**
+
+For SCHOOL websites:
+- "Admissions" → Use: "Apply", "Join Us", "Enrollment", "Be a Student", "Get Started"
+- "Faculty" → Use: "Our Teachers", "Staff", "Mentors", "Instructors", "Academic Team"
+-  "Events" → Use: "Calendar", "Activities", "Announcements", "School Life", "News & Events"
+-  "Contact" → Use: "Visit Us", "Get in Touch", "Reach Out", "Connect"
+
+For HOTEL websites:
+- Instead of "Rooms" → Use: "Suites", "Accommodations", "Stays", "Lodging", "Guest Rooms"
+- Instead of "Amenities" → Use: "Facilities", "Services", "Features", "Experiences", "What We Offer"
+- Instead of "Gallery" → Use: "Photos", "Moments", "Visual Tour", "Our Space", "Media"
+- Instead of "Contact" → Use: "Reservations", "Book Now", "Inquire", "Plan Your Stay"
+
+For E-COMMERCE websites:
+- Instead of "Products" → Use: "Shop", "Store", "Collection", "Catalog", "Browse", "Discover"
+- Instead of "Cart" → Use: "Bag", "Basket", "Items", "Your Selections"
+- Instead of "Checkout" → Use: "Secure Checkout", "Complete Order", "Payment", "Finalize"
+
+For PORTFOLIO websites:
+- Instead of "Work" → Use: "Projects", "Creations", "Showcase", "Portfolio", "Case Studies"
+- Instead of "Services" → Use: "What I Do", "Expertise", "Offerings", "Solutions"
+- Instead of "Blog" → Use: "Insights", "Articles", "Thoughts", "Journal", "Updates"
+
+For RESTAURANT websites:
+- Instead of "Menu" → Use: "Dining", "Cuisine", "Dishes", "Offerings", "Food & Drink"
+- Instead of "Reservations" → Use: "Book a Table", "Dine with Us", "Reserve", "Plan Your Visit"
+- Instead of "Events" → Use: "Private Dining", "Celebrations", "Special Occasions", "Gatherings"
+
+For GYM/FITNESS websites:
+- Instead of "Classes" → Use: "Workouts", "Sessions", "Training", "Programs", "Fitness Plans"
+- Instead of "Trainers" → Use: "Coaches", "Instructors", "Trainers", "Fitness Experts"
+- Instead of "Membership" → Use: "Plans", "Pricing", "Join Now", "Become a Member"
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+REQUIRED CORE FILES - ALWAYS CREATE:
+================================================================================
+
+app/
+  layout.tsx                # Root layout with dark theme (USE RELATIVE IMPORTS)
+  page.tsx                  # Dynamic home page with hero, features, testimonials
+  globals.css               # Premium styles with animations, gradients, scrollbar
+
+
+app/(marketing)/            # Route group for marketing pages
+  page.tsx                  # Landing page
+  layout.tsx                # Marketing layout (optional)
+
+app/dashboard/            # Route group for protected pages              # Dashboard layout with sidebar
+  page.tsx                  # Dashboard home
+
+app/api/                    # API routes (if needed)
+  hello/route.ts            # Example API endpoint
+
+app/blog/                   # Blog section
+  page.tsx                  # Blog listing with pagination
+  [slug]/page.tsx           # Dynamic blog post page
+
+components/
+  Navigation.tsx            # Dynamic navigation with creative labels
+  Footer.tsx                # Footer with links, social icons, copyright
+  Hero.tsx                  # Hero section component
+  Features.tsx              # Features grid component
+  Testimonials.tsx          # Testimonials slider/component
+  CTA.tsx                   # Call to action component
+  Newsletter.tsx            # Newsletter signup form
+  
+
+  
+components/ui/
+  Button.tsx                # Reusable button with variants (primary, outline, ghost)
+  Card.tsx                  # Card component with hover effects
+  Input.tsx                 # Form input component
+  Modal.tsx                 # Modal dialog component
+  Dropdown.tsx              # Dropdown menu component
+
+
+
+components/layout/
+  Header.tsx                # Header wrapper
+  Container.tsx             # Responsive container
+  Section.tsx               # Section with padding and background
+
+lib/
+  utils.ts                  # cn utility function for Tailwind merging
+
+
+hooks/
+  useScroll.ts              # Scroll position hook
+  useMediaQuery.ts          # Responsive breakpoint hook
+  useLocalStorage.ts        # Local storage hook
+  useDebounce.ts            # Debounce hook
+
+types/
+  index.ts                  # TypeScript interfaces and types
+
+styles/
+  globals.css               # Global styles (main file)
+
+public/
+  images/                   # All image assets
+    og-image.png            # Open Graph image for social sharing
+    favicon.ico             # Browser favicon
+    logo.svg                # Site logo
+  fonts/                    # Custom fonts (if any)
+
+================================================================================
+ADDITIONAL FILES FOR SPECIFIC PROJECT TYPES:
+================================================================================
+
+SCHOOL WEBSITE:
+app/courses/page.tsx        # Course listing with filters
+app/admissions/page.tsx     # Admissions process and form
+app/faculty/page.tsx        # Teacher/Staff profiles
+app/events/page.tsx         # Events calendar
+components/CourseCard.tsx   # Course card component
+components/EventCard.tsx    # Event card component
+
+COFFEE WEBSITE:
+app/menu/page.tsx           # Menu with categories
+app/shop/page.tsx           # Product listing
+app/locations/page.tsx      # Store locations with map
+app/subscription/page.tsx   # Subscription plans
+components/ProductCard.tsx  # Product card
+components/Cart.tsx         # Shopping cart
+
+HOTEL WEBSITE:
+app/rooms/page.tsx          # Room types listing
+app/rooms/[id]/page.tsx     # Room detail with booking
+app/amenities/page.tsx      # Hotel amenities
+app/gallery/page.tsx        # Photo gallery
+app/offers/page.tsx         # Special offers/packages
+components/BookingForm.tsx  # Room booking form
+components/RoomCard.tsx      # Room card component
+
+RESTAURANT WEBSITE:
+app/menu/page.tsx           # Food and drink menu
+app/reservations/page.tsx   # Table booking form
+app/events/page.tsx         # Private dining events
+components/MenuItem.tsx     # Menu item component
+components/ReservationForm.tsx # Booking form
+
+GYM WEBSITE:
+app/classes/page.tsx        # Class schedule
+app/trainers/page.tsx       # Trainer profiles
+app/membership/page.tsx     # Pricing plans
+app/schedule/page.tsx       # Weekly class timetable
+components/ClassCard.tsx    # Class card
+components/TrainerCard.tsx  # Trainer profile card
+
+E-COMMERCE WEBSITE:
+app/products/page.tsx       # Product listing with filters
+app/products/[id]/page.tsx  # Product detail
+app/cart/page.tsx           # Shopping cart
+app/checkout/page.tsx       # Checkout flow
+app/account/page.tsx        # User account
+components/ProductCard.tsx  # Product card
+components/CartItem.tsx     # Cart item component
+
+PORTFOLIO WEBSITE:
+app/projects/page.tsx       # Project gallery
+app/projects/[slug]/page.tsx # Project case study
+app/services/page.tsx       # Services offered
+components/ProjectCard.tsx  # Project card
+components/SkillBadge.tsx   # Skill/technology badges
+
+
+
+
+================================================================================
+VERCEL DEPLOYMENT REQUIRED FILES (ALWAYS CREATE):
+================================================================================
+
+package.json                 # Dependencies and scripts (MUST have build/dev/start)
+package-lock.json            # Lock file (optional, AI can skip)
+next.config.js               # Next.js configuration (images domains, etc.)
+postcss.config.mjs           # PostCSS config with tailwindcss and autoprefixer (MUST be .mjs)
+tailwind.config.ts           # Tailwind config with content paths
+tsconfig.json                # TypeScript config (NO path aliases @/*)
+next-env.d.ts                # Next.js TypeScript references
+.gitignore                   # Ignore node_modules, .next, .env
+.env.example                 # Example environment variables
+
+
+================================================================================
+CRITICAL RULES:
+================================================================================
+
+1. EVERY navigation link MUST have a corresponding page file
+2. EVERY page MUST have AT LEAST 3 content sections
+3. EVERY page MUST use images from /public/images/
+4. ALL imports MUST be relative (NO @/* path aliases)
+5. ALL client components MUST have "use client" directive at top
+6. EVERY array .map() Hacing different content for products/Features
+7. ALL pages MUST be responsive (mobile-first design)
+8. EVERY component MUST have proper TypeScript types
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: NAVIGATION LINKS REQUIRE CORRESPONDING PAGES 🚨🚨🚨
+================================================================================
+
+**For EVERY link in Navigation.tsx, you MUST create a corresponding page file.**
+
+If Navigation.tsx has:
+<Link href="/classes">Classes</Link>
+<Link href="/trainers">Trainers</Link>
+<Link href="/membership">Membership</Link>
+
+Then you MUST create:
+- app/classes/page.tsx
+- app/trainers/page.tsx
+- app/membership/page.tsx
+
+**FAILURE TO CREATE THESE PAGES WILL CAUSE 404 ERRORS!**
+
+
+
+
+
+
+
+
+
+
+
+
+Each page MUST have MEANINGFUL content based on its name:
+
+For "/classes" page (Gym website):
+- Hero section about classes
+- Grid of class cards (Yoga, HIIT, Strength, Pilates, etc.)
+- Class schedule or timetable
+- Instructor names and times
+
+For "/trainers" page:
+- Trainer profiles with images, names, specialties
+- Bio descriptions
+- Social links or certifications
+
+For "/membership" page:
+- Pricing plans (Basic, Pro, Premium)
+- Feature comparison table
+- Sign up CTA buttons
+
+For "/contact" page:
+- Contact form (name, email, message)
+- Location map or address
+- Hours of operation
+- Phone/email information
+
+**you mustt create unique, rich content for each page.
+
+
+
+
+
+
+
+**NEVER create empty or placeholder pages. Each page must have rich, meaningful content.**
+
+================================================================================
+EXAMPLE - CORRECT IMPLEMENTATION:
+================================================================================
+
+Navigation.tsx links:
+- /classes → app/classes/page.tsx (rich content with class grid and schedule)
+- /trainers → app/trainers/page.tsx (trainer profiles with images and bios)
+- /membership → app/membership/page.tsx (pricing plans and benefits)
+- /contact → app/contact/page.tsx (contact form and information)
+
+================================================================================
+EXAMPLE - WRONG (NEVER DO THIS):
+================================================================================
+
+❌ Creating empty pages:
+app/classes/page.tsx = "export default function Classes() { return <div>Classes</div>; }"
+
+❌ Missing pages for navigation links
+❌ Using the same content for all pages
+❌ Pages without images, cards, or interactive elements
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+================================================================================
+CSS CONFIGURATION FILES:
+================================================================================
+
+"postcss.config.mjs": "export default {\\n  plugins: {\\n    tailwindcss: {},\\n    autoprefixer: {},\\n  },\\n}"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+ROOT LAYOUT - WITH RELATIVE IMPORTS:
+================================================================================
+
+
+
+
+"app/layout.tsx": "import type { Metadata } from 'next';\\nimport './globals.css';\\nimport Navigation from '../components/Navigation';\\n\\nexport const metadata: Metadata = {\\n  title: {\\n    template: '%s | {{PROJECT_NAME}}',\\n    default: '{{PROJECT_NAME}}',\\n  },\\n  description: '[UNIQUE_DESCRIPTION_FROM_REQUEST]',\\n};\\n\\nexport default function RootLayout({\\n  children,\\n}: {\\n  children: React.ReactNode;\\n}) {\\n  return (\\n    <html lang=\\"en\\" className=\\"dark\\">\\n      <body className=\\"bg-zinc-950 text-white antialiased\\">\\n        <Navigation />\\n        <main className=\\"min-h-screen\\">{children}</main>\\n      </body>\\n    </html>\\n  );\\n}"
+
+
+
+================================================================================
+BUTTON COMPONENT - WITH RELATIVE IMPORTS:
+================================================================================
+
+"components/ui/Button.tsx": "\"use client\";\\n\\nimport { cn } from '../../lib/utils';\\nimport { Slot } from '@radix-ui/react-slot';\\nimport { forwardRef } from 'react';\\n\\ninterface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {\\n  variant?: 'default' | 'primary' | 'outline' | 'ghost';\\n  size?: 'sm' | 'default' | 'lg';\\n  isLoading?: boolean;\\n  fullWidth?: boolean;\\n  asChild?: boolean;\\n}\\n\\nconst Button = forwardRef<HTMLButtonElement, ButtonProps>(\\n  ({ \\n    className, \\n    variant = 'default', \\n    size = 'default',\\n    isLoading = false,\\n    fullWidth = false,\\n    asChild = false,\\n    children, \\n    disabled,\\n    ...props \\n  }, ref) => {\\n    const variants = {\\n      default: 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-600/25',\\n      primary: 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/25',\\n      outline: 'border border-white/20 bg-transparent hover:bg-white/10 text-white',\\n      ghost: 'hover:bg-white/10 text-gray-300 hover:text-white',\\n    };\\n    \\n    const sizes = {\\n      sm: 'h-8 px-3 text-xs rounded-lg',\\n      default: 'h-10 px-4 py-2 text-sm rounded-lg',\\n      lg: 'h-12 px-6 text-base rounded-lg',\\n    };\\n    \\n    const Comp = asChild ? Slot : 'button';\\n    \\n    return (\\n      <Comp\\n        ref={ref}\\n        className={cn(\\n          \\"inline-flex items-center justify-center gap-2 font-medium transition-all duration-200\\",\\n          \\"disabled:opacity-50 disabled:cursor-not-allowed\\",\\n          \\"focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-zinc-950\\",\\n          \\"active:scale-95\\",\\n          variants[variant],\\n          sizes[size],\\n          fullWidth && \\"w-full\\",\\n          className\\n        )}\\n        disabled={disabled || isLoading}\\n        {...props}\\n      >\\n        {isLoading && (\\n          <div className=\\"animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent\\" />\\n        )}\\n        {children}\\n      </Comp>\\n    );\\n  }\\n);\\n\\nButton.displayName = 'Button';\\n\\nexport { Button };"
+
+================================================================================
+LIB/UTILS.TS:
+================================================================================
+
+"lib/utils.ts": "import { type ClassValue, clsx } from \\"clsx\\";\\nimport { twMerge } from \\"tailwind-merge\\";\\n\\nexport function cn(...inputs: ClassValue[]) {\\n  return twMerge(clsx(inputs));\\n}"
+
+================================================================================
+TAILWIND CONFIG:
+================================================================================
+
+"tailwind.config.ts": "import type { Config } from 'tailwindcss';\\n\\nconst config: Config = {\\n  darkMode: 'class',\\n  content: [\\n    './pages/**/*.{js,ts,jsx,tsx,mdx}',\\n    './components/**/*.{js,ts,jsx,tsx,mdx}',\\n    './app/**/*.{js,ts,jsx,tsx,mdx}',\\n  ],\\n  theme: {\\n    extend: {\\n      colors: {\\n        border: 'hsl(var(--border))',\\n        background: 'hsl(var(--background))',\\n        foreground: 'hsl(var(--foreground))',\\n      },\\n      animation: {\\n        'gradient': 'gradient 3s ease infinite',\\n        'shimmer': 'shimmer 3s ease infinite',\\n        'float': 'float 6s ease-in-out infinite',\\n        'pulse-slow': 'pulse-slow 3s ease-in-out infinite',\\n      },\\n      keyframes: {\\n        gradient: {\\n          '0%, 100%': { backgroundPosition: '0% 50%' },\\n          '50%': { backgroundPosition: '100% 50%' },\\n        },\\n        shimmer: {\\n          '0%': { backgroundPosition: '0% 50%' },\\n          '50%': { backgroundPosition: '100% 50%' },\\n          '100%': { backgroundPosition: '0% 50%' },\\n        },\\n        float: {\\n          '0%, 100%': { transform: 'translateY(0px)' },\\n          '50%': { transform: 'translateY(-20px)' },\\n        },\\n        'pulse-slow': {\\n          '0%, 100%': { opacity: '0.5' },\\n          '50%': { opacity: '1' },\\n        },\\n      },\\n    },\\n  },\\n  plugins: [],\\n};\\n\\nexport default config;"
+
+================================================================================
+TSCONFIG.JSON - NO PATH ALIASES:
+================================================================================
+
+"tsconfig.json": "{\\n  \\"compilerOptions\\": {\\n    \\"lib\\": [\\"dom\\", \\"dom.iterable\\", \\"esnext\\"],\\n    \\"allowJs\\": true,\\n    \\"skipLibCheck\\": true,\\n    \\"strict\\": true,\\n    \\"noEmit\\": true,\\n    \\"module\\": \\"esnext\\",\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"resolveJsonModule\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"jsx\\": \\"preserve\\",\\n    \\"incremental\\": true,\\n    \\"plugins\\": [{\\"name\\": \\"next\\"}],\\n    \\"esModuleInterop\\": true\\n  },\\n  \\"include\\": [\\"next-env.d.ts\\", \\".next/types/**/*.ts\\", \\"**/*.ts\\", \\"**/*.tsx\\"],\\n  \\"exclude\\": [\\"node_modules\\"]\\n}"
+
+
+
+
+
+
+================================================================================
+PACKAGE.JSON:
+================================================================================
+
+
+
+
+"package.json": "{\\n  \\"name\\": \\"scorpio-app\\",\\n  \\"version\\": \\"0.1.0\\",\\n  \\"private\\": true,\\n  \\"scripts\\": {\\n    \\"dev\\": \\"next dev\\",\\n    \\"build\\": \\"next build\\",\\n    \\"start\\": \\"next start\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"next\\": \\"14.2.35\\",\\n    \\"react\\": \\"^18.3.1\\",\\n    \\"react-dom\\": \\"^18.3.1\\",\\n    \\"lucide-react\\": \\"^0.446.0\\",\\n    \\"@radix-ui/react-slot\\": \\"^1.1.0\\",\\n    \\"clsx\\": \\"^2.1.1\\",\\n    \\"tailwind-merge\\": \\"^2.5.0\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^22.9.0\\",\\n    \\"@types/react\\": \\"^18.3.12\\",\\n    \\"@types/react-dom\\": \\"^18.3.1\\",\\n    \\"autoprefixer\\": \\"^10.4.20\\",\\n    \\"postcss\\": \\"^8.4.49\\",\\n    \\"tailwindcss\\": \\"^3.4.15\\",\\n    \\"typescript\\": \\"^5.6.3\\"\\n  }\\n}"
+
+
+
+
+================================================================================
+Now generate the complete project for this request: [USER_PROMPT_HERE]"""
+
+
+
 
 
 
