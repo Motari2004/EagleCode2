@@ -1815,7 +1815,6 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
-
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
     """Generate fully interactive HTML preview using AI"""
     try:
@@ -1927,7 +1926,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         available_images = [f for f in files.keys() if f.startswith("public/images/")]
         image_paths = [f"/{f.replace('public/', '')}" for f in available_images]
 
-        # ========== IMPROVED IMAGE INSTRUCTION ==========
+        # ========== IMAGE INSTRUCTION - ONLY FOR HOME PAGE ==========
         image_instruction = ""
         if image_paths:
             image_paths_list = '\n'.join([f'  - {path}' for path in image_paths])
@@ -1937,37 +1936,38 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 AVAILABLE IMAGES:
 {image_paths_list}
 
-RULES FOR HOME PAGE HERO:
-1. Use the FIRST image (image_1.jpg) as the FULL-SCREEN BACKGROUND in the hero section
-2. The image should cover the entire hero section with object-cover
-3. Add a DARK OVERLAY (bg-black/50 or bg-gradient-to-b from-black/70 to-black/50) over the image so text is readable
-4. DO NOT make the overlay too bright - keep it dark and subtle
+RULES:
+1. **HOME PAGE ONLY**: The hero image should ONLY appear on the home page
+2. **OTHER PAGES**: Do NOT show the hero image on any other page
+3. Use the FIRST image (image_1.jpg) as FULL-SCREEN BACKGROUND in home page hero section
+4. Add dark overlay (bg-black/60) over the image so text is readable
+5. For other pages, use simple gradient backgrounds (no images)
 
-CORRECT HERO EXAMPLE:
+HOME PAGE HERO (WITH IMAGE):
 <section class="relative h-screen flex items-center justify-center overflow-hidden">
   <img src="/images/image_1.jpg" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />
   <div class="absolute inset-0 bg-black/60"></div>
   <div class="relative z-10 text-center text-white px-4">
-    <h1 class="text-6xl font-bold">Title</h1>
+    <h1 class="text-6xl font-bold gradient-text">Title</h1>
     <p class="text-xl mt-4">Description</p>
   </div>
 </section>
 
-WRONG (NEVER DO):
-- Using Unsplash/Pexels URLs
-- Using image_2.jpg in hero (use only image_1.jpg)
-- Making overlay too bright or transparent
-- Placing image in cards or features sections
-
-For ALL OTHER SECTIONS (cards, features, testimonials):
-- DO NOT use images
-- Use gradient-card classes with icons from lucide-react or SVG
+OTHER PAGES (NO IMAGE):
+<div class="min-h-screen pt-20">
+  <div class="container mx-auto px-4 py-12">
+    <h1 class="text-4xl font-bold gradient-text mb-6">Page Title</h1>
+    <div class="gradient-card p-8">
+      <p>Page content here - NO hero image</p>
+    </div>
+  </div>
+</div>
 """
         
-        # ========== SUBTLE GRADIENT STYLES (NOT TOO BRIGHT) ==========
+        # ========== SUBTLE GRADIENT STYLES ==========
         gradient_styles = """
 <style>
-    /* ========== SUBTLE GRADIENT BACKGROUNDS (NOT TOO BRIGHT) ========== */
+    /* ========== SUBTLE GRADIENT BACKGROUNDS ========== */
     
     /* Main body - Dark subtle mesh gradient */
     .gradient-mesh {
@@ -1978,11 +1978,12 @@ For ALL OTHER SECTIONS (cards, features, testimonials):
         min-height: 100vh;
     }
     
-    /* Subtle card gradient - dark and elegant */
+    /* Subtle card gradient */
     .gradient-card {
         background: linear-gradient(135deg, rgba(30, 27, 46, 0.8) 0%, rgba(20, 20, 35, 0.9) 100%);
         backdrop-filter: blur(4px);
         border: 1px solid rgba(139, 92, 246, 0.15);
+        border-radius: 0.75rem;
         transition: all 0.3s ease;
     }
     
@@ -1992,7 +1993,7 @@ For ALL OTHER SECTIONS (cards, features, testimonials):
         transform: translateY(-3px);
     }
     
-    /* Subtle gradient text - not too flashy */
+    /* Gradient text */
     .gradient-text {
         background: linear-gradient(135deg, #c084fc 0%, #e879f9 50%, #f472b6 100%);
         -webkit-background-clip: text;
@@ -2000,7 +2001,7 @@ For ALL OTHER SECTIONS (cards, features, testimonials):
         color: transparent;
     }
     
-    /* Navbar - solid dark, no hover effects */
+    /* Navbar - solid dark */
     nav {
         background: rgba(10, 10, 18, 0.95);
         backdrop-filter: blur(8px);
@@ -2010,13 +2011,11 @@ For ALL OTHER SECTIONS (cards, features, testimonials):
         z-index: 100;
     }
     
-    /* Nav links - simple, no hover effects */
     .nav-link {
         color: #a1a1aa;
         text-decoration: none;
         padding: 0.5rem 1rem;
         border-radius: 0.5rem;
-        transition: none;
         cursor: pointer;
     }
     
@@ -2024,24 +2023,16 @@ For ALL OTHER SECTIONS (cards, features, testimonials):
         color: #c084fc;
     }
     
-    /* Footer - solid dark, no hover effects */
+    .brand-link {
+        cursor: pointer;
+    }
+    
+    /* Footer */
     footer {
         background: rgba(10, 10, 18, 0.95);
         border-top: 1px solid rgba(139, 92, 246, 0.1);
         margin-top: 4rem;
         padding: 2rem 0;
-    }
-    
-    /* Button gradient - subtle */
-    .gradient-neon {
-        background: linear-gradient(90deg, #7c3aed, #db2777);
-        transition: opacity 0.2s ease;
-    }
-    
-    .gradient-neon:hover {
-        opacity: 0.9;
-        transform: none;
-        box-shadow: none;
     }
     
     /* Page transitions */
@@ -2057,36 +2048,6 @@ For ALL OTHER SECTIONS (cards, features, testimonials):
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(8px); }
         to { opacity: 1; transform: translateY(0); }
-    }
-    
-    /* Custom scrollbar - subtle */
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: #1a1a2e;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: #4c1d95;
-        border-radius: 3px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: #6d28d9;
-    }
-    
-    /* Selection color */
-    ::selection {
-        background: #7c3aed;
-        color: white;
-    }
-    
-    /* Smooth scroll */
-    html {
-        scroll-behavior: smooth;
     }
     
     /* Mobile menu */
@@ -2195,45 +2156,36 @@ PAGE CONTENTS (use EXACTLY these):
 
 DESIGN REQUIREMENTS:
 
-1. **HERO SECTION WITH IMAGE BACKGROUND**:
-   - Use image_1.jpg as FULL-SCREEN background in hero
-   - Add dark overlay (bg-black/60) over image for text readability
-   - Text should be white with gradient-text for headings
-   - NO gradient orbs or bright effects in hero
+1. **BRAND NAME BEHAVIOR**:
+   - Clicking the brand name MUST navigate to the home page
+   - Brand name should have cursor: pointer
 
-2. **NAVBAR (NO HOVER EFFECTS)**:
-   - Solid dark background (not gradient)
-   - No hover effects on links
-   - Simple, clean, professional
-   - Position: relative (not sticky/fixed)
-   - Brand on left, links on right
+2. **HOME PAGE (WITH IMAGE BACKGROUND)**:
+   - Show the hero image with dark overlay
+   - Use the exact content from page_contents["home"]
+   - Full screen hero section with image background
 
-3. **FOOTER (NO HOVER EFFECTS)**:
-   - Solid dark background
-   - No hover effects on links
-   - Simple copyright and links
+3. **OTHER PAGES (NO IMAGE BACKGROUND)**:
+   - Do NOT show any hero image
+   - Use simple gradient background (gradient-mesh)
+   - Show the page content from page_contents
+   - Start with pt-20 to account for navbar
+
+4. **NAVBAR**:
+   - Brand name on left (clickable to home)
+   - Navigation links on right
+   - Active page highlighted
+   - Mobile responsive with hamburger menu
+
+5. **PAGE SWITCHING**:
+   - Clicking any link shows the corresponding page
+   - Home page shows image background
+   - Other pages show gradient background only
+   - Smooth fade transition
+
+6. **FOOTER**:
    - Same footer on all pages
-
-4. **GRADIENTS (SUBTLE, NOT BRIGHT)**:
-   - Use gradient-text for headings only
-   - Use gradient-card for cards (dark, subtle)
-   - NO bright neon effects
-   - NO floating orbs or animations
-   - Keep it elegant and professional
-
-5. **MOBILE RESPONSIVE**:
-   - Hamburger menu on mobile
-   - Menu slides from right
-   - Click outside to close
-
-6. **PAGE NAVIGATION**:
-   - Clicking links switches pages smoothly
-   - Home page visible by default
-   - Use the exact page contents provided
-
-7. **NO INVENTED CONTENT**:
-   - Use ONLY the page contents provided
-   - DO NOT add fake taglines or marketing text
+   - No hover effects
 
 Return ONLY complete HTML. No explanations."""
 
@@ -2285,7 +2237,7 @@ Return ONLY complete HTML. No explanations."""
         import traceback
         traceback.print_exc()
 
-        # Clean fallback with image background support
+        # Enhanced fallback with proper page separation
         fallback_template = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2320,19 +2272,15 @@ Return ONLY complete HTML. No explanations."""
             border: 1px solid rgba(139, 92, 246, 0.15);
             border-radius: 0.75rem;
             padding: 1.5rem;
-            transition: all 0.2s ease;
-        }}
-        
-        .gradient-card:hover {{
-            border-color: rgba(139, 92, 246, 0.3);
-            background: rgba(40, 35, 60, 0.9);
         }}
         
         nav {{
             background: rgba(10, 10, 18, 0.95);
             border-bottom: 1px solid rgba(139, 92, 246, 0.15);
-            position: relative;
-            width: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
             z-index: 100;
         }}
         
@@ -2348,6 +2296,10 @@ Return ONLY complete HTML. No explanations."""
             color: #c084fc;
         }}
         
+        .brand-link {{
+            cursor: pointer;
+        }}
+        
         footer {{
             background: rgba(10, 10, 18, 0.95);
             border-top: 1px solid rgba(139, 92, 246, 0.1);
@@ -2355,13 +2307,26 @@ Return ONLY complete HTML. No explanations."""
             padding: 2rem 0;
         }}
         
+        /* Page styles */
         .page {{
             display: none;
             animation: fadeIn 0.25s ease;
+            min-height: 100vh;
+            padding-top: 70px;
         }}
         
         .page.active {{
             display: block;
+        }}
+        
+        /* Home page specific - has image */
+        #page_home {{
+            padding-top: 0;
+        }}
+        
+        /* Other pages - no image, just gradient */
+        .page:not(#page_home) {{
+            background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%);
         }}
         
         @keyframes fadeIn {{
@@ -2369,6 +2334,31 @@ Return ONLY complete HTML. No explanations."""
             to {{ opacity: 1; transform: translateY(0); }}
         }}
         
+        /* Hero section for home page */
+        .hero-section {{
+            position: relative;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }}
+        
+        .hero-image {{
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }}
+        
+        .hero-overlay {{
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+        }}
+        
+        /* Mobile menu */
         .hamburger {{
             display: none;
             flex-direction: column;
@@ -2457,30 +2447,17 @@ Return ONLY complete HTML. No explanations."""
                 padding-right: 1rem;
             }}
         }}
-        
-        .hero-image {{
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }}
-        
-        .hero-overlay {{
-            position: absolute;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.6);
-        }}
     </style>
 </head>
 <body>
+    <!-- Fixed Navbar -->
     <nav>
         <div class="container">
             <div class="flex justify-between items-center py-4">
-                <div class="text-xl font-bold gradient-text cursor-pointer" onclick="showPage('/')">{brand_name}</div>
+                <div class="text-xl font-bold gradient-text brand-link" onclick="showPage('/')">{brand_name}</div>
                 
                 <div class="nav-links" id="desktopNav">
-                    <a class="nav-link active" onclick="showPage('/')">Home</a>
+                    <a class="nav-link active" data-page="/" onclick="showPage('/')">Home</a>
                 </div>
                 
                 <button class="hamburger" id="hamburgerBtn">
@@ -2494,19 +2471,18 @@ Return ONLY complete HTML. No explanations."""
     
     <div class="mobile-overlay" id="mobileOverlay"></div>
     <div class="mobile-menu" id="mobileMenu">
-        <a class="mobile-nav-link active" onclick="showPage('/'); closeMobileMenu()">Home</a>
+        <a class="mobile-nav-link active" data-page="/" onclick="showPage('/'); closeMobileMenu()">Home</a>
     </div>
     
-    <div class="min-h-screen">
-        <div id="page_home" class="page active">
-            <section class="relative h-screen flex items-center justify-center overflow-hidden">
-                <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1600" alt="Hero" class="hero-image">
-                <div class="hero-overlay"></div>
-                <div class="relative z-10 text-center px-4">
-                    <h1 class="text-5xl md:text-7xl font-bold gradient-text mb-4">{brand_name}</h1>
-                    <p class="text-lg text-gray-300 max-w-2xl mx-auto">Welcome to our digital space</p>
-                </div>
-            </section>
+    <!-- HOME PAGE (WITH IMAGE BACKGROUND) -->
+    <div id="page_home" class="page active">
+        <div class="hero-section">
+            <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1600" alt="Hero" class="hero-image">
+            <div class="hero-overlay"></div>
+            <div class="relative z-10 text-center px-4">
+                <h1 class="text-5xl md:text-7xl font-bold gradient-text mb-4">{brand_name}</h1>
+                <p class="text-lg text-gray-300 max-w-2xl mx-auto">Welcome to our digital space</p>
+            </div>
         </div>
     </div>
     
@@ -2519,12 +2495,40 @@ Return ONLY complete HTML. No explanations."""
     </footer>
     
     <script>
-        const pages = {{ '/': 'page_home' }};
+        // Page mapping
+        const pages = {{
+            '/': 'page_home'
+        }};
         
         function showPage(path) {{
-            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {{
+                page.classList.remove('active');
+            }});
+            
+            // Show selected page
             const pageId = pages[path];
-            if (pageId) document.getElementById(pageId)?.classList.add('active');
+            if (pageId) {{
+                document.getElementById(pageId)?.classList.add('active');
+            }}
+            
+            // Update active states for desktop nav
+            document.querySelectorAll('.nav-link').forEach(link => {{
+                link.classList.remove('active');
+                if (link.getAttribute('data-page') === path) {{
+                    link.classList.add('active');
+                }}
+            }});
+            
+            // Update active states for mobile nav
+            document.querySelectorAll('.mobile-nav-link').forEach(link => {{
+                link.classList.remove('active');
+                if (link.getAttribute('data-page') === path) {{
+                    link.classList.add('active');
+                }}
+            }});
+            
+            // Update URL without reload
             window.history.pushState({{}}, '', path);
         }}
         
@@ -2538,6 +2542,7 @@ Return ONLY complete HTML. No explanations."""
             document.getElementById('mobileOverlay').classList.remove('active');
         }}
         
+        // Hamburger button click
         document.getElementById('hamburgerBtn').addEventListener('click', () => {{
             if (document.getElementById('mobileMenu').classList.contains('active')) {{
                 closeMobileMenu();
@@ -2546,9 +2551,18 @@ Return ONLY complete HTML. No explanations."""
             }}
         }});
         
+        // Close mobile menu when clicking overlay
         document.getElementById('mobileOverlay').addEventListener('click', closeMobileMenu);
-        window.addEventListener('popstate', () => showPage(window.location.pathname));
-        showPage(window.location.pathname);
+        
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', () => {{
+            const path = window.location.pathname || '/';
+            showPage(path);
+        }});
+        
+        // Initialize
+        const currentPath = window.location.pathname || '/';
+        showPage(currentPath);
     </script>
 </body>
 </html>"""
