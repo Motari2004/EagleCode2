@@ -11,13 +11,6 @@ from fastapi.staticfiles import StaticFiles
 
 from fastapi import Depends
 
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-from datetime import date, datetime, timedelta
-import pytz
-
-
 from bson import ObjectId
 
 
@@ -801,232 +794,6 @@ try:
         created_at = Column(DateTime, default=datetime.now)
         updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    # Global scheduler instance
-    credit_scheduler = None
-
-    async def reset_daily_credits_at_midnight():
-        """Reset daily credits for ALL users at exactly 00:00 midnight"""
-        print(f"\n{'='*70}")
-        print(f"🕛 MIDNIGHT CREDIT RESET - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}")
-
-        try:
-            async with AsyncSessionLocal() as session:
-                today = date.today()
-
-                stmt = select(UserCredits)
-                result = await session.execute(stmt)
-                all_users = result.scalars().all()
-
-                reset_count = 0
-                for user_credits in all_users:
-                    if user_credits.daily_reset_date != today:
-                        old_used = user_credits.daily_credits_used
-                        user_credits.daily_credits_used = 0
-                        user_credits.daily_reset_date = today
-                        reset_count += 1
-                        print(f"  🔄 User {user_credits.user_id[:8]}...: {old_used} → 0 credits")
-
-                await session.commit()
-
-                print(f"\n✅ DAILY CREDIT RESET COMPLETE!")
-                print(f"   📊 Reset {reset_count} users")
-                print(f"   📅 Reset date: {today}")
-
-                await notify_clients_credits_reset()
-
-        except Exception as e:
-            print(f"❌ Midnight credit reset failed: {e}")
-            import traceback
-            traceback.print_exc()
-
-    async def notify_clients_credits_reset():
-        """Notify all connected WebSocket clients that credits have reset"""
-        if not active_project_connections:
-            print("📡 No active connections to notify")
-            return
-
-        message = {
-            "type": "credits_reset",
-            "timestamp": datetime.now().isoformat(),
-            "message": "Your daily credits have been reset at midnight!",
-            "reset_time": "00:00 UTC"
-        }
-
-        disconnected = []
-        for connection in active_project_connections:
-            try:
-                await connection.send_json(message)
-                print(f"📡 Notified client about credit reset")
-            except:
-                disconnected.append(connection)
-
-        for conn in disconnected:
-            if conn in active_project_connections:
-                active_project_connections.remove(conn)
-
-        print(f"✅ Notified {len(active_project_connections)} clients about credit reset")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    async def reset_daily_credits_at_midnight():
-        """Reset daily credits for ALL users at exactly 00:00 midnight"""
-        print(f"\n{'='*70}")
-        print(f"🕛 MIDNIGHT CREDIT RESET - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}")
-
-        try:
-            async with AsyncSessionLocal() as session:
-                today = date.today()
-
-                stmt = select(UserCredits)
-                result = await session.execute(stmt)
-                all_users = result.scalars().all()
-
-                reset_count = 0
-                for user_credits in all_users:
-                    if user_credits.daily_reset_date != today:
-                        old_used = user_credits.daily_credits_used
-                        user_credits.daily_credits_used = 0
-                        user_credits.daily_reset_date = today
-                        reset_count += 1
-                        print(f"  🔄 User {user_credits.user_id[:8]}...: {old_used} → 0 credits")
-
-                await session.commit()
-
-                print(f"\n✅ DAILY CREDIT RESET COMPLETE!")
-                print(f"   📊 Reset {reset_count} users")
-                print(f"   📅 Reset date: {today}")
-
-                await notify_clients_credits_reset()
-
-        except Exception as e:
-            print(f"❌ Midnight credit reset failed: {e}")
-            import traceback
-            traceback.print_exc()
-
-    async def notify_clients_credits_reset():
-        """Notify all connected WebSocket clients that credits have reset"""
-        if not active_project_connections:
-            print("📡 No active connections to notify")
-            return
-
-        message = {
-            "type": "credits_reset",
-            "timestamp": datetime.now().isoformat(),
-            "message": "Your daily credits have been reset at midnight!",
-            "reset_time": "00:00 UTC"
-        }
-
-        disconnected = []
-        for connection in active_project_connections:
-            try:
-                await connection.send_json(message)
-                print(f"📡 Notified client about credit reset")
-            except:
-                disconnected.append(connection)
-
-        for conn in disconnected:
-            if conn in active_project_connections:
-                active_project_connections.remove(conn)
-
-        print(f"✅ Notified {len(active_project_connections)} clients about credit reset")
-
-    def start_midnight_credit_reset():
-        """Start the scheduler that resets credits at exactly midnight (LOCAL TIME)"""
-        global credit_scheduler
-
-        if credit_scheduler and credit_scheduler.running:
-            print("⚠️ Credit reset scheduler already running")
-            return
-
-        # Use LOCAL timezone for local development
-        import pytz
-        local_timezone = pytz.timezone('Africa/Nairobi')  # Change to your timezone
-        
-        credit_scheduler = AsyncIOScheduler(timezone=local_timezone)
-
-        credit_scheduler.add_job(
-            reset_daily_credits_at_midnight,
-            trigger=CronTrigger(hour=0, minute=0, second=0),
-            id="midnight_credit_reset",
-            replace_existing=True,
-            name="Daily Credit Reset at Midnight (Local Time)"
-        )
-
-        credit_scheduler.start()
-
-        now = datetime.now(local_timezone)
-        next_reset = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        hours_until = (next_reset - now).total_seconds() / 3600
-
-        print(f"\n{'='*70}")
-        print(f"⏰ CREDIT RESET SCHEDULER STARTED (LOCAL TIME)")
-        print(f"{'='*70}")
-        print(f"   🕛 Reset time: Every day at 00:00 {local_timezone}")
-        print(f"   ⏳ Next reset: {next_reset.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"   📊 Hours until next reset: {hours_until:.1f} hours")
-        print(f"{'='*70}\n")
-
-    def stop_midnight_credit_reset():
-        """Stop the credit reset scheduler"""
-        global credit_scheduler
-        if credit_scheduler:
-            credit_scheduler.shutdown()
-            print("🛑 Credit reset scheduler stopped")
-
-
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     # Templates table (small files only)
     class Template(Base):
         __tablename__ = "templates"
@@ -1549,26 +1316,18 @@ active_project_connections = []
 
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     if DATABASE_URL:
         await init_db()
         print("🚀 Neon database ready")
-        
-        # 👇 ADD THIS LINE TO START THE CREDIT RESET SCHEDULER 👇
-        start_midnight_credit_reset()
-    
     yield
-    
     # Shutdown
     if DATABASE_URL:
-        # 👇 ADD THIS LINE TO STOP THE SCHEDULER ON SHUTDOWN 👇
-        stop_midnight_credit_reset()
         await engine.dispose()
         print("👋 Database connection closed")
-
-
 
 
 
