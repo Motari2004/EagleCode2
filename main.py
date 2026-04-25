@@ -2614,25 +2614,43 @@ CRITICAL RULES - LIGHT THEME:
    - Use WHITE text for all hero content (h1, p, buttons)
    - Hero section must be full viewport height (100vh)
 
-6. **NAVBAR** - MUST INCLUDE ALL OF THESE EXACTLY:
-   - White background nav fixed at top with subtle bottom border
-   - Brand name on left, clickable to home via showPage('/')
-   - Desktop nav links wrapped in: <div class="nav-links" id="desktopNav">...</div>
-   - Hamburger button (visible only on mobile):
-     <button class="hamburger" id="hamburgerBtn" onclick="toggleMenu()">
-         <span></span>
-         <span></span>
-         <span></span>
-     </button>
-   - Mobile overlay (place just before </body>):
-     <div class="mobile-overlay" id="mobileOverlay" onclick="toggleMenu()"></div>
-   - Mobile slide-out menu (place just before </body>):
-     <div class="mobile-menu" id="mobileMenu">
-         <!-- one .mobile-nav-link per nav item, each calls showPage() and toggleMenu() -->
-     </div>
-   - **MOBILE FIX**: You MUST include a media query for screens under 768px.
-   - Set `.hamburger  display: none;  by default and `.hamburger display: flex; inside the @media block.
-   - Hide the desktop `.nav-links` inside the @media block using `display: none;`.
+
+
+
+
+6. **NAVBAR & MOBILE NAVIGATION (MANDATORY INSTRUCTIONS)**:
+   - **STRUCTURAL HIERARCHY**:
+     - Generate a `<nav>` fixed at the top with `bg-white`, a `border-b`, and `z-index: 50`.
+     - **Brand Name**: A `div` on the left. It MUST be clickable to home via `onclick="showPage('/')"`.
+     - **Desktop Nav**: Wrap all primary links in `<div class="nav-links" id="desktopNav">...</div>`.
+     - **Hamburger Button**: Include a `<button class="hamburger" id="hamburgerBtn" onclick="toggleMenu()">` containing exactly three `<span></span>` elements.
+
+   - **DOM PLACEMENT**:
+     - Place `<div class="mobile-overlay" id="mobileOverlay" onclick="toggleMenu()"></div>` and `<div class="mobile-menu" id="mobileMenu"></div>` immediately before the closing `</body>` tag.
+     - Inside `.mobile-menu`, each link must be a `.mobile-nav-link` that calls BOTH `showPage('path')` and `toggleMenu()`.
+
+   - **REQUIRED CSS (ESCAPE BRACES FOR PYTHON BACKEND)**:
+     - Default Desktop:
+       .hamburger {{ display: none; flex-direction: column; gap: 4px; border: none; background: transparent; cursor: pointer; z-index: 101; }}
+       .hamburger span {{ display: block; width: 25px; height: 3px; background: #333; transition: 0.3s; border-radius: 2px; }}
+     - Mobile Menu State:
+       .mobile-menu {{ position: fixed; top: 0; right: -100%; width: 280px; height: 100vh; background: white; z-index: 100; transition: 0.3s; padding: 80px 24px; }}
+       .mobile-menu.active {{ right: 0; }}
+       .mobile-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }}
+       .mobile-overlay.active {{ display: block; }}
+
+   - **MOBILE FIX (MANDATORY @MEDIA QUERY)**:
+     You MUST include this exact block at the very end of the CSS:
+     @media (max-width: 768px) {{
+         .nav-links {{ display: none !important; }}
+         .hamburger {{ display: flex !important; }}
+     }}
+
+   - **JAVASCRIPT BEHAVIOR**:
+     The `toggleMenu()` function MUST toggle the `.active` class on both the `mobileMenu` and `mobileOverlay` elements.
+
+
+
 
 7. **PAGE SWITCHING**:
    - showPage(path) function that shows the matching page div and hides all others
