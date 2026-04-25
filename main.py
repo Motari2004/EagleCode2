@@ -2427,7 +2427,7 @@ RULES:
     }
     
     #page_home {
-        padding-top: 0;
+        padding-top: 80;
     }
     
     @keyframes fadeIn {
@@ -2629,6 +2629,16 @@ CRITICAL RULES - LIGHT THEME:
      - Place `<div class="mobile-overlay" id="mobileOverlay" onclick="toggleMenu()"></div>` and `<div class="mobile-menu" id="mobileMenu"></div>` immediately before the closing `</body>` tag.
      - Inside `.mobile-menu`, each link must be a `.mobile-nav-link` that calls BOTH `showPage('path')` and `toggleMenu()`.
 
+
+
+   - **FIXED POSITIONING BUFFER (CRITICAL)**:
+     - Because the navbar is `fixed`, you MUST prevent it from overlapping page content.
+     - Add a global CSS rule: `.page {{ padding-top: 80px; }}`. 
+     - Every page container (e.g., `<div id="page_home" class="page">`) MUST respect this padding so that `<h1>` titles are fully visible below the navigation bar.
+
+
+
+
    - **REQUIRED CSS (ESCAPE BRACES FOR PYTHON BACKEND)**:
      - Default Desktop:
        .hamburger {{ display: none; flex-direction: column; gap: 4px; border: none; background: transparent; cursor: pointer; z-index: 101; }}
@@ -2648,7 +2658,6 @@ CRITICAL RULES - LIGHT THEME:
 
    - **JAVASCRIPT BEHAVIOR**:
      The `toggleMenu()` function MUST toggle the `.active` class on both the `mobileMenu` and `mobileOverlay` elements.
-
 
 
 
@@ -2677,6 +2686,7 @@ CRITICAL RULES - LIGHT THEME:
    }}
    
 
+       
 
 Return ONLY complete HTML. No explanations."""
 
