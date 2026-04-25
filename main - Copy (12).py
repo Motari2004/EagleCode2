@@ -2063,8 +2063,10 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
+
+
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
-    """Generate fully interactive HTML preview using AI - LIGHT THEME VERSION"""
+    """Generate fully interactive HTML preview using AI"""
     try:
         print(f"🤖 AI generating full equivalent HTML preview for: {project_name}")
 
@@ -2116,7 +2118,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 
         if not footer_html:
             footer_html = f'''
-            <footer class="bg-gray-100 border-t border-gray-200 py-8 mt-16">
+            <footer class="bg-zinc-900/50 border-t border-white/10 py-8 mt-16">
                 <div class="container mx-auto px-4 text-center">
                     <p class="text-gray-500 text-sm">© 2024 {brand_name}. All rights reserved.</p>
                 </div>
@@ -2181,6 +2183,8 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         def parse_simple_array(array_body: str) -> List[str]:
             """Parse simple array values (strings, numbers)"""
             items = []
+            # Remove brackets and split by comma
+            # Handle quoted strings
             pattern = r'["\']([^"\']+)["\']|\b(\d+)\b'
             for match in re.finditer(pattern, array_body):
                 value = match.group(1) or match.group(2)
@@ -2188,18 +2192,24 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     items.append(value)
             return items
 
-        # ========== EXPAND MAP LOOPS ==========
+        # ========== EXPAND MAP LOOPS (SUPPORTS ALL FORMS) ==========
         def expand_all_map_loops(jsx: str, full_content: str = "") -> str:
+            """Expand ALL map loops - handles inline, named, and arrays inside component"""
+            
+            # Step 1: Extract ALL arrays from full content (including inside component)
             arrays = {}
             
+            # Pattern for const array = [ ... ]; (inside or outside component)
             const_pattern = r'const\s+(\w+)\s*=\s*\[([\s\S]*?)\];'
             
             for match in re.finditer(const_pattern, full_content):
                 array_name = match.group(1)
                 array_body = match.group(2)
                 
+                # Try to parse as objects first
                 items = parse_array_items(array_body)
                 
+                # If no objects, try simple values
                 if not items:
                     simple_items = parse_simple_array(array_body)
                     if simple_items:
@@ -2210,9 +2220,11 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     arrays[array_name] = items
                     print(f"📦 Found named array '{array_name}' with {len(items)} items")
             
+            # Step 2: Remove array definitions from JSX
             for match in re.finditer(const_pattern, full_content):
                 jsx = jsx.replace(match.group(0), '')
             
+            # Step 3: Handle inline arrays {[ ... ].map(...)}
             inline_pattern = r'\{\[([\s\S]*?)\]\s*\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}'
             
             def replace_inline(match):
@@ -2220,8 +2232,12 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 var_name = match.group(2).strip('()')
                 template = match.group(3)
                 
+                print(f"  🔍 Inline map - var_name: '{var_name}'")
+                
+                # Try to parse as objects first
                 items = parse_array_items(array_body)
                 
+                # If no objects, try simple values
                 if not items:
                     items = parse_simple_array(array_body)
                 
@@ -2253,14 +2269,17 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     
                     result += item_html
                 
+                print(f"  ✅ Expanded {len(items)} items from inline map")
                 return result
             
+            # Process inline arrays
             for _ in range(5):
                 new_jsx = re.sub(inline_pattern, replace_inline, jsx, flags=re.DOTALL)
                 if new_jsx == jsx:
                     break
                 jsx = new_jsx
             
+            # Step 4: Handle named array maps {arrayName.map(...)}
             for array_name, items in arrays.items():
                 named_pattern = rf'\{{{array_name}\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}}'
                 
@@ -2299,6 +2318,24 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
             
             return jsx
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         # ========== PROCESS PAGES ==========
         page_contents = {}
         
@@ -2307,35 +2344,49 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").strip("/")
                 route_name = route or "home"
                 
+                # Clean the content
                 clean = content
                 clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];?\s*$', '', clean, flags=re.MULTILINE)
                 clean = re.sub(r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean)
                 clean = re.sub(r'export\s+default\s+const\s+\w+\s*=\s*\(\)\s*=>\s*{?', '', clean)
                 
+                # Extract return JSX
                 match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
                 if not match:
                     match = re.search(r'\(\s*<[\w\s\S]+?>\s*\)', clean, re.DOTALL)
                 
                 if match:
                     jsx = match.group(1) if match.lastindex else match.group(0)
+                    
+                    # Expand ALL map loops (inline + named)
                     jsx = expand_all_map_loops(jsx)
+                    
+                    # Final cleanup
                     jsx = re.sub(r'\{[^}]+\}', '', jsx)
                     jsx = jsx.replace('className=', 'class=')
                     
                     page_contents[route_name] = jsx[:8000]
                     print(f"📄 {route_name}: {len(jsx)} chars extracted")
+                    
+                    # Debug print first 500 chars
+                    print(f"🔍 Preview of {route_name}:\n{jsx[:500]}\n...\n")
                 else:
                     page_contents[route_name] = clean[:3000]
                     print(f"⚠️ Could not extract content from {route_name}")
+
+
+
+
+            
 
         # Add missing navigation pages
         for href, label in nav_links:
             if href not in page_contents:
                 page_contents[href] = f'''
                 <div class="container mx-auto px-4 py-16">
-                    <h1 class="text-4xl md:text-5xl font-bold text-blue-600 mb-6">{label}</h1>
-                    <div class="bg-white rounded-xl shadow-lg p-8 border border-gray-200">
-                        <p class="text-gray-600">Explore our {label.lower()} collection and discover amazing offerings.</p>
+                    <h1 class="text-4xl md:text-5xl font-bold gradient-text mb-6">{label}</h1>
+                    <div class="gradient-card p-8">
+                        <p class="text-gray-300">Explore our {label.lower()} collection and discover amazing offerings.</p>
                     </div>
                 </div>
                 '''
@@ -2348,94 +2399,107 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         image_instruction = ""
         if image_paths:
             image_paths_list = '\n'.join([f'  - {path}' for path in image_paths])
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             image_instruction = f"""
+            
 🚨 CRITICAL - IMAGE USAGE RULES 🚨
 
 AVAILABLE IMAGES:
 {image_paths_list}
 
 RULES:
-1. Use the FIRST image as HERO BACKGROUND on home page
-2. Add a semi-transparent overlay for text readability
+1. **HOME PAGE ONLY**: The hero image should ONLY appear on the home page
+2. **OTHER PAGES**: Do NOT show the hero image on any other page
+3. Use the FIRST image as FULL-SCREEN BACKGROUND in home page hero section
+4. Add dark overlay (bg-black/60) over the image so text is readable
 """
 
-        # ========== LIGHT THEME STYLES ==========
-        light_styles = """
+        # ========== GRADIENT STYLES ==========
+        gradient_styles = """
 <style>
-    * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-    }
-    
-    body {
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        background: #f8fafc;
-        color: #1e293b;
+    .gradient-mesh {
+        background: radial-gradient(circle at 20% 30%, rgba(88, 28, 135, 0.15) 0%, transparent 40%),
+                    radial-gradient(circle at 80% 70%, rgba(219, 39, 119, 0.1) 0%, transparent 40%),
+                    linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%);
         min-height: 100vh;
     }
-    
-    /* Navbar */
+    .gradient-card {
+        background: linear-gradient(135deg, rgba(30, 27, 46, 0.8) 0%, rgba(20, 20, 35, 0.9) 100%);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(139, 92, 246, 0.15);
+        border-radius: 0.75rem;
+        transition: all 0.3s ease;
+    }
+    .gradient-card:hover {
+        border-color: rgba(139, 92, 246, 0.3);
+        transform: translateY(-3px);
+    }
+    .gradient-text {
+        background: linear-gradient(135deg, #c084fc 0%, #e879f9 50%, #f472b6 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
     nav {
-        background: white;
-        border-bottom: 1px solid #e2e8f0;
+        background: rgba(10, 10, 18, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid rgba(139, 92, 246, 0.15);
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         z-index: 100;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-    
     .nav-link {
-        color: #475569;
+        color: #a1a1aa;
         text-decoration: none;
         padding: 0.5rem 1rem;
         border-radius: 0.5rem;
-        transition: all 0.2s ease;
-    }
-    
-    .nav-link:hover {
-        color: #2563eb;
-        background: #eff6ff;
-    }
-    
-    .nav-link.active {
-        color: #2563eb;
-        background: #eff6ff;
-        font-weight: 500;
-    }
-    
-    .brand-link {
-        font-weight: 700;
-        font-size: 1.25rem;
-        color: #1e293b;
-        text-decoration: none;
         cursor: pointer;
     }
-    
-    /* Page transitions */
+    .nav-link.active {
+        color: #c084fc;
+    }
+    .brand-link {
+        cursor: pointer;
+    }
     .page {
         display: none;
-        animation: fadeIn 0.3s ease;
+        animation: fadeIn 0.25s ease;
         min-height: 100vh;
         padding-top: 70px;
     }
-    
     .page.active {
         display: block;
     }
-    
     #page_home {
         padding-top: 0;
     }
-    
+    .page:not(#page_home) {
+        background: linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #0a0a0f 100%);
+    }
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(8px); }
         to { opacity: 1; transform: translateY(0); }
     }
-    
-    /* Hero Section */
     .hero-section {
         position: relative;
         height: 100vh;
@@ -2444,7 +2508,6 @@ RULES:
         justify-content: center;
         overflow: hidden;
     }
-    
     .hero-image {
         position: absolute;
         inset: 0;
@@ -2452,61 +2515,11 @@ RULES:
         height: 100%;
         object-fit: cover;
     }
-    
     .hero-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(0, 0, 0, 0.6);
     }
-    
-    /* Cards */
-    .card {
-        background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
-        border: 1px solid #e2e8f0;
-    }
-    
-    .card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-        border-color: #3b82f6;
-    }
-    
-    /* Buttons */
-    .btn-primary {
-        background: #2563eb;
-        color: white;
-        padding: 0.625rem 1.25rem;
-        border-radius: 0.5rem;
-        font-weight: 500;
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .btn-primary:hover {
-        background: #1d4ed8;
-        transform: translateY(-1px);
-    }
-    
-    /* Container */
-    .container {
-        max-width: 1280px;
-        margin: 0 auto;
-        padding: 0 1.5rem;
-    }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-        .nav-links { display: none; }
-        .hamburger { display: flex; }
-        .container { padding: 0 1rem; }
-    }
-    
-    /* Hamburger Menu */
     .hamburger {
         display: none;
         flex-direction: column;
@@ -2516,69 +2529,70 @@ RULES:
         border: none;
         z-index: 101;
     }
-    
     .hamburger span {
         width: 24px;
         height: 2px;
-        background: #475569;
+        background: #a1a1aa;
         margin: 3px 0;
         transition: 0.3s;
         border-radius: 2px;
     }
-    
     .mobile-menu {
         position: fixed;
         top: 0;
         right: -280px;
         width: 280px;
         height: 100vh;
-        background: white;
-        box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+        background: rgba(10, 10, 18, 0.98);
+        backdrop-filter: blur(12px);
+        border-left: 1px solid rgba(139, 92, 246, 0.15);
         z-index: 99;
         transition: right 0.3s ease;
         padding: 80px 24px 24px 24px;
     }
-    
     .mobile-menu.active {
         right: 0;
     }
-    
     .mobile-nav-link {
         display: block;
         padding: 12px 16px;
-        color: #475569;
+        color: #a1a1aa;
         text-decoration: none;
         border-radius: 0.5rem;
+        cursor: pointer;
         margin-bottom: 8px;
     }
-    
     .mobile-nav-link.active {
-        color: #2563eb;
-        background: #eff6ff;
+        color: #c084fc;
+        background: rgba(124, 58, 237, 0.1);
     }
-    
     .mobile-overlay {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.3);
+        background: rgba(0, 0, 0, 0.5);
         z-index: 98;
         display: none;
     }
-    
     .mobile-overlay.active {
         display: block;
+    }
+    @media (max-width: 768px) {
+        .nav-links { display: none; }
+        .hamburger { display: flex; }
+    }
+    .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 0 1.5rem;
     }
 </style>
 """
 
-
-
-
         # ========== AI PROMPT ==========
-        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with a CLEAN, LIGHT THEME (white background, blue accents, no dark gradients).
+        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview.
 
 PROJECT: {brand_name}
 NAVIGATION LINKS: {json.dumps(nav_links)}
@@ -2586,93 +2600,34 @@ NAVIGATION LINKS: {json.dumps(nav_links)}
 PAGE CONTENTS (USE THESE EXACTLY):
 {json.dumps(page_contents, indent=2)[:15000]}
 
-FOOTER HTML (USE THIS EXACT FOOTER):
+FOOTER HTML (USE THIS EXACT FOOTER - DO NOT CREATE YOUR OWN):
 {footer_html}
 
 {image_instruction}
 
-
-
-
-
-
-
 ================================================================================
-CRITICAL RULES - LIGHT THEME:
+CRITICAL RULES:
 ================================================================================
 
-1. **COLORS**: Use white backgrounds (#ffffff, #f8fafc), blue accents (#2563eb), gray text (#475569)
+1. **USE THE PROVIDED FOOTER ABOVE** - Copy it EXACTLY as shown.
 
-2. **NO DARK THEMES**: Avoid dark backgrounds, purple/pink gradients, black cards
+2. **PAGE CONTENTS** - Use the EXACT HTML from page_contents for each page.
 
-3. **USE THE PROVIDED FOOTER ABOVE** - Copy it EXACTLY as shown.
+3. **HOME PAGE HERO**:
+   - If images exist: Use first image as full-screen background with dark overlay
+   - The hero content should come from page_contents["home"]
 
-4. **PAGE CONTENTS** - Use the EXACT HTML from page_contents for each page.
+4. **NAVBAR**:
+   - Brand name on left (clickable to home)
+   - Navigation links from NAVIGATION LINKS
+   - Active page highlighting
+   - Mobile hamburger menu
 
-5. **HOME PAGE HERO**:
-   - If images exist: Use first image as full-screen background with dark overlay (rgba(0,0,0,0.5))
-   - Use WHITE text for all hero content (h1, p, buttons)
-   - Hero section must be full viewport height (100vh)
-
-6. **NAVBAR** - MUST INCLUDE ALL OF THESE EXACTLY:
-   - White background nav fixed at top with subtle bottom border
-   - Brand name on left, clickable to home via showPage('/')
-   - Desktop nav links wrapped in: <div class="nav-links" id="desktopNav">...</div>
-   - Hamburger button (visible only on mobile):
-     <button class="hamburger" id="hamburgerBtn" onclick="toggleMenu()">
-         <span></span>
-         <span></span>
-         <span></span>
-     </button>
-   - Mobile overlay (place just before </body>):
-     <div class="mobile-overlay" id="mobileOverlay" onclick="toggleMenu()"></div>
-   - Mobile slide-out menu (place just before </body>):
-     <div class="mobile-menu" id="mobileMenu">
-         <!-- one .mobile-nav-link per nav item, each calls showPage() and toggleMenu() -->
-     </div>
-   - **MOBILE FIX**: You MUST include a media query for screens under 768px.
-   - Set `.hamburger  display: none;  by default and `.hamburger display: flex; inside the @media block.
-   - Hide the desktop `.nav-links` inside the @media block using `display: none;`.
-
-7. **PAGE SWITCHING**:
-   - showPage(path) function that shows the matching page div and hides all others
-   - Update active class on both .nav-link and .mobile-nav-link elements
-   - Update URL with window.history.pushState
-   - toggleMenu() function that toggles 'active' class on #mobileMenu and #mobileOverlay
-
-
-
-
-8. **JAVASCRIPT** - MUST INCLUDE BOTH FUNCTIONS:
-   function showPage(path) {{
-       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-       document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(l => l.classList.remove('active'));
-       const clean = (path || '/').replace(/^[/]/, '').replace(/[/]/g, '_');
-       const pageId = clean ? 'page_' + clean : 'page_home';
-       document.getElementById(pageId)?.classList.add('active');
-       document.querySelectorAll('[data-page="' + path + '"]').forEach(l => l.classList.add('active'));
-       window.history.pushState({{}}, '', path || '/');
-   }}
-   function toggleMenu() {{
-       document.getElementById('mobileMenu')?.classList.toggle('active');
-       document.getElementById('mobileOverlay')?.classList.toggle('active');
-   }}
-   
-
+5. **PAGE SWITCHING**:
+   - JavaScript function showPage(path) that switches between pages
+   - Update URL without reload
 
 Return ONLY complete HTML. No explanations."""
-
-
-
-
-
-
-
-
-
-
-
-
 
         response_text = await model_router.generate_content(
             prompt=prompt,
@@ -2681,21 +2636,19 @@ Return ONLY complete HTML. No explanations."""
 
         preview_html = clean_html_response(response_text)
 
-        # Inject light styles instead of gradient styles
+        # Inject gradient styles
         if '<style>' in preview_html:
-            preview_html = preview_html.replace('<style>', light_styles + '<style>')
+            preview_html = preview_html.replace('<style>', gradient_styles + '<style>')
         elif '</head>' in preview_html:
-            preview_html = preview_html.replace('</head>', light_styles + '</head>')
+            preview_html = preview_html.replace('</head>', gradient_styles + '</head>')
         else:
-            preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{light_styles}</head>')
+            preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{gradient_styles}</head>')
 
-        # Ensure body doesn't have dark classes
-        preview_html = preview_html.replace('class="gradient-mesh"', '')
-        preview_html = preview_html.replace('gradient-mesh', '')
-        preview_html = preview_html.replace('bg-zinc-950', 'bg-gray-50')
-        preview_html = preview_html.replace('bg-black', 'bg-white')
-        preview_html = preview_html.replace('text-white', 'text-gray-900')
-        preview_html = preview_html.replace('gradient-text', 'text-blue-600')
+        # Ensure body has gradient class
+        if 'class="' in preview_html and 'body' in preview_html.lower():
+            preview_html = preview_html.replace('<body', '<body class="gradient-mesh"')
+        else:
+            preview_html = preview_html.replace('<body>', '<body class="gradient-mesh">')
 
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
@@ -2724,7 +2677,6 @@ Return ONLY complete HTML. No explanations."""
         import traceback
         traceback.print_exc()
 
-        # Light theme fallback
         fallback_template = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2735,19 +2687,20 @@ Return ONLY complete HTML. No explanations."""
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: 'Inter', sans-serif; background: #f8fafc; color: #1e293b; }}
-        nav {{ background: white; border-bottom: 1px solid #e2e8f0; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }}
-        .nav-link {{ color: #475569; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; }}
-        .nav-link:hover {{ background: #eff6ff; color: #2563eb; }}
-        .nav-link.active {{ color: #2563eb; background: #eff6ff; }}
-        .brand-link {{ font-weight: bold; font-size: 1.25rem; color: #1e293b; cursor: pointer; text-decoration: none; }}
+        body {{ font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e4e4e7; }}
+        .gradient-text {{ background: linear-gradient(135deg, #c084fc, #e879f9, #f472b6); -webkit-background-clip: text; background-clip: text; color: transparent; }}
+        .gradient-card {{ background: rgba(30, 27, 46, 0.8); border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 0.75rem; padding: 1.5rem; }}
+        nav {{ background: rgba(10, 10, 18, 0.95); border-bottom: 1px solid rgba(139, 92, 246, 0.15); position: fixed; top: 0; left: 0; right: 0; z-index: 100; }}
+        .nav-link {{ color: #a1a1aa; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; }}
+        .nav-link.active {{ color: #c084fc; }}
+        .brand-link {{ cursor: pointer; }}
         .page {{ display: none; animation: fadeIn 0.25s ease; min-height: 100vh; padding-top: 70px; }}
         .page.active {{ display: block; }}
         #page_home {{ padding-top: 0; }}
         @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: translateY(0); }} }}
         .hero-section {{ position: relative; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }}
         .hero-image {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
-        .hero-overlay {{ position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }}
+        .hero-overlay {{ position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); }}
         .container {{ max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }}
     </style>
 </head>
@@ -2755,7 +2708,7 @@ Return ONLY complete HTML. No explanations."""
     <nav>
         <div class="container">
             <div class="flex justify-between items-center py-4">
-                <a href="/" class="brand-link" onclick="showPage('/'); return false;">{brand_name}</a>
+                <div class="text-xl font-bold gradient-text brand-link" onclick="showPage('/')">{brand_name}</div>
                 <div class="nav-links" id="desktopNav"></div>
                 <button class="hamburger" id="hamburgerBtn" style="display: none;">☰</button>
             </div>
@@ -2767,8 +2720,8 @@ Return ONLY complete HTML. No explanations."""
             <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1600" alt="Hero" class="hero-image">
             <div class="hero-overlay"></div>
             <div class="relative z-10 text-center px-4">
-                <h1 class="text-5xl md:text-7xl font-bold text-white mb-4">{brand_name}</h1>
-                <p class="text-lg text-white">Welcome to our digital space</p>
+                <h1 class="text-5xl md:text-7xl font-bold gradient-text mb-4">{brand_name}</h1>
+                <p class="text-lg text-gray-300">Welcome to our digital space</p>
             </div>
         </div>
     </div>
@@ -2796,6 +2749,19 @@ Return ONLY complete HTML. No explanations."""
         )
         
         return {"success": True, "preview_html": fallback, "preview_type": "fallback"}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
