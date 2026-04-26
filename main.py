@@ -6074,6 +6074,13 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
                 
                 
                 
+                
+                
+                
+                
+                
+                
+                
                 # Send fallback preview
                 fallback_html = f"""<!DOCTYPE html>
 <html>
@@ -6101,6 +6108,12 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
                         "html": fallback_html,
                         "preview_type": "fallback"
                 })
+
+
+        print("⏳ Waiting 4s for frontend to process preview...")
+        await asyncio.sleep(4)  # Give frontend time to process
+ 
+
 
         # Send complete message
         await websocket.send_json({"type": "complete"})
