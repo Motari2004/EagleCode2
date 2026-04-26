@@ -2571,6 +2571,15 @@ RULES:
     .mobile-overlay.active {
         display: block;
     }
+    
+    
+    
+    
+    
+    
+    
+    
+    
 </style>
 """
 
@@ -10213,7 +10222,7 @@ async def test_scheduler_status():
             "message": "Scheduler is not running"
         }
 
-@app.get("/api/reset/all-users-credits")
+@app.get("/api/test/all-users-credits")
 async def test_all_users_credits():
     """View all users' credit status (for testing)"""
     try:
