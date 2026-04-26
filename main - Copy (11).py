@@ -1814,6 +1814,11 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
+
+
+
+
+
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
     """Generate fully interactive HTML preview using AI"""
     try:

@@ -812,218 +812,6 @@ try:
     
     
     
-    # Global scheduler instance
-    credit_scheduler = None
-
-    async def reset_daily_credits_at_midnight():
-        """Reset daily credits for ALL users at exactly 00:00 midnight"""
-        print(f"\n{'='*70}")
-        print(f"🕛 MIDNIGHT CREDIT RESET - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}")
-
-        try:
-            async with AsyncSessionLocal() as session:
-                today = date.today()
-
-                stmt = select(UserCredits)
-                result = await session.execute(stmt)
-                all_users = result.scalars().all()
-
-                reset_count = 0
-                for user_credits in all_users:
-                    if user_credits.daily_reset_date != today:
-                        old_used = user_credits.daily_credits_used
-                        user_credits.daily_credits_used = 0
-                        user_credits.daily_reset_date = today
-                        reset_count += 1
-                        print(f"  🔄 User {user_credits.user_id[:8]}...: {old_used} → 0 credits")
-
-                await session.commit()
-
-                print(f"\n✅ DAILY CREDIT RESET COMPLETE!")
-                print(f"   📊 Reset {reset_count} users")
-                print(f"   📅 Reset date: {today}")
-
-                await notify_clients_credits_reset()
-
-        except Exception as e:
-            print(f"❌ Midnight credit reset failed: {e}")
-            import traceback
-            traceback.print_exc()
-
-    async def notify_clients_credits_reset():
-        """Notify all connected WebSocket clients that credits have reset"""
-        if not active_project_connections:
-            print("📡 No active connections to notify")
-            return
-
-        message = {
-            "type": "credits_reset",
-            "timestamp": datetime.now().isoformat(),
-            "message": "Your daily credits have been reset at midnight!",
-            "reset_time": "00:00 UTC"
-        }
-
-        disconnected = []
-        for connection in active_project_connections:
-            try:
-                await connection.send_json(message)
-                print(f"📡 Notified client about credit reset")
-            except:
-                disconnected.append(connection)
-
-        for conn in disconnected:
-            if conn in active_project_connections:
-                active_project_connections.remove(conn)
-
-        print(f"✅ Notified {len(active_project_connections)} clients about credit reset")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    async def reset_daily_credits_at_midnight():
-        """Reset daily credits for ALL users at exactly 00:00 midnight"""
-        print(f"\n{'='*70}")
-        print(f"🕛 MIDNIGHT CREDIT RESET - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}")
-
-        try:
-            async with AsyncSessionLocal() as session:
-                today = date.today()
-
-                stmt = select(UserCredits)
-                result = await session.execute(stmt)
-                all_users = result.scalars().all()
-
-                reset_count = 0
-                for user_credits in all_users:
-                    if user_credits.daily_reset_date != today:
-                        old_used = user_credits.daily_credits_used
-                        user_credits.daily_credits_used = 0
-                        user_credits.daily_reset_date = today
-                        reset_count += 1
-                        print(f"  🔄 User {user_credits.user_id[:8]}...: {old_used} → 0 credits")
-
-                await session.commit()
-
-                print(f"\n✅ DAILY CREDIT RESET COMPLETE!")
-                print(f"   📊 Reset {reset_count} users")
-                print(f"   📅 Reset date: {today}")
-
-                await notify_clients_credits_reset()
-
-        except Exception as e:
-            print(f"❌ Midnight credit reset failed: {e}")
-            import traceback
-            traceback.print_exc()
-
-    async def notify_clients_credits_reset():
-        """Notify all connected WebSocket clients that credits have reset"""
-        if not active_project_connections:
-            print("📡 No active connections to notify")
-            return
-
-        message = {
-            "type": "credits_reset",
-            "timestamp": datetime.now().isoformat(),
-            "message": "Your daily credits have been reset at midnight!",
-            "reset_time": "00:00 UTC"
-        }
-
-        disconnected = []
-        for connection in active_project_connections:
-            try:
-                await connection.send_json(message)
-                print(f"📡 Notified client about credit reset")
-            except:
-                disconnected.append(connection)
-
-        for conn in disconnected:
-            if conn in active_project_connections:
-                active_project_connections.remove(conn)
-
-        print(f"✅ Notified {len(active_project_connections)} clients about credit reset")
-
-    def start_midnight_credit_reset():
-        """Start the scheduler that resets credits at exactly midnight (LOCAL TIME)"""
-        global credit_scheduler
-
-        if credit_scheduler and credit_scheduler.running:
-            print("⚠️ Credit reset scheduler already running")
-            return
-
-        # Use LOCAL timezone for local development
-        import pytz
-        local_timezone = pytz.timezone('Africa/Nairobi')  # Change to your timezone
-        
-        credit_scheduler = AsyncIOScheduler(timezone=local_timezone)
-
-        credit_scheduler.add_job(
-            reset_daily_credits_at_midnight,
-            trigger=CronTrigger(hour=0, minute=0, second=0),
-            id="midnight_credit_reset",
-            replace_existing=True,
-            name="Daily Credit Reset at Midnight (Local Time)"
-        )
-
-        credit_scheduler.start()
-
-        now = datetime.now(local_timezone)
-        next_reset = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        hours_until = (next_reset - now).total_seconds() / 3600
-
-        print(f"\n{'='*70}")
-        print(f"⏰ CREDIT RESET SCHEDULER STARTED (LOCAL TIME)")
-        print(f"{'='*70}")
-        print(f"   🕛 Reset time: Every day at 00:00 {local_timezone}")
-        print(f"   ⏳ Next reset: {next_reset.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"   📊 Hours until next reset: {hours_until:.1f} hours")
-        print(f"{'='*70}\n")
-
-    def stop_midnight_credit_reset():
-        """Stop the credit reset scheduler"""
-        global credit_scheduler
-        if credit_scheduler:
-            credit_scheduler.shutdown()
-            print("🛑 Credit reset scheduler stopped")
-
-
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
     
@@ -1131,55 +919,6 @@ security = HTTPBearer()
 
 
 
-
-
-async def get_db():
-    client = motor.motor_asyncio.AsyncIOMotorClient(os.getenv("MONGODB_URL", "mongodb://localhost:27017"))
-    db = client["eaglecode"]
-    try:
-        yield db
-    finally:
-        client.close()
-
-
-
-
-
-
-
-# ========== ADMIN AUTH FUNCTION (ADD THIS HERE) ==========
-async def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Check if the current user is an admin"""
-    token = credentials.credentials
-    
-    try:
-        # Decode JWT token
-        payload = jwt.decode(token, os.getenv("JWT_SECRET", "secret"), algorithms=["HS256"])
-        user_id = payload.get("user_id")
-        
-        # Get database connection
-        db = await anext(get_db())
-        
-        # Check if user exists and is admin
-        from bson import ObjectId
-        user = await db.users.find_one({"_id": ObjectId(user_id)})
-        
-        if not user or user.get("role") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
-        return user
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e)
-        )
 
 
 
@@ -1556,15 +1295,13 @@ async def lifespan(app: FastAPI):
         await init_db()
         print("🚀 Neon database ready")
         
-        # 👇 ADD THIS LINE TO START THE CREDIT RESET SCHEDULER 👇
-        start_midnight_credit_reset()
+
     
     yield
     
     # Shutdown
     if DATABASE_URL:
-        # 👇 ADD THIS LINE TO STOP THE SCHEDULER ON SHUTDOWN 👇
-        stop_midnight_credit_reset()
+
         await engine.dispose()
         print("👋 Database connection closed")
 
@@ -2356,11 +2093,15 @@ AVAILABLE IMAGES:
 
 RULES:
 1. Use the FIRST image as HERO BACKGROUND on home page
-2. Add a semi-transparent overlay for text readability
+
 """
 
-        # ========== LIGHT THEME STYLES ==========
-        light_styles = """
+
+
+
+
+# ========== DARK GRADIENT STYLES ==========
+            light_styles = """
 <style>
     * {
         margin: 0;
@@ -2370,25 +2111,26 @@ RULES:
     
     body {
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        background: #f8fafc;
-        color: #1e293b;
+        background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 50%, #0f0f12 100%);
+        color: #e5e7eb;
         min-height: 100vh;
     }
     
-    /* Navbar */
+    /* Navbar - Dark Glass */
     nav {
-        background: white;
-        border-bottom: 1px solid #e2e8f0;
+        background: rgba(26, 26, 30, 0.95);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         z-index: 100;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
     
     .nav-link {
-        color: #475569;
+        color: #9ca3af;
         text-decoration: none;
         padding: 0.5rem 1rem;
         border-radius: 0.5rem;
@@ -2396,22 +2138,26 @@ RULES:
     }
     
     .nav-link:hover {
-        color: #2563eb;
-        background: #eff6ff;
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.1);
     }
     
     .nav-link.active {
-        color: #2563eb;
-        background: #eff6ff;
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.15);
         font-weight: 500;
     }
     
     .brand-link {
         font-weight: 700;
         font-size: 1.25rem;
-        color: #1e293b;
+        color: #f1f5f9;
         text-decoration: none;
         cursor: pointer;
+        background: linear-gradient(135deg, #60a5fa, #a78bfa);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
     }
     
     /* Page transitions */
@@ -2419,7 +2165,7 @@ RULES:
         display: none;
         animation: fadeIn 0.3s ease;
         min-height: 100vh;
-        padding-top: 70px;
+        padding-top: 100px;
     }
     
     .page.active {
@@ -2427,7 +2173,8 @@ RULES:
     }
     
     #page_home {
-        padding-top: 80;
+        padding-top: 120px;
+        position: relative;
     }
     
     @keyframes fadeIn {
@@ -2437,12 +2184,13 @@ RULES:
     
     /* Hero Section */
     .hero-section {
-        position: relative;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
         height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         overflow: hidden;
+        z-index: 1;
     }
     
     .hero-image {
@@ -2453,31 +2201,78 @@ RULES:
         object-fit: cover;
     }
     
+    /* Minimal overlay for text readability */
     .hero-overlay {
         position: absolute;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(0, 0, 0, 0.4);
     }
     
-    /* Cards */
+    /* Home content wrapper */
+    .home-content {
+        position: relative;
+        z-index: 10;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding-top: 80px;
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /* Cards - Dark Gradient */
     .card {
-        background: white;
+        background: linear-gradient(135deg, #1a1a1e 0%, #121216 100%);
         border-radius: 1rem;
         padding: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         transition: all 0.3s ease;
-        border: 1px solid #e2e8f0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .card:hover {
         transform: translateY(-4px);
-        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
         border-color: #3b82f6;
     }
     
+    /* Card text colors */
+    .card h3 {
+        color: #f1f5f9;
+    }
+    
+    .card p {
+        color: #9ca3af;
+    }
+    
+    
+    
+    
+    
+/* Add dark background to features section */
+.features-section,
+section.py-20 {
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+}   
+    
+    
     /* Buttons */
     .btn-primary {
-        background: #2563eb;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
         color: white;
         padding: 0.625rem 1.25rem;
         border-radius: 0.5rem;
@@ -2488,7 +2283,7 @@ RULES:
     }
     
     .btn-primary:hover {
-        background: #1d4ed8;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
         transform: translateY(-1px);
     }
     
@@ -2499,14 +2294,41 @@ RULES:
         padding: 0 1.5rem;
     }
     
+    /* Section backgrounds */
+    section {
+        background: transparent;
+    }
+    
+    /* Headings */
+    h1, h2, h3, h4, h5, h6 {
+        color: #f1f5f9;
+    }
+    
+    /* Paragraphs */
+    p {
+        color: #9ca3af;
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     /* Responsive */
     @media (max-width: 768px) {
         .nav-links { display: none; }
         .hamburger { display: flex; }
         .container { padding: 0 1rem; }
+        .home-content {
+            padding-top: 60px;
+        }
     }
     
-    /* Hamburger Menu */
+    /* Hamburger Menu - Dark */
     .hamburger {
         display: none;
         flex-direction: column;
@@ -2520,7 +2342,7 @@ RULES:
     .hamburger span {
         width: 24px;
         height: 2px;
-        background: #475569;
+        background: #9ca3af;
         margin: 3px 0;
         transition: 0.3s;
         border-radius: 2px;
@@ -2532,11 +2354,12 @@ RULES:
         right: -280px;
         width: 280px;
         height: 100vh;
-        background: white;
-        box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+        background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
+        box-shadow: -2px 0 8px rgba(0,0,0,0.3);
         z-index: 99;
         transition: right 0.3s ease;
         padding: 80px 24px 24px 24px;
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
     }
     
     .mobile-menu.active {
@@ -2546,15 +2369,20 @@ RULES:
     .mobile-nav-link {
         display: block;
         padding: 12px 16px;
-        color: #475569;
+        color: #9ca3af;
         text-decoration: none;
         border-radius: 0.5rem;
         margin-bottom: 8px;
     }
     
     .mobile-nav-link.active {
-        color: #2563eb;
-        background: #eff6ff;
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.15);
+    }
+    
+    .mobile-nav-link:hover {
+        color: #f1f5f9;
+        background: rgba(255, 255, 255, 0.05);
     }
     
     .mobile-overlay {
@@ -2563,7 +2391,7 @@ RULES:
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.3);
+        background: rgba(0, 0, 0, 0.5);
         z-index: 98;
         display: none;
     }
@@ -2578,7 +2406,7 @@ RULES:
 
 
         # ========== AI PROMPT ==========
-        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with a CLEAN, LIGHT THEME (white background, blue accents, no dark gradients).
+        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with a MODERN DARK THEME (dark gradients, purple/pink accents, no white backgrounds).
 
 PROJECT: {brand_name}
 NAVIGATION LINKS: {json.dumps(nav_links)}
@@ -2593,35 +2421,39 @@ FOOTER HTML (USE THIS EXACT FOOTER):
 
 
 
-
-
-
-
 ================================================================================
-CRITICAL RULES - LIGHT THEME:
+CRITICAL RULES - DARK THEME:
 ================================================================================
 
-1. **COLORS**: Use white backgrounds (#ffffff, #f8fafc), blue accents (#2563eb), gray text (#475569)
+1. **COLORS**: 
+   - Body Background: Dark gradient `linear-gradient(135deg, #0f0f12 0%, #1a1a2e 50%, #0f0f12 100%)`
+   - Cards: Dark gradient `linear-gradient(135deg, #1a1a1e 0%, #121216 100%)`
+   - Text: Light gray (#e5e7eb, #9ca3af) and white (#ffffff)
+   - Accents: Purple (#a855f7), Pink (#ec4899), Blue (#3b82f6)
+   - Borders: `rgba(255, 255, 255, 0.1)`
 
-2. **NO DARK THEMES**: Avoid dark backgrounds, purple/pink gradients, black cards
+2. **NO LIGHT THEMES**: 
+   - NEVER use white backgrounds (#ffffff, #f8fafc, bg-white, bg-gray-50)
+   - NEVER use light gray cards
+   - NEVER use dark text on light backgrounds
+   - NO blue accents (#2563eb) - use purple/pink gradients instead
 
 3. **USE THE PROVIDED FOOTER ABOVE** - Copy it EXACTLY as shown.
 
 4. **PAGE CONTENTS** - Use the EXACT HTML from page_contents for each page.
 
 5. **HOME PAGE HERO**:
-   - If images exist: Use first image as full-screen background with dark overlay (rgba(0,0,0,0.5))
+   - If images exist: Use first image as full-screen background
+   - ❌ DO NOT add any overlay divs (no bg-black, no gradient overlays, no hero-overlay)
+   - ✅ Use `drop-shadow-lg` or `text-shadow` for text readability instead
    - Use WHITE text for all hero content (h1, p, buttons)
    - Hero section must be full viewport height (100vh)
-
-
-
-
+   - The image should be clean and fully visible
 
 6. **NAVBAR & MOBILE NAVIGATION (MANDATORY INSTRUCTIONS)**:
    - **STRUCTURAL HIERARCHY**:
-     - Generate a `<nav>` fixed at the top with `bg-white`, a `border-b`, and `z-index: 50`.
-     - **Brand Name**: A `div` on the left. It MUST be clickable to home via `onclick="showPage('/')"`.
+     - Generate a `<nav>` fixed at the top with dark glass background (`rgba(26, 26, 30, 0.95)`), `backdrop-filter: blur(10px)`, a `border-b` with `rgba(255,255,255,0.1)`, and `z-index: 50`.
+     - **Brand Name**: A `div` on the left with gradient text `bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent`. MUST be clickable to home via `onclick="showPage('/')"`.
      - **Desktop Nav**: Wrap all primary links in `<div class="nav-links" id="desktopNav">...</div>`.
      - **Hamburger Button**: Include a `<button class="hamburger" id="hamburgerBtn" onclick="toggleMenu()">` containing exactly three `<span></span>` elements.
 
@@ -2629,22 +2461,18 @@ CRITICAL RULES - LIGHT THEME:
      - Place `<div class="mobile-overlay" id="mobileOverlay" onclick="toggleMenu()"></div>` and `<div class="mobile-menu" id="mobileMenu"></div>` immediately before the closing `</body>` tag.
      - Inside `.mobile-menu`, each link must be a `.mobile-nav-link` that calls BOTH `showPage('path')` and `toggleMenu()`.
 
-
-
    - **FIXED POSITIONING BUFFER (CRITICAL)**:
      - Because the navbar is `fixed`, you MUST prevent it from overlapping page content.
      - Add a global CSS rule: `.page {{ padding-top: 80px; }}`. 
+     - For home page only: `#page_home {{ padding-top: 0px; }}` (image touches nav)
      - Every page container (e.g., `<div id="page_home" class="page">`) MUST respect this padding so that `<h1>` titles are fully visible below the navigation bar.
-
-
-
 
    - **REQUIRED CSS (ESCAPE BRACES FOR PYTHON BACKEND)**:
      - Default Desktop:
        .hamburger {{ display: none; flex-direction: column; gap: 4px; border: none; background: transparent; cursor: pointer; z-index: 101; }}
-       .hamburger span {{ display: block; width: 25px; height: 3px; background: #333; transition: 0.3s; border-radius: 2px; }}
+       .hamburger span {{ display: block; width: 25px; height: 3px; background: #9ca3af; transition: 0.3s; border-radius: 2px; }}
      - Mobile Menu State:
-       .mobile-menu {{ position: fixed; top: 0; right: -100%; width: 280px; height: 100vh; background: white; z-index: 100; transition: 0.3s; padding: 80px 24px; }}
+       .mobile-menu {{ position: fixed; top: 0; right: -100%; width: 280px; height: 100vh; background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%); z-index: 100; transition: 0.3s; padding: 80px 24px; }}
        .mobile-menu.active {{ right: 0; }}
        .mobile-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }}
        .mobile-overlay.active {{ display: block; }}
@@ -2659,16 +2487,11 @@ CRITICAL RULES - LIGHT THEME:
    - **JAVASCRIPT BEHAVIOR**:
      The `toggleMenu()` function MUST toggle the `.active` class on both the `mobileMenu` and `mobileOverlay` elements.
 
-
-
 7. **PAGE SWITCHING**:
    - showPage(path) function that shows the matching page div and hides all others
    - Update active class on both .nav-link and .mobile-nav-link elements
    - Update URL with window.history.pushState
    - toggleMenu() function that toggles 'active' class on #mobileMenu and #mobileOverlay
-
-
-
 
 8. **JAVASCRIPT** - MUST INCLUDE BOTH FUNCTIONS:
    function showPage(path) {{
@@ -2684,15 +2507,8 @@ CRITICAL RULES - LIGHT THEME:
        document.getElementById('mobileMenu')?.classList.toggle('active');
        document.getElementById('mobileOverlay')?.classList.toggle('active');
    }}
-   
-
-       
 
 Return ONLY complete HTML. No explanations."""
-
-
-
-
 
 
 
@@ -8296,7 +8112,6 @@ Component:
 
 
 
-
 @app.post("/api/generate-static-html")
 async def generate_static_html(request: Dict[str, Any]):
     """
@@ -8377,10 +8192,13 @@ async def generate_static_html(request: Dict[str, Any]):
             else:
                 pages_content[path] = f'<div class="text-center py-20"><h1 class="text-4xl font-bold">{label}</h1><p>Content will appear here</p></div>'
 
-        # Build navigation
+        # ✅ FIXED: Define BOTH variables
         nav_buttons_html = ""
+        mobile_nav_html = ""  # ← THIS WAS MISSING - ADD THIS LINE
+        
         for path, label in nav_links:
             nav_buttons_html += f'<button onclick="showPage(\'{path}\')" class="nav-link px-4 py-2 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-purple-500/20">{label}</button>'
+            mobile_nav_html += f'<a href="{path}" onclick="showPage(\'{path}\'); return false;" class="block px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-purple-500/20">{label}</a>'
 
         # Build pages
         pages_html = ""
@@ -8390,6 +8208,9 @@ async def generate_static_html(request: Dict[str, Any]):
             page_map[path] = page_id
             active = 'active' if path == '/' else ''
             pages_html += f'<div id="{page_id}" class="page {active}"><div class="container mx-auto px-4 py-8">{content}</div></div>'
+
+        # Build page map JavaScript
+        page_map_js = "{" + ", ".join([f'"{k}": "{v}"' for k, v in page_map.items()]) + "}"
 
         # Complete HTML
         static_html = f"""<!DOCTYPE html>
@@ -8445,7 +8266,7 @@ async def generate_static_html(request: Dict[str, Any]):
     </div>
 
     <script>
-        const pageMap = {json.dumps(page_map)};
+        const pageMap = {page_map_js};
         
         function showPage(path) {{
             const pageId = pageMap[path] || 'page_home';
@@ -8453,7 +8274,7 @@ async def generate_static_html(request: Dict[str, Any]):
             const targetPage = document.getElementById(pageId);
             if (targetPage) targetPage.classList.add('active');
             
-            document.querySelectorAll('.nav-link, .nav-link-mobile').forEach(btn => {{
+            document.querySelectorAll('.nav-link').forEach(btn => {{
                 btn.classList.remove('active', 'bg-purple-500/20');
                 if (btn.getAttribute('onclick')?.includes(path)) {{
                     btn.classList.add('active', 'bg-purple-500/20');
@@ -8463,20 +8284,21 @@ async def generate_static_html(request: Dict[str, Any]):
             window.history.pushState({{}}, '', path);
         }}
         
-        function handlePopState() {{
-            showPage(window.location.pathname);
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        if (mobileMenuBtn && mobileMenu) {{
+            mobileMenuBtn.addEventListener('click', () => {{
+                mobileMenu.classList.toggle('hidden');
+            }});
         }}
         
-        document.querySelectorAll('.nav-link, .nav-link-mobile').forEach(btn => {{
-            btn.addEventListener('click', (e) => {{
-                e.preventDefault();
-                const onclick = btn.getAttribute('onclick');
-                if (onclick) eval(onclick);
-            }});
+        // Handle popstate (back/forward buttons)
+        window.addEventListener('popstate', () => {{
+            showPage(window.location.pathname);
         }});
         
-       
-        
+        // Initial page load
         const currentPath = window.location.pathname || '/';
         showPage(currentPath);
     </script>
@@ -10022,33 +9844,6 @@ async def ping():
 
 
 
-
-@app.post("/api/admin/force-reset-credits")
-async def force_reset_credits(request: Request):
-    """Admin endpoint to manually trigger credit reset"""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "")
-    
-    admin_emails = ["admin@eaglecode.com", "hopefreymosingi1@gmail.com"]
-    
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        admin_email = payload.get('email')
-        
-        if admin_email not in admin_emails:
-            raise HTTPException(status_code=403, detail="Admin access required")
-        
-        # Run reset
-        await reset_daily_credits()
-        
-        return {
-            "success": True,
-            "message": "Credits reset triggered successfully",
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 
