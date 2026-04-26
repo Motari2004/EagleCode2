@@ -10064,193 +10064,62 @@ async def force_reset_credits(request: Request):
 
 
 
-
-
-
-
-
-
-
-# ========== TEST ENDPOINTS FOR CREDIT RESET SYSTEM ==========
-
-@app.get("/api/test/credit-status")
-async def test_credit_status(user_id: str):
-    """Test endpoint to check current credit status for a user"""
+@app.api_route("/api/cron/reset-daily-credits", methods=["GET", "POST"])
+async def cron_reset_daily_credits():
+    """
+    Cron job endpoint to reset daily credits for ALL users directly from database.
+    No authentication required - meant for automated cron jobs.
+    """
     try:
+        print(f"\n{'='*60}")
+        print(f"🕐 CRON JOB - RESETTING ALL USER CREDITS")
+        print(f"   Time: {datetime.now()}")
+        print(f"{'='*60}")
+        
         async with AsyncSessionLocal() as session:
-            stmt = select(UserCredits).where(UserCredits.user_id == user_id)
-            result = await session.execute(stmt)
-            user_credits = result.scalar_one_or_none()
-            
-            if not user_credits:
-                return {
-                    "success": False,
-                    "message": f"No credits record found for user {user_id}"
-                }
-            
             today = date.today()
             
-            return {
-                "success": True,
-                "user_id": user_id[:8] + "...",
-                "plan": user_credits.plan,
-                "daily_credits_used": user_credits.daily_credits_used,
-                "daily_reset_date": user_credits.daily_reset_date.isoformat(),
-                "monthly_credits_used": user_credits.monthly_credits_used,
-                "monthly_reset_date": user_credits.monthly_reset_date.isoformat(),
-                "needs_reset_today": user_credits.daily_reset_date != today,
-                "current_date": today.isoformat()
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.post("/api/test/force-reset")
-async def test_force_reset():
-    """Test endpoint to manually trigger credit reset"""
-    try:
-        print("\n🧪 FORCE RESET TRIGGERED (TEST MODE)")
-        await reset_daily_credits_at_midnight()
-        return {
-            "success": True,
-            "message": "Force reset completed",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.post("/api/test/create-test-user")
-async def test_create_test_user():
-    """Create a test user with credits for testing"""
-    try:
-        test_user_id = f"test_user_{uuid.uuid4().hex[:8]}"
-        today = date.today()
-        yesterday = today - timedelta(days=1)
-        
-        async with AsyncSessionLocal() as session:
-            # Create test user with yesterday's reset date (so it should reset)
-            test_credits = UserCredits(
-                user_id=test_user_id,
-                plan="free",
-                daily_credits_used=5,  # Used all daily credits
-                daily_reset_date=yesterday,  # Last reset yesterday
-                monthly_credits_used=25,
-                monthly_reset_date=today
-            )
-            session.add(test_credits)
-            await session.commit()
-            
-            return {
-                "success": True,
-                "message": "Test user created",
-                "user_id": test_user_id,
-                "daily_credits_used": 5,
-                "daily_limit": 5,
-                "daily_reset_date": yesterday.isoformat(),
-                "should_reset": True,
-                "note": "This user should have their credits reset because reset_date is yesterday"
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.post("/api/test/create-fresh-user")
-async def test_create_fresh_user():
-    """Create a test user with today's reset date (no reset needed)"""
-    try:
-        test_user_id = f"fresh_user_{uuid.uuid4().hex[:8]}"
-        today = date.today()
-        
-        async with AsyncSessionLocal() as session:
-            test_credits = UserCredits(
-                user_id=test_user_id,
-                plan="free",
-                daily_credits_used=3,  # Used 3 of 5
-                daily_reset_date=today,  # Already reset today
-                monthly_credits_used=10,
-                monthly_reset_date=today
-            )
-            session.add(test_credits)
-            await session.commit()
-            
-            return {
-                "success": True,
-                "message": "Fresh test user created",
-                "user_id": test_user_id,
-                "daily_credits_used": 3,
-                "daily_limit": 5,
-                "daily_reset_date": today.isoformat(),
-                "should_reset": False,
-                "note": "This user should NOT have their credits reset (already reset today)"
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.get("/api/test/scheduler-status")
-async def test_scheduler_status():
-    """Check if the credit reset scheduler is running"""
-    global credit_scheduler
-    
-    if credit_scheduler and credit_scheduler.running:
-        # Get next job time
-        next_job = None
-        for job in credit_scheduler.get_jobs():
-            if job.id == "midnight_credit_reset":
-                next_job = job.next_run_time
-                break
-        
-        return {
-            "success": True,
-            "scheduler_running": True,
-            "next_reset": next_job.isoformat() if next_job else "Unknown",
-            "scheduler_info": {
-                "state": "running",
-                "jobs": len(credit_scheduler.get_jobs())
-            }
-        }
-    else:
-        return {
-            "success": False,
-            "scheduler_running": False,
-            "message": "Scheduler is not running"
-        }
-
-@app.get("/api/reset/all-users-credits")
-async def test_all_users_credits():
-    """View all users' credit status (for testing)"""
-    try:
-        async with AsyncSessionLocal() as session:
-            stmt = select(UserCredits).order_by(UserCredits.created_at.desc())
+            # Get ALL users before reset (for logging)
+            stmt = select(UserCredits)
             result = await session.execute(stmt)
             all_users = result.scalars().all()
             
-            today = date.today()
+            print(f"📊 Total users in database: {len(all_users)}")
             
-            users_data = []
-            for user in all_users[:20]:  # Limit to 20 for response size
-                users_data.append({
-                    "user_id": user.user_id[:12] + "...",
-                    "plan": user.plan,
-                    "daily_used": user.daily_credits_used,
-                    "daily_limit": 5 if user.plan == "free" else (15 if user.plan == "pro" else 40),
-                    "daily_reset_date": user.daily_reset_date.isoformat(),
-                    "needs_reset": user.daily_reset_date != today,
-                    "monthly_used": user.monthly_credits_used,
-                    "monthly_reset_date": user.monthly_reset_date.isoformat()
-                })
+            reset_count = 0
+            for user_credits in all_users:
+                # Log old values
+                old_used = user_credits.daily_credits_used
+                old_date = user_credits.daily_reset_date
+                
+                # Reset to 0 and update date
+                user_credits.daily_credits_used = 0
+                user_credits.daily_reset_date = today
+                reset_count += 1
+                
+                print(f"  🔄 User {user_credits.user_id[:12]}...: {old_used} credits → 0 (last reset: {old_date})")
+            
+            # Commit all changes to database
+            await session.commit()
+            
+            print(f"\n✅ DATABASE UPDATE COMPLETE!")
+            print(f"   📊 Users reset: {reset_count}")
+            print(f"   📅 New reset date: {today}")
+            print(f"{'='*60}\n")
             
             return {
                 "success": True,
-                "total_users": len(all_users),
-                "users": users_data,
-                "current_date": today.isoformat()
+                "message": "Daily credits reset completed for ALL users",
+                "users_reset": reset_count,
+                "reset_date": today.isoformat(),
+                "reset_time": datetime.now().isoformat()
             }
+            
     except Exception as e:
+        print(f"❌ Cron reset failed: {e}")
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
-
-
-
-
-
-
 
 
 
