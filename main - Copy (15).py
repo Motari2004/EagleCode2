@@ -1822,311 +1822,332 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
+
+
+
+
+
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
-    """Generate fully interactive HTML preview using AI - DARK THEME VERSION"""
+    """Generate fully interactive HTML preview using AI - LIGHT THEME VERSION"""
     try:
         print(f"🤖 AI generating full equivalent HTML preview for: {project_name}")
 
         # ========== COLLECT NAVIGATION ==========
-        nav_content = ""
-        nav_paths = [
-            "components/Navigation.tsx",
-            "components/Navigation.jsx", 
-            "components/Navbar.tsx",
-            "components/Navbar.jsx",
-            "app/components/Navigation.tsx",
-            "components/Header.tsx"
-        ]
-        
-        for fp in nav_paths:
-            if fp in files:
-                nav_content = files[fp]
-                break
-        
+        nav_content = files.get("components/Navigation.tsx", "")
         if not nav_content:
             for fp, content in files.items():
-                if any(x in fp for x in ["Navigation", "Navbar", "Header"]) and fp.endswith((".tsx", ".jsx")):
+                if "Navigation" in fp and fp.endswith((".tsx", ".jsx")):
                     nav_content = content
                     break
 
-        # Extract brand and navigation links from Next.js structure
+        # Extract brand and navigation links
         brand_name = project_name
         nav_links = []
         
         if nav_content:
-            # Try to find brand name from various patterns
-            brand_patterns = [
-                r'<Link\s+href="/"[^>]*>(.*?)</Link>',
-                r'<div\s+className="[^"]*brand[^"]*"[^>]*>(.*?)</div>',
-                r'const\s+\w+\s*=\s*["\']([^"\']+)["\']',
-            ]
-            for pattern in brand_patterns:
-                match = re.search(pattern, nav_content, re.DOTALL)
-                if match:
-                    brand_name = re.sub(r'<[^>]+>', '', match.group(1)).strip()
-                    if brand_name:
-                        break
+            brand_match = re.search(r'<Link[^>]*href="/"[^>]*>.*?<[^>]+>([^<]+)</', nav_content, re.DOTALL)
+            if brand_match:
+                brand_name = brand_match.group(1).strip()
             
-            # Extract navigation links from Next.js Link components
-            link_patterns = [
-                r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
-                r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
-                r'href="/([^"]+)".*?>(.*?)</Link>',
-            ]
-            
-            for pattern in link_patterns:
-                matches = re.findall(pattern, nav_content, re.DOTALL)
-                for href, text in matches:
-                    clean_text = re.sub(r'<[^>]+>', '', text).strip()
-                    if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
-                        nav_links.append((href, clean_text))
-                if nav_links:
-                    break
+            link_pattern = r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>'
+            nav_links = [(href, text.strip()) for href, text in re.findall(link_pattern, nav_content) 
+                        if href != "/" and text.strip() and text.strip() != brand_name]
         
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
         # ========== COLLECT FOOTER CONTENT ==========
         footer_html = ""
-        footer_paths = ["components/Footer.tsx", "components/Footer.jsx", "app/components/Footer.tsx"]
-        
-        for fp in footer_paths:
-            if fp in files:
-                content = files[fp]
-                # Extract JSX return content
+        for fp, content in files.items():
+            if "Footer" in fp and fp.endswith((".tsx", ".jsx")):
+                print(f"📄 Found Footer: {fp}")
                 match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', content, re.DOTALL)
                 if match:
                     footer_html = match.group(1)
+                    footer_html = re.sub(r'className=', 'class=', footer_html)
+                    footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1" class="cursor-pointer">', footer_html)
+                    footer_html = re.sub(r'</Link>', r'</a>', footer_html)
+                    footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
+                    footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
+                    footer_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', footer_html)
+                    print(f"📄 Extracted Footer HTML: {len(footer_html)} chars")
                 else:
                     match = re.search(r'<footer[\s\S]*?</footer>', content, re.DOTALL)
                     if match:
                         footer_html = match.group(0)
+                        footer_html = re.sub(r'className=', 'class=', footer_html)
+                        print(f"📄 Extracted Footer from tags: {len(footer_html)} chars")
+                break
+
+        if not footer_html:
+            footer_html = f'''
+            <footer class="bg-gray-100 border-t border-gray-200 py-8 mt-16">
+                <div class="container mx-auto px-4 text-center">
+                    <p class="text-gray-500 text-sm">© 2024 {brand_name}. All rights reserved.</p>
+                </div>
+            </footer>
+            '''
+            print("⚠️ No Footer found, using simple fallback")
+
+        # ========== PARSE ARRAY ITEMS HELPER ==========
+        def parse_array_items(array_body: str) -> List[Dict]:
+            """Parse array items from a string into list of dicts"""
+            items = []
+            
+            depth = 0
+            current_obj = ""
+            in_string = False
+            escape_next = False
+            
+            for char in array_body:
+                if escape_next:
+                    current_obj += char
+                    escape_next = False
+                    continue
                 
-                if footer_html:
-                    footer_html = re.sub(r'className=', 'class=', footer_html)
-                    footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
-                    footer_html = re.sub(r'</Link>', '</a>', footer_html)
-                    footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
-                    footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
+                if char == '\\':
+                    escape_next = True
+                    current_obj += char
+                    continue
+                
+                if char == '"' or char == "'":
+                    in_string = not in_string
+                    current_obj += char
+                    continue
+                
+                if not in_string:
+                    if char == '{':
+                        if depth == 0:
+                            current_obj = ""
+                        depth += 1
+                        current_obj += char
+                    elif char == '}':
+                        depth -= 1
+                        current_obj += char
+                        if depth == 0:
+                            item = {}
+                            kv_pattern = r'(\w+):\s*["\']([^"\']+)["\']'
+                            for kv in re.finditer(kv_pattern, current_obj):
+                                item[kv.group(1)] = kv.group(2)
+                            kv_pattern2 = r'(\w+):\s*(\d+|true|false)'
+                            for kv in re.finditer(kv_pattern2, current_obj):
+                                item[kv.group(1)] = kv.group(2)
+                            if item:
+                                items.append(item)
+                                print(f"  📍 Parsed item: {item}")
+                            current_obj = ""
+                    else:
+                        current_obj += char
+                else:
+                    current_obj += char
+            
+            return items
+
+        def parse_simple_array(array_body: str) -> List[str]:
+            """Parse simple array values (strings, numbers)"""
+            items = []
+            pattern = r'["\']([^"\']+)["\']|\b(\d+)\b'
+            for match in re.finditer(pattern, array_body):
+                value = match.group(1) or match.group(2)
+                if value:
+                    items.append(value)
+            return items
+
+        # ========== EXPAND MAP LOOPS ==========
+        def expand_all_map_loops(jsx: str, full_content: str = "") -> str:
+            arrays = {}
+            
+            const_pattern = r'const\s+(\w+)\s*=\s*\[([\s\S]*?)\];'
+            
+            for match in re.finditer(const_pattern, full_content):
+                array_name = match.group(1)
+                array_body = match.group(2)
+                
+                items = parse_array_items(array_body)
+                
+                if not items:
+                    simple_items = parse_simple_array(array_body)
+                    if simple_items:
+                        items = simple_items
+                        print(f"📦 Found simple named array '{array_name}' with {len(items)} items: {items}")
+                
+                if items:
+                    arrays[array_name] = items
+                    print(f"📦 Found named array '{array_name}' with {len(items)} items")
+            
+            for match in re.finditer(const_pattern, full_content):
+                jsx = jsx.replace(match.group(0), '')
+            
+            inline_pattern = r'\{\[([\s\S]*?)\]\s*\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}'
+            
+            def replace_inline(match):
+                array_body = match.group(1)
+                var_name = match.group(2).strip('()')
+                template = match.group(3)
+                
+                items = parse_array_items(array_body)
+                
+                if not items:
+                    items = parse_simple_array(array_body)
+                
+                if not items:
+                    return match.group(0)
+                
+                result = ""
+                for idx, item in enumerate(items):
+                    item_html = template
+                    
+                    if isinstance(item, dict):
+                        for key, value in item.items():
+                            item_html = item_html.replace(f'{{{var_name}.{key}}}', str(value))
+                            item_html = item_html.replace(f'{{ {var_name}.{key} }}', str(value))
+                            if var_name in ['item', 'p', 'i', 'pillar', 'program', 'pillars']:
+                                item_html = item_html.replace(f'{{{key}}}', str(value))
+                                item_html = item_html.replace(f'{{ {key} }}', str(value))
+                    else:
+                        item_html = item_html.replace(f'{{{var_name}}}', str(item))
+                        item_html = item_html.replace(f'{{ {var_name} }}', str(item))
+                    
+                    item_html = item_html.replace('{i}', str(idx))
+                    item_html = item_html.replace('{index}', str(idx))
+                    item_html = item_html.replace('{idx}', str(idx))
+                    item_html = re.sub(r'\{[^}]+\}', '', item_html)
+                    item_html = item_html.replace('className=', 'class=')
+                    item_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', item_html)
+                    item_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', item_html)
+                    
+                    result += item_html
+                
+                return result
+            
+            for _ in range(5):
+                new_jsx = re.sub(inline_pattern, replace_inline, jsx, flags=re.DOTALL)
+                if new_jsx == jsx:
                     break
+                jsx = new_jsx
+            
+            for array_name, items in arrays.items():
+                named_pattern = rf'\{{{array_name}\.map\(\(?([^)]+)\)?\s*=>\s*\(([\s\S]*?)\)\s*\)\}}'
+                
+                def replace_named(match, items=items, array_name=array_name):
+                    var_name = match.group(1).strip('()')
+                    template = match.group(2)
+                    result = ""
+                    
+                    for idx, item in enumerate(items):
+                        item_html = template
+                        
+                        if isinstance(item, dict):
+                            for key, value in item.items():
+                                item_html = item_html.replace(f'{{{var_name}.{key}}}', str(value))
+                                item_html = item_html.replace(f'{{ {var_name}.{key} }}', str(value))
+                                if var_name in ['item', 'p', 'i', 'pillar', 'program', 'pillars']:
+                                    item_html = item_html.replace(f'{{{key}}}', str(value))
+                                    item_html = item_html.replace(f'{{ {key} }}', str(value))
+                        else:
+                            item_html = item_html.replace(f'{{{var_name}}}', str(item))
+                            item_html = item_html.replace(f'{{ {var_name} }}', str(item))
+                        
+                        item_html = item_html.replace('{i}', str(idx))
+                        item_html = item_html.replace('{index}', str(idx))
+                        item_html = item_html.replace('{idx}', str(idx))
+                        item_html = re.sub(r'\{[^}]+\}', '', item_html)
+                        item_html = item_html.replace('className=', 'class=')
+                        item_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', item_html)
+                        item_html = re.sub(r'\s+key=\{[\s\S]*?\}', '', item_html)
+                        
+                        result += item_html
+                    
+                    return result
+                
+                jsx = re.sub(named_pattern, replace_named, jsx, flags=re.DOTALL)
+            
+            return jsx
 
-        # ========== HELPER FUNCTION FOR .TSX EXTRACTION ==========
-        def extract_tsx_content(content: str, route_name: str) -> str:
-            """Extract JSX content from .tsx files properly"""
-            
-            if not content:
-                return ""
-            
-            print(f"  🔍 Extracting from .tsx: {route_name}")
-            
-            # Remove TypeScript specific syntax for cleaner matching
-            clean_content = content
-            
-            # Remove interface and type declarations
-            clean_content = re.sub(r'interface\s+\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', '', clean_content, re.DOTALL)
-            clean_content = re.sub(r'type\s+\w+\s*=\s*[^;]+;', '', clean_content, re.DOTALL)
-            
-            # Try multiple extraction strategies for .tsx
-            
-            # Strategy 1: export default function ComponentName(): JSX.Element { return ( ... ) }
-            pattern1 = r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*:\s*\w+(?:\.\w+)?\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern1, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 1 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 2: export default function ComponentName() { return ( ... ) }
-            pattern2 = r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern2, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 2 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 3: export default const ComponentName = (): JSX.Element => { return ( ... ) }
-            pattern3 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*:\s*\w+(?:\.\w+)?\s*=>\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern3, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 3 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 4: export default const ComponentName = () => { return ( ... ) }
-            pattern4 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern4, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 4 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 5: export default const ComponentName = () => ( ... ) (implicit return)
-            pattern5 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*;?'
-            match = re.search(pattern5, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 5 matched (arrow function implicit return)")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 6: Look for any return with JSX
-            pattern6 = r'return\s*\(\s*([\s\S]*?)\s*\)\s*;'
-            matches = re.finditer(pattern6, clean_content, re.DOTALL)
-            for match in matches:
-                jsx = match.group(1)
-                if re.search(r'<[a-zA-Z][^>]*>', jsx):
-                    print(f"  ✅ Strategy 6 matched (generic return)")
-                    return clean_jsx_output(jsx, route_name)
-            
-            print(f"  ❌ No extraction strategy matched for {route_name}")
-            return ""
-        
-        def clean_jsx_output(jsx: str, route_name: str) -> str:
-            """Clean JSX and convert to HTML"""
-            
-            # Remove JavaScript expressions
-            jsx = re.sub(r'\{[^}]+\}', '', jsx)
-            
-            # Convert className to class
-            jsx = re.sub(r'className=', 'class=', jsx)
-            
-            # Remove React-specific attributes
-            jsx = re.sub(r'\s+key=["\'][^"\']*["\']', '', jsx)
-            jsx = re.sub(r'\s+key=\{[\s\S]*?\}', '', jsx)
-            jsx = re.sub(r'suppressHydrationWarning', '', jsx)
-            
-            # Convert Next.js Link to a tags
-            jsx = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', jsx)
-            jsx = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', jsx)
-            jsx = re.sub(r'</Link>', '</a>', jsx)
-            
-            # Convert Next.js Image to img
-            jsx = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="">', jsx)
-            jsx = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="">', jsx)
-            
-            # CRITICAL: Remove ANY img tags from non-home pages
-            if route_name != "home":
-                jsx = re.sub(r'<img[^>]*>', '', jsx, flags=re.IGNORECASE)
-            
-            # Clean up whitespace
-            jsx = re.sub(r'\s+', ' ', jsx)
-            jsx = re.sub(r'>\s+<', '><', jsx)
-            
-            return jsx.strip()
-
-        # ========== PROCESS PAGES WITH .TSX SUPPORT ==========
+        # ========== PROCESS PAGES ==========
         page_contents = {}
         
         for file_path, content in files.items():
-            # Match Next.js page patterns: app/page.tsx, app/about/page.tsx, app/solutions/page.tsx, etc.
-            if file_path.endswith((".tsx", ".jsx", ".js")) and ("/app/" in file_path or file_path.startswith("app/")):
-                # Extract route from path
-                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").replace("/page.js", "").replace(".tsx", "").replace(".jsx", "").replace(".js", "")
-                route_name = route if route else "home"
-                route_name = route_name.replace("/", "_")
+            if file_path.endswith(("page.tsx", "page.jsx")):
+                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").strip("/")
+                route_name = route or "home"
                 
-                print(f"\n📄 Found Next.js page: {file_path} -> {route_name}")
+                clean = content
+                clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];?\s*$', '', clean, flags=re.MULTILINE)
+                clean = re.sub(r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean)
+                clean = re.sub(r'export\s+default\s+const\s+\w+\s*=\s*\(\)\s*=>\s*{?', '', clean)
                 
-                # Use the improved .tsx extractor
-                extracted_content = extract_tsx_content(content, route_name)
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
+                if not match:
+                    match = re.search(r'\(\s*<[\w\s\S]+?>\s*\)', clean, re.DOTALL)
                 
-                if extracted_content and len(extracted_content) > 50:
-                    page_contents[route_name] = extracted_content[:8000]
-                    print(f"  ✅ Extracted {len(extracted_content)} chars")
-                    # Debug: print first 100 chars
-                    preview = extracted_content[:150].replace('\n', ' ')
-                    print(f"  📝 Preview: {preview}...")
+                if match:
+                    jsx = match.group(1) if match.lastindex else match.group(0)
+                    jsx = expand_all_map_loops(jsx)
+                    jsx = re.sub(r'\{[^}]+\}', '', jsx)
+                    jsx = jsx.replace('className=', 'class=')
+                    
+                    page_contents[route_name] = jsx[:8000]
+                    print(f"📄 {route_name}: {len(jsx)} chars extracted")
                 else:
-                    print(f"  ⚠️ Could not extract from {route_name}")
-                    # Store original content as reference for AI
-                    page_contents[route_name] = f"<!-- Original .tsx component content -->\n{content[:3000]}"
+                    page_contents[route_name] = clean[:3000]
+                    print(f"⚠️ Could not extract content from {route_name}")
 
-        # Add navigation pages that weren't found in files
+        # Add missing navigation pages
         for href, label in nav_links:
-            route_key = href.replace("/", "_")
-            if route_key not in page_contents and href not in page_contents:
-                page_contents[route_key] = f'''
+            if href not in page_contents:
+                page_contents[href] = f'''
                 <div class="container mx-auto px-4 py-16">
-                    <h1 class="text-4xl md:text-5xl font-bold mb-6 gradient-text">{label}</h1>
-                    <div class="card p-8">
-                        <p class="text-gray-300">Welcome to our {label.lower()} page.</p>
+                    <h1 class="text-4xl md:text-5xl font-bold text-blue-600 mb-6">{label}</h1>
+                    <div class="bg-white rounded-xl shadow-lg p-8 border border-gray-200">
+                        <p class="text-gray-600">Explore our {label.lower()} collection and discover amazing offerings.</p>
                     </div>
                 </div>
                 '''
 
-        # Print summary of extracted pages
-        print(f"\n📊 EXTRACTION SUMMARY:")
-        for route, content in page_contents.items():
-            print(f"  - {route}: {len(content)} chars")
+        # Available images
+        available_images = [f for f in files.keys() if f.startswith("public/images/")]
+        image_paths = [f"/{f.replace('public/', '')}" for f in available_images]
 
-        # ========== COLLECT AVAILABLE IMAGES ==========
-        image_paths = []
-        first_image = None
-        
-        for file_path in files.keys():
-            if file_path.startswith("public/images/") and file_path.endswith((".jpg", ".png", ".jpeg", ".webp")):
-                img_path = "/" + file_path.replace("public/", "")
-                image_paths.append(img_path)
-                if not first_image:
-                    first_image = img_path
-        
-        print(f"\n🖼️ Found {len(image_paths)} images, first: {first_image}")
+        # ========== IMAGE INSTRUCTION ==========
+        image_instruction = ""
+        if image_paths:
+            image_paths_list = '\n'.join([f'  - {path}' for path in image_paths])
+            image_instruction = f"""
+🚨 CRITICAL - IMAGE USAGE RULES 🚨
 
-        # ========== STRICT IMAGE INSTRUCTION FOR AI ==========
-        image_instruction = f"""
-================================================================================
-                    CRITICAL - HERO IMAGE RULES (STRICT)
-================================================================================
+AVAILABLE IMAGES:
+{image_paths_list}
 
-AVAILABLE IMAGE: {first_image if first_image else 'No images available - use gradient background only'}
 
-RULE 1 - HOME PAGE ONLY:
-- The hero image MUST appear ONLY on the home page
-- Use {first_image if first_image else 'gradient background'} as full screen background on home page
-- NO dark overlays on the image (no bg-black, no overlay divs)
-- Use text-shadow for text readability instead of overlays
+RULES:
+1. **HOME PAGE ONLY**: The hero image should ONLY appear on the home page
+2. **OTHER PAGES**: Do NOT show the hero image on any other page
+3. Use the FIRST image (image_1.jpg) as FULL-SCREEN BACKGROUND in home page hero section
+5. For other pages, use simple gradient backgrounds (no images)
 
-RULE 2 - NO IMAGES ON OTHER PAGES:
-- ABSOLUTELY NO img tags on any page except home
-- DO NOT create hero banners with images on other pages
-- Faculty page: use emoji icons (👨‍🏫 👩‍🔬 💻 📚) instead of photos
-- Use ONLY gradient backgrounds on non-home pages
-
-RULE 3 - CORRECT NON-HOME PAGE STRUCTURE:
-Use this exact pattern for pages except home:
-
-<div class="page-header" style="padding: 4rem 0; text-align: center; background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);">
-    <div class="container">
-        <h1 style="color: white; font-size: 3rem;">Page Title</h1>
-        <p style="color: #9ca3af;">Page description goes here</p>
-    </div>
-</div>
-
-VIOLATION = INVALID RESPONSE
 """
 
-        # ========== DARK GRADIENT STYLES ==========
-        light_styles = """
+
+
+
+
+# ========== DARK GRADIENT STYLES ==========
+            light_styles = """
 <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
     
     body {
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        min-height: 100vh;
-        position: relative;
-    }
-    
-    /* Fixed gradient background - no movement */
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
         background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 50%, #0f0f12 100%);
-        z-index: -2;
+        color: #e5e7eb;
+        min-height: 100vh;
     }
     
-    /* Navbar */
+    /* Navbar - Dark Glass */
     nav {
         background: rgba(26, 26, 30, 0.95);
         backdrop-filter: blur(10px);
@@ -2136,28 +2157,7 @@ VIOLATION = INVALID RESPONSE
         left: 0;
         right: 0;
         z-index: 100;
-        height: 72px;
-    }
-    
-    .nav-container {
-        max-width: 1280px;
-        margin: 0 auto;
-        height: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 1.5rem;
-    }
-    
-    .brand-link {
-        font-weight: 800;
-        font-size: 1.5rem;
-        text-decoration: none;
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
     
     .nav-link {
@@ -2168,30 +2168,53 @@ VIOLATION = INVALID RESPONSE
         transition: all 0.2s ease;
     }
     
-    .nav-link:hover { color: #c084fc; background: rgba(192, 132, 252, 0.1); }
-    .nav-link.active { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
+    .nav-link:hover {
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.1);
+    }
     
-    /* Pages - ALL pages start hidden */
+    .nav-link.active {
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.15);
+        font-weight: 500;
+    }
+    
+    .brand-link {
+        font-weight: 700;
+        font-size: 1.25rem;
+        color: #f1f5f9;
+        text-decoration: none;
+        cursor: pointer;
+        background: linear-gradient(135deg, #60a5fa, #a78bfa);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    
+    /* Page transitions */
     .page {
         display: none;
         animation: fadeIn 0.3s ease;
-        min-height: calc(100vh - 72px);
-        width: 100%;
-        position: relative;
+        min-height: 100vh;
+        padding-top: 100px;
     }
     
-    .page.active { 
-        display: block; 
+    .page.active {
+        display: block;
     }
     
-    /* HOME PAGE specific styles - ONLY applies to home page */
     #page_home {
-        padding-top: 0px;
+        padding-top: 120px;
         position: relative;
     }
     
-    /* Hero section - ONLY inside home page */
-    #page_home .hero-section {
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Hero Section */
+    .hero-section {
         position: absolute;
         top: 0;
         left: 0;
@@ -2201,7 +2224,7 @@ VIOLATION = INVALID RESPONSE
         z-index: 1;
     }
     
-    #page_home .hero-image {
+    .hero-image {
         position: absolute;
         inset: 0;
         width: 100%;
@@ -2209,7 +2232,15 @@ VIOLATION = INVALID RESPONSE
         object-fit: cover;
     }
     
-    #page_home .home-content {
+    /* Minimal overlay for text readability */
+    .hero-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+    }
+    
+    /* Home content wrapper */
+    .home-content {
         position: relative;
         z-index: 10;
         min-height: 100vh;
@@ -2217,125 +2248,154 @@ VIOLATION = INVALID RESPONSE
         align-items: center;
         justify-content: center;
         text-align: center;
+        padding-top: 80px;
     }
     
-    /* NON-HOME PAGES - Clean gradient headers, NO absolute positioning */
-    #page_catalogue, #page_solutions, #page_about, #page_contact, #page_services,
-    #page_products, #page_pricing, #page_blog, #page_faq, [id^="page_"]:not(#page_home) {
-        padding-top: 88px;
-        background: transparent;
-    }
     
-    /* Page header for non-home pages */
-    .page-header {
-        padding: 3rem 0;
-        text-align: center;
-        background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
-        margin-bottom: 2rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
     
-    .page-header h1 {
-        color: white;
-        font-size: 2.5rem;
-        margin-bottom: 0.75rem;
-    }
     
-    .page-header p {
-        color: #9ca3af;
-        font-size: 1.1rem;
-        max-width: 600px;
-        margin: 0 auto;
-    }
     
-    /* Safety - Hide any hero elements outside home page */
-    .page:not(#page_home) .hero-section,
-    .page:not(#page_home) .hero-image,
-    .page:not(#page_home) .home-content,
-    .page:not(#page_home) [class*="hero"],
-    .page:not(#page_home) [class*="Hero"] {
-        display: none !important;
-    }
     
-    /* Cards */
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /* Cards - Dark Gradient */
     .card {
         background: linear-gradient(135deg, #1a1a1e 0%, #121216 100%);
         border-radius: 1rem;
         padding: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         transition: all 0.3s ease;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
     
-    .card:hover { transform: translateY(-4px); border-color: #c084fc; }
+    .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
+        border-color: #3b82f6;
+    }
+    
+    /* Card text colors */
+    .card h3 {
+        color: #f1f5f9;
+    }
+    
+    .card p {
+        color: #9ca3af;
+    }
+    
+    
+    
+    
+    
+/* Add dark background to features section */
+.features-section,
+section.py-20 {
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+}   
+    
     
     /* Buttons */
     .btn-primary {
-        background: linear-gradient(135deg, #c084fc, #f472b6);
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
         color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 2rem;
-        font-weight: 600;
+        padding: 0.625rem 1.25rem;
+        border-radius: 0.5rem;
+        font-weight: 500;
         border: none;
         cursor: pointer;
         transition: all 0.2s ease;
     }
     
-    .btn-primary:hover { transform: translateY(-2px); }
-    
-    /* Container */
-    .container { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }
-    
-    /* Utilities */
-    .gradient-text {
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
+    .btn-primary:hover {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        transform: translateY(-1px);
     }
     
-    .hero-text-shadow { text-shadow: 0 2px 15px rgba(0, 0, 0, 0.6); }
+    /* Container */
+    .container {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 0 1.5rem;
+    }
     
-    /* Mobile Menu */
+    /* Section backgrounds */
+    section {
+        background: transparent;
+    }
+    
+    /* Headings */
+    h1, h2, h3, h4, h5, h6 {
+        color: #f1f5f9;
+    }
+    
+    /* Paragraphs */
+    p {
+        color: #9ca3af;
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .nav-links { display: none; }
+        .hamburger { display: flex; }
+        .container { padding: 0 1rem; }
+        .home-content {
+            padding-top: 60px;
+        }
+    }
+    
+    /* Hamburger Menu - Dark */
     .hamburger {
         display: none;
         flex-direction: column;
-        gap: 4px;
+        cursor: pointer;
+        padding: 0.5rem;
         background: transparent;
         border: none;
-        cursor: pointer;
         z-index: 101;
     }
     
     .hamburger span {
-        width: 25px;
-        height: 3px;
+        width: 24px;
+        height: 2px;
         background: #9ca3af;
+        margin: 3px 0;
+        transition: 0.3s;
         border-radius: 2px;
     }
     
     .mobile-menu {
         position: fixed;
         top: 0;
-        right: -100%;
+        right: -280px;
         width: 280px;
         height: 100vh;
         background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
-        z-index: 100;
-        transition: 0.3s;
-        padding: 80px 24px;
-    }
-    
-    .mobile-menu.active { right: 0; }
-    
-    .mobile-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.5);
+        box-shadow: -2px 0 8px rgba(0,0,0,0.3);
         z-index: 99;
-        display: none;
+        transition: right 0.3s ease;
+        padding: 80px 24px 24px 24px;
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
     }
     
-    .mobile-overlay.active { display: block; }
+    .mobile-menu.active {
+        right: 0;
+    }
     
     .mobile-nav-link {
         display: block;
@@ -2346,65 +2406,169 @@ VIOLATION = INVALID RESPONSE
         margin-bottom: 8px;
     }
     
-    .mobile-nav-link.active { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
+    .mobile-nav-link.active {
+        color: #60a5fa;
+        background: rgba(96, 165, 250, 0.15);
+    }
     
-    /* Grid utilities */
-    .grid { display: grid; }
-    .grid-cols-1 { grid-template-columns: repeat(1, 1fr); }
-    .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-    .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-    .gap-4 { gap: 1rem; }
-    .gap-6 { gap: 1.5rem; }
-    .gap-8 { gap: 2rem; }
+    .mobile-nav-link:hover {
+        color: #f1f5f9;
+        background: rgba(255, 255, 255, 0.05);
+    }
     
-    @media (max-width: 768px) {
-        .nav-links { display: none !important; }
-        .hamburger { display: flex !important; }
-        .grid-cols-2, .grid-cols-3 { grid-template-columns: repeat(1, 1fr); }
-        .page-header h1 { font-size: 2rem; }
+    .mobile-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 98;
+        display: none;
+    }
+    
+    .mobile-overlay.active {
+        display: block;
     }
 </style>
 """
 
+
+
+
         # ========== AI PROMPT ==========
-        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with MODERN DARK THEME.
+        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with a MODERN DARK THEME (dark gradients, purple/pink accents, no white backgrounds).
 
 PROJECT: {brand_name}
 NAVIGATION LINKS: {json.dumps(nav_links)}
 
-PAGE CONTENTS FROM NEXT.JS FILES (USE THESE EXACTLY FOR EACH PAGE):
+PAGE CONTENTS (USE THESE EXACTLY):
 {json.dumps(page_contents, indent=2)[:15000]}
 
-FOOTER HTML (USE THIS EXACTLY IF PROVIDED):
-{footer_html if footer_html else "Create a simple footer with copyright and navigation links"}
+FOOTER HTML (USE THIS EXACT FOOTER):
+{footer_html}
 
 {image_instruction}
 
+
+
 ================================================================================
-REQUIREMENTS:
+CRITICAL RULES - DARK THEME:
 ================================================================================
 
-1. Create complete HTML with the CSS styles provided
-2. Each page div must have id="page_XXX" where XXX is the route name
-3. Home page: id="page_home" with hero image (NO overlay)
-4. Non-home pages: NO images, ONLY gradient headers
-5. Extract content from PAGE CONTENTS above for each matching page
-6. Include showPage(path) and toggleMenu() JavaScript functions
-7. Brand name must be clickable to home page
-8. Use purple/pink gradients (#c084fc, #f472b6) for accents
-9. Hero section should be placed inside #page_home div
+1. **COLORS**: 
+   - Body Background: Dark gradient `linear-gradient(135deg, #0f0f12 0%, #1a1a2e 50%, #0f0f12 100%)`
+   - Cards: Dark gradient `linear-gradient(135deg, #1a1a1e 0%, #121216 100%)`
+   - Text: Light gray (#e5e7eb, #9ca3af) and white (#ffffff)
+   - Accents: Purple (#a855f7), Pink (#ec4899), Blue (#3b82f6)
+   - Borders: `rgba(255, 255, 255, 0.1)`
 
-Return ONLY complete HTML. NO explanations. VIOLATION OF IMAGE RULES = INVALID.
-"""
+2. **NO LIGHT THEMES**: 
+   - NEVER use white backgrounds (#ffffff, #f8fafc, bg-white, bg-gray-50)
+   - NEVER use light gray cards
+   - NEVER use dark text on light backgrounds
+   - NO blue accents (#2563eb) - use purple/pink gradients instead
+
+3. **USE THE PROVIDED FOOTER ABOVE** - Copy it EXACTLY as shown.
+
+4. **PAGE CONTENTS** - Use the EXACT HTML from page_contents for each page.
+
+5. **HOME PAGE HERO**:
+   - If images exist: Use first image as full-screen background
+   - ❌ DO NOT add any overlay divs (no bg-black, no gradient overlays, no hero-overlay)
+   - ✅ Use `drop-shadow-lg` or `text-shadow` for text readability instead
+   - Use WHITE text for all hero content (h1, p, buttons)
+   - Hero section must be full viewport height (100vh)
+   - The image should be clean and fully visible
+
+6. **NAVBAR & MOBILE NAVIGATION (MANDATORY INSTRUCTIONS)**:
+   - **STRUCTURAL HIERARCHY**:
+     - Generate a `<nav>` fixed at the top with dark glass background (`rgba(26, 26, 30, 0.95)`), `backdrop-filter: blur(10px)`, a `border-b` with `rgba(255,255,255,0.1)`, and `z-index: 50`.
+     - **Brand Name**: A `div` on the left with gradient text `bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent`. MUST be clickable to home via `onclick="showPage('/')"`.
+     - **Desktop Nav**: Wrap all primary links in `<div class="nav-links" id="desktopNav">...</div>`.
+     - **Hamburger Button**: Include a `<button class="hamburger" id="hamburgerBtn" onclick="toggleMenu()">` containing exactly three `<span></span>` elements.
+
+   - **DOM PLACEMENT**:
+     - Place `<div class="mobile-overlay" id="mobileOverlay" onclick="toggleMenu()"></div>` and `<div class="mobile-menu" id="mobileMenu"></div>` immediately before the closing `</body>` tag.
+     - Inside `.mobile-menu`, each link must be a `.mobile-nav-link` that calls BOTH `showPage('path')` and `toggleMenu()`.
+
+   - **FIXED POSITIONING BUFFER (CRITICAL)**:
+     - Because the navbar is `fixed`, you MUST prevent it from overlapping page content.
+     - Add a global CSS rule: `.page {{ padding-top: 80px; }}`. 
+     - For home page only: `#page_home {{ padding-top: 0px; }}` (image touches nav)
+     - Every page container (e.g., `<div id="page_home" class="page">`) MUST respect this padding so that `<h1>` titles are fully visible below the navigation bar.
+
+   - **REQUIRED CSS (ESCAPE BRACES FOR PYTHON BACKEND)**:
+     - Default Desktop:
+       .hamburger {{ display: none; flex-direction: column; gap: 4px; border: none; background: transparent; cursor: pointer; z-index: 101; }}
+       .hamburger span {{ display: block; width: 25px; height: 3px; background: #9ca3af; transition: 0.3s; border-radius: 2px; }}
+     - Mobile Menu State:
+       .mobile-menu {{ position: fixed; top: 0; right: -100%; width: 280px; height: 100vh; background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%); z-index: 100; transition: 0.3s; padding: 80px 24px; }}
+       .mobile-menu.active {{ right: 0; }}
+       .mobile-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }}
+       .mobile-overlay.active {{ display: block; }}
+
+   - **MOBILE FIX (MANDATORY @MEDIA QUERY)**:
+     You MUST include this exact block at the very end of the CSS:
+     @media (max-width: 768px) {{
+         .nav-links {{ display: none !important; }}
+         .hamburger {{ display: flex !important; }}
+     }}
+
+   - **JAVASCRIPT BEHAVIOR**:
+     The `toggleMenu()` function MUST toggle the `.active` class on both the `mobileMenu` and `mobileOverlay` elements.
+
+7. **PAGE SWITCHING**:
+   - showPage(path) function that shows the matching page div and hides all others
+   - Update active class on both .nav-link and .mobile-nav-link elements
+   - Update URL with window.history.pushState
+   - toggleMenu() function that toggles 'active' class on #mobileMenu and #mobileOverlay
+
+8. **JAVASCRIPT** - MUST INCLUDE BOTH FUNCTIONS:
+   function showPage(path) {{
+       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+       document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(l => l.classList.remove('active'));
+       const clean = (path || '/').replace(/^[/]/, '').replace(/[/]/g, '_');
+       const pageId = clean ? 'page_' + clean : 'page_home';
+       document.getElementById(pageId)?.classList.add('active');
+       document.querySelectorAll('[data-page="' + path + '"]').forEach(l => l.classList.add('active'));
+       window.history.pushState({{}}, '', path || '/');
+   }}
+   function toggleMenu() {{
+       document.getElementById('mobileMenu')?.classList.toggle('active');
+       document.getElementById('mobileOverlay')?.classList.toggle('active');
+   }}
+   
+
+
+Return ONLY complete HTML. No explanations."""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.1, "max_output_tokens": 48000}
+            config={"temperature": 0.2, "max_output_tokens": 10000}
         )
 
         preview_html = clean_html_response(response_text)
 
-        # Inject styles
+        # Inject light styles instead of gradient styles
         if '<style>' in preview_html:
             preview_html = preview_html.replace('<style>', light_styles + '<style>')
         elif '</head>' in preview_html:
@@ -2412,11 +2576,13 @@ Return ONLY complete HTML. NO explanations. VIOLATION OF IMAGE RULES = INVALID.
         else:
             preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{light_styles}</head>')
 
+
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
 
         # Inject base64 images
-        print("🖼️ Injecting images...")
+        print("🖼️ Injecting images into preview...")
+        
         for file_key, content in files.items():
             if not file_key.startswith("public/images/") or not isinstance(content, str):
                 continue
@@ -2429,7 +2595,7 @@ Return ONLY complete HTML. NO explanations. VIOLATION OF IMAGE RULES = INVALID.
             
             preview_html = re.sub(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
             preview_html = re.sub(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
-
+        
         print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
 
@@ -2437,13 +2603,80 @@ Return ONLY complete HTML. NO explanations. VIOLATION OF IMAGE RULES = INVALID.
         print(f"❌ AI Preview Error: {e}")
         import traceback
         traceback.print_exc()
-        raise
+
+        # Light theme fallback
+        fallback_template = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{project_name}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Inter', sans-serif; background: #f8fafc; color: #1e293b; }}
+        nav {{ background: white; border-bottom: 1px solid #e2e8f0; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }}
+        .nav-link {{ color: #475569; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; }}
+        .nav-link:hover {{ background: #eff6ff; color: #2563eb; }}
+        .nav-link.active {{ color: #2563eb; background: #eff6ff; }}
+        .brand-link {{ font-weight: bold; font-size: 1.25rem; color: #1e293b; cursor: pointer; text-decoration: none; }}
+        .page {{ display: none; animation: fadeIn 0.25s ease; min-height: 100vh; padding-top: 70px; }}
+        .page.active {{ display: block; }}
+        #page_home {{ padding-top: 0; }}
+        @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(8px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+        .hero-section {{ position: relative; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }}
+        .hero-image {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
+        .hero-overlay {{ position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }}
+        .container {{ max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }}
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <div class="flex justify-between items-center py-4">
+                <a href="/" class="brand-link" onclick="showPage('/'); return false;">{brand_name}</a>
+                <div class="nav-links" id="desktopNav"></div>
+                <button class="hamburger" id="hamburgerBtn" style="display: none;">☰</button>
+            </div>
+        </div>
+    </nav>
     
+    <div id="page_home" class="page active">
+        <div class="hero-section">
+            <img src="https://images.unsplash.com/photo-1516321497487-e288fb19713f?w=1600" alt="Hero" class="hero-image">
+            <div class="hero-overlay"></div>
+            <div class="relative z-10 text-center px-4">
+                <h1 class="text-5xl md:text-7xl font-bold text-white mb-4">{brand_name}</h1>
+                <p class="text-lg text-white">Welcome to our digital space</p>
+            </div>
+        </div>
+    </div>
     
+    {footer_html}
     
-    
-    
-  
+    <script>
+        const pages = {{ '/': 'page_home' }};
+        function showPage(path) {{
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const pageId = pages[path];
+            if (pageId) document.getElementById(pageId)?.classList.add('active');
+            window.history.pushState({{}}, '', path);
+        }}
+        const currentPath = window.location.pathname || '/';
+        showPage(currentPath);
+    </script>
+</body>
+</html>"""
+        
+        fallback = fallback_template.format(
+            project_name=project_name,
+            brand_name=brand_name,
+            footer_html=footer_html
+        )
+        
+        return {"success": True, "preview_html": fallback, "preview_type": "fallback"}
+
 
 
 
