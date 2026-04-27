@@ -2380,6 +2380,10 @@ FOOTER HTML (USE THIS EXACTLY IF PROVIDED):
 
 {image_instruction}
 
+
+
+
+
 ================================================================================
 REQUIREMENTS:
 ================================================================================
@@ -2393,6 +2397,31 @@ REQUIREMENTS:
 7. Brand name must be clickable to home page
 8. Use purple/pink gradients (#c084fc, #f472b6) for accents
 9. Hero section should be placed inside #page_home div
+
+10. MOBILE NAVIGATION (MANDATORY INSTRUCTIONS)**:
+     - Default Desktop:
+       .hamburger {{ display: none; flex-direction: column; gap: 4px; border: none; background: transparent; cursor: pointer; z-index: 101; }}
+       .hamburger span {{ display: block; width: 25px; height: 3px; background: #333; transition: 0.3s; border-radius: 2px; }}
+     - Mobile Menu State:
+       .mobile-menu {{ position: fixed; top: 0; right: -100%; width: 280px; height: 100vh; background: white; z-index: 100; transition: 0.3s; padding: 80px 24px; }}
+       .mobile-menu.active {{ right: 0; }}
+       .mobile-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }}
+       .mobile-overlay.active {{ display: block; }}
+
+   - **MOBILE FIX (MANDATORY @MEDIA QUERY)**:
+     You MUST include this exact block at the very end of the CSS:
+     @media (max-width: 768px) {{
+         .nav-links {{ display: none !important; }}
+         .hamburger {{ display: flex !important; }}
+     }}
+
+   - **JAVASCRIPT BEHAVIOR**:
+     The `toggleMenu()` function MUST toggle the `.active` class on both the `mobileMenu` and `mobileOverlay` elements.
+
+
+
+11. All page content from PAGE CONTENTS must be used exactly as provided
+
 
 Return ONLY complete HTML. NO explanations. VIOLATION OF IMAGE RULES = INVALID.
 """
