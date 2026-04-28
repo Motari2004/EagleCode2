@@ -6649,8 +6649,6 @@ UPDATED CODE:"""
 
 
 
-
-
 def generate_file_snippets_for_preview(files: Dict[str, str], max_files: int = 5) -> str:
     """Generate useful snippets of source files for preview generation"""
     snippets = []

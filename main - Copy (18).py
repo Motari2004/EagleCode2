@@ -577,55 +577,6 @@ print(f"📁 Temp dir: {TEMP_DIR}")
 
 
 
-
-
-
-# ====================== SAVE REGENERATED PREVIEW (Option A) ======================
-async def save_regenerated_preview(
-    preview_html: str,
-    project_name: str = "untitled",
-    project_id: Optional[str] = None
-) -> Optional[str]:
-    """
-    Saves the regenerated preview after edit to the PREVIEWS_DIR
-    (same location as normal previews).
-    """
-    try:
-        if not preview_html:
-            return None
-
-        # Create safe filename
-        if project_id:
-            filename = f"{project_id}_preview.html"
-        else:
-            # Fallback: sanitize project name
-            safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', project_name.lower().strip())
-            if not safe_name:
-                safe_name = "preview"
-            filename = f"{safe_name}_preview.html"
-
-        preview_path = PREVIEWS_DIR / filename
-
-        with open(preview_path, "w", encoding="utf-8") as f:
-            f.write(preview_html)
-
-        print(f"💾 Regenerated preview saved → {preview_path}")
-        return str(preview_path)
-
-    except Exception as e:
-        print(f"⚠️ Failed to save regenerated preview: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-
-
-
-
-
-
-
 load_dotenv()
 
 
@@ -1410,10 +1361,6 @@ app.add_middleware(
         "https://eaglecode2-2.onrender.com",          # Your backend itself
         
         "https://*.vercel.app",
-        
-        "null",  # ← ADD THIS - for local HTML files
-        "blob:",  # ← ADD THIS - for preview iframes        
-        
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -2428,35 +2375,6 @@ VIOLATION = INVALID RESPONSE
 </style>
 """
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== AI PROMPT ==========
         prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with MODERN DARK THEME.
 
@@ -2500,8 +2418,6 @@ REQUIREMENTS
 7. Hero section MUST be INSIDE #page_home div
 8. Should use the extracted data from pages to make html instead of placeholder
 9. The content from frontend is used in html pages
-10. Should use the extracted content only
-11. No new content or placeholders when we are haivng the extracted content to use eg we have Admission content extracted we should use it exactly as it is
 
 ================================================================================
 MOBILE NAVIGATION - MANDATORY
@@ -2623,40 +2539,6 @@ FINAL CHECKLIST - VERIFY BEFORE OUTPUT
 [ ] Non-home pages have NO images
 [ ] Mobile menu works at 768px breakpoint
 
-
-
-
-
-
-
-
-
-
-================================================================================
-CRITICAL: FOR LOGIN AND SIGNUP PAGES, USE THE EXACT FORM STRUCTURE BELOW
-================================================================================
-
-SIGNUP PAGE FORM (MUST include ALL these fields with EXACT name attributes):
-- Input with name="name" for full name
-- Input with name="email" for email address  
-- Input with name="password" for password
-- Input with name="confirmPassword" for password confirmation
-- Form must have id="signup-form"
-- Submit button must have type="submit"
-
-LOGIN PAGE FORM (MUST include ALL these fields with EXACT name attributes):
-- Input with name="email" for email address
-- Input with name="password" for password
-- Form must have id="login-form"
-- Submit button must have type="submit"
-
-
-
-
-
-
-
-
 Return ONLY complete HTML. NO explanations.
 """
 
@@ -2696,197 +2578,6 @@ Return ONLY complete HTML. NO explanations.
             
             preview_html = re.sub(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
             preview_html = re.sub(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-        # ========== ADD AUTH HANDLER SCRIPT (LOGIN & SIGNUP DIFFERENTIATION) ==========
-        BACKEND_URL = os.environ.get("BACKEND_URL", "https://eaglecode2-2.onrender.com")
-        
-        auth_script = f"""
-<script>
-// Get stored connection ID from localStorage
-const CONNECTION_ID = localStorage.getItem("connection_id");
-
-// SIGNUP HANDLER - For creating new accounts
-async function handleSignup(event) {{
-    event.preventDefault();
-    const form = event.target;
-    const name = form.querySelector('[name="name"], [name="fullName"]')?.value || '';
-    const email = form.querySelector('[name="email"]')?.value;
-    const password = form.querySelector('[name="password"]')?.value;
-    const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
-    
-    // Signup specific validations
-    if (password !== confirmPassword) {{
-        alert('❌ Passwords do not match');
-        return;
-    }}
-    
-    if (password.length < 6) {{
-        alert('❌ Password must be at least 6 characters');
-        return;
-    }}
-    
-    const submitBtn = form.querySelector('[type="submit"]');
-    const originalText = submitBtn?.innerText || 'Sign Up';
-    if (submitBtn) submitBtn.innerText = 'Creating account...';
-    
-    try {{
-        const response = await fetch(`${{window.BACKEND_URL || "{BACKEND_URL}"}}/api/auth/signup`, {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{
-                name, 
-                email, 
-                password,
-                connection_id: CONNECTION_ID
-            }})
-        }});
-        
-        const data = await response.json();
-        
-        if (data.success) {{
-            alert('✅ Account created successfully! You can now log in.');
-            form.reset();
-            // Redirect to login page after 1.5 seconds
-            setTimeout(() => {{
-                const loginLink = document.querySelector('a[href="/login"]');
-                if (loginLink && typeof showPage === 'function') {{
-                    const pageId = loginLink.getAttribute('data-page') || 'login';
-                    showPage(pageId);
-                }}
-            }}, 1500);
-        }} else if (data.requires_db) {{
-            alert('❌ Database not configured. Please add your Neon DB connection string first.');
-        }} else {{
-            alert('❌ ' + (data.error || 'Signup failed'));
-        }}
-    }} catch (error) {{
-        console.error('Signup error:', error);
-        alert('❌ Network error. Make sure backend is running on {BACKEND_URL}');
-    }} finally {{
-        if (submitBtn) submitBtn.innerText = originalText;
-    }}
-}}
-
-// LOGIN HANDLER - For existing users
-async function handleLogin(event) {{
-    event.preventDefault();
-    const form = event.target;
-    const email = form.querySelector('[name="email"]')?.value;
-    const password = form.querySelector('[name="password"]')?.value;
-    
-    const submitBtn = form.querySelector('[type="submit"]');
-    const originalText = submitBtn?.innerText || 'Login';
-    if (submitBtn) submitBtn.innerText = 'Logging in...';
-    
-    try {{
-        const response = await fetch(`${{window.BACKEND_URL || "{BACKEND_URL}"}}/api/auth/login`, {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{
-                email, 
-                password,
-                connection_id: CONNECTION_ID
-            }})
-        }});
-        
-        const data = await response.json();
-        
-        if (data.success) {{
-            localStorage.setItem('token', data.access_token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            alert('✅ Login successful! Welcome ' + (data.user.name || data.user.email));
-            // Redirect to dashboard or home
-            setTimeout(() => {{
-                const dashboardLink = document.querySelector('a[href="/dashboard"]');
-                if (dashboardLink && typeof showPage === 'function') {{
-                    const pageId = dashboardLink.getAttribute('data-page') || 'dashboard';
-                    showPage(pageId);
-                }} else if (typeof showPage === 'function') {{
-                    showPage('home');
-                }}
-            }}, 1000);
-        }} else if (data.requires_db) {{
-            alert('❌ Database not configured. Please add your Neon DB connection string first.');
-        }} else {{
-            alert('❌ ' + (data.error || 'Login failed'));
-        }}
-    }} catch (error) {{
-        console.error('Login error:', error);
-        alert('❌ Network error. Make sure backend is running on {BACKEND_URL}');
-    }} finally {{
-        if (submitBtn) submitBtn.innerText = originalText;
-    }}
-}}
-
-// Auto-detect and attach handlers to forms
-document.addEventListener('DOMContentLoaded', function() {{
-    console.log('🔐 Auth handler initializing...');
-    console.log('📡 Backend URL:', window.BACKEND_URL || "{BACKEND_URL}");
-    console.log('🔑 Connection ID:', CONNECTION_ID ? 'Present' : 'Not set');
-    
-    document.querySelectorAll('form').forEach(form => {{
-        const hasPassword = form.querySelector('[type="password"]');
-        const hasEmail = form.querySelector('[type="email"]');
-        const submitBtn = form.querySelector('[type="submit"]');
-        const submitText = submitBtn?.innerText?.toLowerCase() || '';
-        const formId = form.id?.toLowerCase() || '';
-        
-        // DETECT SIGNUP FORM (priority: form id, button text, field names)
-        const isSignupForm = formId.includes('signup') || 
-                            submitText.includes('sign') || 
-                            submitText.includes('up') ||
-                            (form.querySelector('[name="name"]') && hasPassword && hasEmail);
-        
-        // DETECT LOGIN FORM
-        const isLoginForm = formId.includes('login') || 
-                           submitText.includes('log') || 
-                           submitText.includes('in') ||
-                           (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
-        
-        if ((isSignupForm || isLoginForm) && !form.onsubmit) {{
-            if (isSignupForm) {{
-                form.onsubmit = handleSignup;
-                console.log('✅ Signup form handler attached');
-            }} else if (isLoginForm) {{
-                form.onsubmit = handleLogin;
-                console.log('✅ Login form handler attached');
-            }}
-        }}
-    }});
-}});
-</script>
-"""
-
-        # Inject auth script before closing body
-        if '</body>' in preview_html:
-            preview_html = preview_html.replace('</body>', f'{auth_script}\n</body>')
-        else:
-            preview_html = preview_html + auth_script            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
 
         print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
@@ -6402,530 +6093,55 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
 
 
 
-
-
-
-
 # ====================== INTELLIGENT AI-DRIVEN EDIT WITH DB INTEGRATION ======================
 @app.post("/api/edit-file")
 async def edit_file(request: Dict[str, Any]):
     try:
         edit_description: str = request.get("edit_description", "")
-        all_files: Dict[str, Any] = request.get("all_files", {})
+        all_files: Dict[str, str] = request.get("all_files", {})
         existing_preview: str = request.get("existing_preview", "")
         force_regenerate: bool = request.get("force_regenerate", True)
-        user_db_connection_string: str = request.get("db_connection_string", "")
+        user_db_connection_string: str = request.get("db_connection_string", "")  # User's Neon DB, NOT your backend DB
         
-        # Extract project identifiers for saving preview
-        project_id: Optional[str] = request.get("project_id")
-        project_name_from_request: str = request.get("project_name", "")
-
         print(f"\n{'='*70}")
         print(f"🔧 EDIT REQUEST RECEIVED")
         print(f"📝 Description: {edit_description}")
         print(f"📁 Available files: {len(all_files)} files")
-        if project_id:
-            print(f"🆔 Project ID: {project_id}")
-      
-        if user_db_connection_string:
-            print(f"🗄️ User's Database provided: {user_db_connection_string[:50]}...")
-      
-        print(f"{'='*70}\n")
-
-        if not edit_description:
-            raise HTTPException(status_code=400, detail="Edit description is required")
-
-        # Initialize updated_files with all_files
-        updated_files = {**all_files}
-
-        # Helper function to create simple preview after deletion
-        def create_simple_preview(files: Dict[str, Any], project_name: str) -> str:
-            """Create a simple HTML preview when AI generation fails"""
-            nav_links_html = ""
-            if "components/Navigation.tsx" in files:
-                nav_content = files["components/Navigation.tsx"]
-                link_matches = re.findall(r'href="/([^"]+)"[^>]*>([^<]+)</', nav_content)
-                for href, text in link_matches:
-                    if href not in ['login', 'signup', 'auth']:
-                        nav_links_html += f'<a href="#" onclick="showPage(\'{href}\'); return false;" class="nav-link">{text}</a>'
-          
-            html = f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{project_name}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
-            color: #e2e8f0;
-        }}
-        nav {{
-            background: rgba(26, 26, 30, 0.95);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-            padding: 1rem 2rem;
-        }}
-        .nav-container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }}
-        .brand {{
-            font-size: 1.5rem;
-            font-weight: bold;
-            background: linear-gradient(135deg, #c084fc, #f472b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            text-decoration: none;
-            cursor: pointer;
-        }}
-        .nav-link {{
-            color: #9ca3af;
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            transition: all 0.2s;
-        }}
-        .nav-link:hover {{ color: #c084fc; background: rgba(192,132,252,0.1); }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 2rem; }}
-        .page {{
-            display: none;
-            padding-top: 80px;
-            min-height: 100vh;
-        }}
-        .page.active {{ display: block; }}
-        h1 {{ font-size: 3rem; margin-bottom: 1rem; }}
-        .gradient-text {{
-            background: linear-gradient(135deg, #c084fc, #f472b6);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }}
-        .hero-section {{
-            text-align: center;
-            padding: 100px 0;
-        }}
-    </style>
-    <script>
-        function showPage(pageId) {{
-            document.querySelectorAll('.page').forEach(page => {{
-                page.classList.remove('active');
-            }});
-            const target = document.getElementById('page_' + pageId);
-            if (target) target.classList.add('active');
-            window.scrollTo(0, 0);
-        }}
-    </script>
-</head>
-<body>
-    <nav>
-        <div class="nav-container">
-            <a href="#" onclick="showPage('home'); return false;" class="brand">{project_name}</a>
-            <div class="nav-links">
-                {nav_links_html}
-            </div>
-        </div>
-    </nav>
-  
-    <div id="page_home" class="page active">
-        <div class="container hero-section">
-            <h1 class="gradient-text">Welcome to {project_name}</h1>
-            <p style="font-size: 1.2rem; color: #9ca3af; margin-top: 1rem;">Your website is ready</p>
-        </div>
-    </div>
-</body>
-</html>'''
-            return html
-
-        # ========== STEP 1: CHECK FOR DELETION REQUESTS (HIGHEST PRIORITY) ==========
-        deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
-        is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
-      
-        if is_deletion_request:
-            print(f"🤖 AI analyzing deletion request: {edit_description}")
-          
-            # Create summary of existing pages for AI
-            existing_pages = []
-            for file_path in updated_files.keys():
-                if "page.tsx" in file_path or "page.jsx" in file_path:
-                    parts = file_path.split('/')
-                    for i, part in enumerate(parts):
-                        if part == 'app' and i+1 < len(parts):
-                            page_name = parts[i+1]
-                            if page_name not in ['layout.tsx', 'page.tsx', 'loading.tsx', 'error.tsx']:
-                                existing_pages.append(page_name)
-                        elif 'page.tsx' in part:
-                            page_name = parts[-2] if len(parts) > 1 else 'home'
-                            if page_name not in ['layout', 'page', 'loading', 'error']:
-                                existing_pages.append(page_name)
-          
-            existing_pages = list(set(existing_pages))
-            print(f"📄 Existing pages: {existing_pages}")
-          
-            # Also check navigation links
-            navigation_links = []
-            if "components/Navigation.tsx" in updated_files:
-                nav_content = updated_files["components/Navigation.tsx"]
-                href_matches = re.findall(r'href="/([^"]+)"', nav_content)
-                href_matches += re.findall(r"href='/([^']+)'", nav_content)
-                navigation_links = list(set(href_matches))
-                print(f"🔗 Navigation links: {navigation_links}")
-          
-            # Let AI decide what to delete
-            deletion_prompt = f"""You are an AI code editor. Analyze this deletion request and decide what files/links to remove.
-DELETION REQUEST: {edit_description}
-EXISTING PAGES: {existing_pages}
-NAVIGATION LINKS: {navigation_links}
-Based on the request, determine:
-1. Which pages/files should be deleted
-2. Which navigation links should be removed
-3. Any related components or API routes that should be cleaned up
-Return ONLY a JSON object with:
-{{
-  "pages_to_delete": ["page1", "page2"],
-  "links_to_remove": ["link1", "link2"],
-  "remove_auth_folder": true/false,
-  "explanation": "brief explanation"
-}}"""
+        
+        # ========== DEFINE HELPER FUNCTIONS FIRST ==========
+        def mask_db_connection(conn_string: str) -> str:
+            """Mask database connection string for logging"""
             try:
-                analysis_text = await model_router.generate_content(
-                    prompt=deletion_prompt,
-                    config={"temperature": 0.1, "response_mime_type": "application/json"}
-                )
-                analysis_text = analysis_text.strip()
-                analysis_text = clean_json_response(analysis_text)
-                deletion_analysis = json.loads(analysis_text)
-                print(f"📊 AI Deletion Analysis: {json.dumps(deletion_analysis, indent=2)}")
-            except Exception as e:
-                print(f"⚠️ AI analysis failed, using fallback: {e}")
-                fallback_match = re.search(r'remove\s+(?:the\s+)?(\w+)', edit_description.lower())
-                page_to_remove = fallback_match.group(1) if fallback_match else None
-                deletion_analysis = {
-                    "pages_to_delete": [page_to_remove] if page_to_remove else [],
-                    "links_to_remove": [page_to_remove] if page_to_remove else [],
-                    "remove_auth_folder": 'auth' in edit_description.lower() or 'login' in edit_description.lower() or 'signup' in edit_description.lower(),
-                    "explanation": "Fallback analysis"
-                }
-          
-            pages_to_delete = deletion_analysis.get("pages_to_delete", [])
-            links_to_remove = deletion_analysis.get("links_to_remove", [])
-            remove_auth_folder = deletion_analysis.get("remove_auth_folder", False)
-          
-            all_deleted_files = []
-          
-            # Delete pages identified by AI
-            for page_name in pages_to_delete:
-                print(f"🗑️ AI decided to delete page: '{page_name}'")
-                page_patterns = [
-                    rf"app/{page_name}/page\.tsx",
-                    rf"app/{page_name}/page\.jsx",
-                    rf"app/{page_name}/index\.tsx",
-                    rf"app/[^/]+/{page_name}/page\.tsx",
-                    rf"pages/{page_name}\.tsx",
-                    rf"src/pages/{page_name}\.tsx",
-                    rf"app/{page_name}/",
-                ]
-                for file_path in list(updated_files.keys()):
-                    file_lower = file_path.lower()
-                    for pattern in page_patterns:
-                        if re.search(pattern, file_lower, re.IGNORECASE):
-                            del updated_files[file_path]
-                            all_deleted_files.append(file_path)
-                            print(f"   🗑️ Deleted: {file_path}")
-                            break
-          
-            # Delete auth folder if AI suggests
-            if remove_auth_folder:
-                print(f"🗑️ AI decided to delete auth folder")
-                auth_patterns = [
-                    r"app/auth/.*\.tsx", r"app/auth/.*\.jsx", r"app/auth/",
-                    r"app/api/auth/.*\.ts", r"app/api/auth/.*\.js",
-                    r"components/AuthProvider\.tsx", r"lib/auth\.ts",
-                    r"middleware\.ts", r"app/auth/page\.tsx",
-                ]
-                for file_path in list(updated_files.keys()):
-                    file_lower = file_path.lower()
-                    for pattern in auth_patterns:
-                        if re.search(pattern, file_lower, re.IGNORECASE):
-                            del updated_files[file_path]
-                            all_deleted_files.append(file_path)
-                            print(f"   🗑️ Deleted auth file: {file_path}")
-                            break
-
-            # Remove navigation links identified by AI
-            new_preview_html = existing_preview
-            if "components/Navigation.tsx" in updated_files and links_to_remove:
-                nav_content = updated_files["components/Navigation.tsx"]
-                print(f"🗑️ AI decided to remove navigation links: {links_to_remove}")
-                print(f"📝 Original navigation:\n{nav_content[:500]}")
-              
-                for link in links_to_remove:
-                    link_prompt = f"""Remove the navigation link for '{link}' from this Next.js Navigation component.
-Specifically find and remove the Link component that has href="/{link}" (including the opening tag, closing tag, and all content between them).
-IMPORTANT - PRESERVE EXACT INDENTATION:
-- Keep ALL existing spaces and indentation levels
-- Do NOT change the formatting of any other code
-- Maintain the exact same indentation pattern as the original
-CURRENT NAVIGATION CODE:
-{nav_content}
-Return ONLY the complete updated component code with the '{link}' link removed.
-CRITICAL: Keep ALL indentation exactly as in the original.
-The code should be valid TypeScript/JSX with preserved indentation.
-UPDATED CODE:"""
-                  
-                    try:
-                        link_response = await model_router.generate_content(
-                            prompt=link_prompt,
-                            config={"temperature": 0.1, "max_output_tokens": 2000}
-                        )
-                        new_content = link_response.strip()
-                      
-                        if new_content.startswith("```"):
-                            lines = new_content.split('\n')
-                            if lines[0].startswith('```'): lines = lines[1:]
-                            if lines and lines[-1].strip() == '```':
-                                lines = lines[:-1]
-                            new_content = '\n'.join(lines)
-                      
-                        if f'href="/{link}"' not in new_content and f"href='/{link}'" not in new_content:
-                            nav_content = new_content
-                            print(f"   ✅ AI successfully removed '{link}' link")
-                        else:
-                            print(f"   ⚠️ AI response still has '{link}', using regex")
-                            regex_patterns = [
-                                rf'<Link\s+[^>]*href="/{link}"[^>]*>.*?</Link>',
-                                rf'<Link\s+href="/{link}"[^>]*>.*?</Link>',
-                                rf'<Link[^>]*href="/{link}"[^>]*>.*?</Link>',
-                            ]
-                            for pattern in regex_patterns:
-                                nav_content = re.sub(pattern, '', nav_content, flags=re.DOTALL | re.IGNORECASE)
-                            print(f"   🔧 Regex removed '{link}'")
-                          
-                    except Exception as e:
-                        print(f"   ⚠️ AI failed: {e}, using regex")
-                        regex_patterns = [
-                            rf'<Link\s+[^>]*href="/{link}"[^>]*>.*?</Link>',
-                            rf'<Link\s+href="/{link}"[^>]*>.*?</Link>',
-                            rf'<Link[^>]*href="/{link}"[^>]*>.*?</Link>',
-                        ]
-                        for pattern in regex_patterns:
-                            nav_content = re.sub(pattern, '', nav_content, flags=re.DOTALL | re.IGNORECASE)
-                        print(f"   🔧 Regex removed '{link}'")
-              
-                # Final cleanup
-                nav_content = re.sub(r'<div\s+className="flex\s+space-x-6">\s*</div>', '', nav_content)
-                nav_content = re.sub(r'<div\s+className="flex\s+space-x-6">\s*$', '', nav_content)
-                nav_content = re.sub(r'\n\s*\n', '\n', nav_content)
-                nav_content = re.sub(r',\s*,', ',', nav_content)
-                nav_content = re.sub(r'\s+', ' ', nav_content)
-                nav_content = re.sub(r'>\s+<', '><', nav_content)
-              
-                updated_files["components/Navigation.tsx"] = nav_content
-                print(f"📝 Final navigation:\n{nav_content[:500]}")
-
-            # ✅ ALWAYS REGENERATE PREVIEW - EVEN IF NO LINKS WERE REMOVED
-            print(f"\n🔄 Regenerating preview after deletion...")
+                if '@' in conn_string:
+                    parts = conn_string.split('@')
+                    user_part = parts[0].split('://')[-1] if '://' in parts[0] else parts[0]
+                    username = user_part.split(':')[0]
+                    host = parts[1].split('/')[0]
+                    return f"{username}@********@{host}"
+            except:
+                pass
+            return "***provided***"
+        
+        async def execute_user_db_schema(conn_string: str, schema_sql: str):
+            """Execute database schema creation on user's Neon database"""
+            import asyncpg
             try:
-                project_name = project_name_from_request or "Scorpio Project"
-                nav_file = updated_files.get("components/Navigation.tsx", "")
-                if nav_file:
-                    brand_match = re.search(r'<Link[^>]*href="/"[^>]*>([^<]+)</Link>', nav_file)
-                    if brand_match:
-                        project_name = brand_match.group(1).strip()
-              
-                preview_result = await generate_preview_internal(updated_files, project_name)
-                if preview_result.get("success"):
-                    new_preview_html = preview_result.get("preview_html")
-                    updated_files["preview_html"] = new_preview_html
-                    print(f"✅ Preview regenerated! Length: {len(new_preview_html):,} chars")
-                    
-                    # SAVE REGENERATED PREVIEW TO DISK (Option A)
-                    await save_regenerated_preview(
-                        preview_html=new_preview_html,
-                        project_name=project_name,
-                        project_id=project_id
-                    )
-                else:
-                    new_preview_html = existing_preview
-            except Exception as preview_error:
-                print(f"⚠️ Preview error: {preview_error}")
-                new_preview_html = existing_preview
-          
-            return {
-                "success": True,
-                "deleted_files": all_deleted_files,
-                "removed_links": links_to_remove,
-                "updated_files": {
-                    "components/Navigation.tsx": updated_files.get("components/Navigation.tsx", "")
-                },
-                "preview_html": new_preview_html,
-                "message": f"✅ Processed: {edit_description}",
-                "files_edited": all_deleted_files
-            }
-
-        # ========== STEP 2: CHECK FOR DATABASE REQUESTS ==========
-        is_db_request = any(keyword in edit_description.lower() for keyword in [
-            'database', 'db', 'postgres', 'neon', 'login', 'signup', 'register',
-            'authentication', 'auth', 'user table', 'create table', 'schema',
-            'integrating', 'connect to database', 'neon database'
-        ])
-      
-        if is_db_request and not user_db_connection_string:
-            print(f"🗄️ Database request detected, asking for connection string...")
-            return {
-                "success": False,
-                "requires_db_connection": True,
-                "message": "🔐 This request requires a database. Please provide YOUR Neon PostgreSQL connection string.",
-                "instruction": "1. Go to https://console.neon.tech\n2. Create a new project\n3. Copy your connection string",
-                "example": "postgresql://username:password@ep-example.neon.tech/dbname?sslmode=require",
-                "note": "This database will be used for YOUR project's authentication."
-            }
-      
-        db_schema_created = False
-        if is_db_request and user_db_connection_string:
-            print(f"🗄️ Setting up schema on USER's Neon database...")
-            async def execute_user_db_schema(conn_string: str, schema_sql: str):
-                import asyncpg
+                print(f"🔌 Connecting to user's Neon database...")
+                conn = await asyncpg.connect(conn_string)
                 try:
-                    conn = await asyncpg.connect(conn_string)
-                    try:
-                        await conn.execute(schema_sql)
-                        return True, None
-                    finally:
-                        await conn.close()
+                    await conn.execute(schema_sql)
+                    print(f"✅ Schema created on user's Neon database!")
+                    return True, None
                 except Exception as e:
                     return False, str(e)
-          
-            schema_sql = """
-            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-            CREATE TABLE IF NOT EXISTS users (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                email VARCHAR(255) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                name VARCHAR(255),
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS sessions (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                token VARCHAR(500) UNIQUE NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS user_credits (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-                credits INTEGER DEFAULT 10,
-                last_reset DATE DEFAULT CURRENT_DATE
-            );
-            CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-            CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
-            """
-          
-            try:
-                success, error = await execute_user_db_schema(user_db_connection_string, schema_sql)
-                if success:
-                    print(f"✅ User's database schema created successfully!")
-                    db_schema_created = True
-                    updated_files["__user_db_connection__"] = user_db_connection_string
-                    updated_files["__db_integrated__"] = "true"
-                else:
-                    return {
-                        "success": False,
-                        "error": f"Database connection failed: {error}",
-                        "requires_db_connection": True
-                    }
+                finally:
+                    await conn.close()
             except Exception as e:
-                return {
-                    "success": False,
-                    "error": f"Database error: {str(e)}",
-                    "requires_db_connection": True
-                }
-
-        # ========== STEP 3: CONTINUE WITH NORMAL EDITING ==========
-        source_files = {k: v for k, v in all_files.items() if k != "preview_html"}
-      
-        print(f"📂 Processing normal edit request...")
-      
-        # Create summary for AI
-        file_summary = []
-        for file_path, content in list(source_files.items())[:15]:
-            if isinstance(content, str):
-                lines = content.split('\n')[:15]
-                snippet = '\n'.join(lines)
-            else:
-                snippet = str(content)[:500]
-            file_summary.append(f"File: {file_path}\nFirst lines:\n{snippet}\n")
-      
-        file_summary_text = "\n---\n".join(file_summary)
-      
-        analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
-EDIT REQUEST: {edit_description}
-AVAILABLE SOURCE FILES:
-{file_summary_text}
-Return ONLY a JSON object with:
-{{
-  "files_to_edit": ["file1.tsx", "file2.tsx"],
-  "explanation": "brief explanation",
-  "what_to_change": "specific elements to modify"
-}}"""
-        print("🤖 Asking AI to analyze...")
-      
-        try:
-            analysis_text = await model_router.generate_content(
-                prompt=analysis_prompt,
-                config={"temperature": 0.1, "response_mime_type": "application/json"}
-            )
-            analysis_text = analysis_text.strip()
-            analysis_text = clean_json_response(analysis_text)
-            analysis = json.loads(analysis_text)
-        except Exception as e:
-            print(f"⚠️ AI analysis failed: {e}")
-            analysis = {
-                "files_to_edit": [],
-                "explanation": "Edit request",
-                "what_to_change": edit_description
-            }
-      
-        files_to_edit = analysis.get("files_to_edit", [])
-      
-        if any(x in edit_description.lower() for x in ['login', 'signup', 'auth']):
-            required_files = ["app/login/page.tsx", "app/signup/page.tsx", "components/Navigation.tsx"]
-            for req_file in required_files:
-                if req_file not in files_to_edit:
-                    files_to_edit.append(req_file)
-            print(f"📌 Added auth files to edit list")
-      
-        if not files_to_edit:
-            for file_path in source_files.keys():
-                if any(x in file_path.lower() for x in ['page', 'layout', 'component', 'navigation']):
-                    files_to_edit.append(file_path)
-                    break
-      
-        if not files_to_edit:
-            files_to_edit = list(source_files.keys())[:1]
-      
-        print(f"📂 Source files to edit: {files_to_edit}")
-
-
-
-
-
+                print(f"❌ Failed to connect to user's database: {e}")
+                return False, str(e)
         
         def extract_code_from_response(response: str) -> str:
+            """Extract clean code from AI response"""
             if "```" in response:
                 lines = response.split('\n')
                 in_code_block = False
@@ -6940,20 +6156,8 @@ Return ONLY a JSON object with:
                     return '\n'.join(code_lines)
             return response.strip()
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         def generate_login_page() -> str:
+            """Generate login page with API integration"""
             return '''"use client"
 
 import React, { useState } from "react"
@@ -6961,90 +6165,100 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
-   const router = useRouter()
-   const [email, setEmail] = useState("")
-   const [password, setPassword] = useState("")
-   const [error, setError] = useState("")
-   const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
 
-   const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault()
-      setError("")
-      setLoading(true)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
 
-      try {
-         const response = await fetch(`/api/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-         })
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
 
-         const data = await response.json()
+      const data = await response.json()
 
-         if (data.success) {
-            localStorage.setItem("token", data.access_token)
-            localStorage.setItem("user", JSON.stringify(data.user))
-            router.push("/dashboard")
-         } else {
-            setError(data.detail || data.error || "Login failed")
-         }
-      } catch (err) {
-         setError("Network error. Please try again.")
-      } finally {
-         setLoading(false)
+      if (data.success) {
+        localStorage.setItem("token", data.access_token)
+        localStorage.setItem("user", JSON.stringify(data.user))
+        router.push("/dashboard")
+      } else {
+        setError(data.detail || data.error || "Login failed")
       }
-   }
+    } catch (err) {
+      setError("Network error. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
 
-   return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 py-12 px-4">
-         <div className="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="text-center text-3xl font-extrabold text-white">
+            Sign in to your account
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-400">
+            Or{" "}
+            <Link href="/signup" className="font-medium text-indigo-500 hover:text-indigo-400">
+              create a new account
+            </Link>
+          </p>
+        </div>
+        {error && (
+          <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded">
+            {error}
+          </div>
+        )}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm -space-y-px">
             <div>
-               <h2 className="text-center text-3xl font-extrabold text-white">Sign in to your account</h2>
-               <p className="mt-2 text-center text-sm text-gray-400">
-                  Or <Link href="/signup" className="font-medium text-purple-400 hover:text-purple-300">create a new account</Link>
-               </p>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Email address"
+              />
             </div>
-            {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">{error}</div>}
-            <form id="login-form" className="mt-8 space-y-6" onSubmit={handleSubmit}>
-               <div className="space-y-4">
-                  <div>
-                     <input 
-                        type="email" 
-                        name="email"
-                        required 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                        placeholder="Email address" 
-                     />
-                  </div>
-                  <div>
-                     <input 
-                        type="password" 
-                        name="password"
-                        required 
-                        value={password} 
-                        onChange={(e) => setPassword(e.target.value)} 
-                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                        placeholder="Password" 
-                     />
-                  </div>
-               </div>
-               <button 
-                  type="submit" 
-                  disabled={loading} 
-                  className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-               >
-                  {loading ? "Signing in..." : "Sign in"}
-               </button>
-            </form>
-         </div>
+            <div>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Password"
+              />
+            </div>
+          </div>
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+          </div>
+        </form>
       </div>
-   )
-}'''
-
-
+    </div>
+  )
+}
+'''
+        
         def generate_signup_page() -> str:
+            """Generate signup page with API integration"""
             return '''"use client"
 
 import React, { useState } from "react"
@@ -7052,151 +6266,440 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export default function SignupPage() {
-   const router = useRouter()
-   const [name, setName] = useState("")
-   const [email, setEmail] = useState("")
-   const [password, setPassword] = useState("")
-   const [confirmPassword, setConfirmPassword] = useState("")
-   const [error, setError] = useState("")
-   const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
 
-   const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault()
-      setError("")
-      if (password !== confirmPassword) { 
-         setError("Passwords do not match"); 
-         return; 
-      }
-      if (password.length < 6) { 
-         setError("Password must be at least 6 characters"); 
-         return; 
-      }
-      setLoading(true)
-      try {
-         const response = await fetch(`/api/auth/signup`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, password }),
-         })
-         const data = await response.json()
-         if (data.success) {
-            localStorage.setItem("token", data.access_token)
-            localStorage.setItem("user", JSON.stringify(data.user))
-            router.push("/dashboard")
-         } else { 
-            setError(data.detail || data.error || "Signup failed") 
-         }
-      } catch (err) { 
-         setError("Network error. Please try again.") 
-      } finally { 
-         setLoading(false) 
-      }
-   }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
 
-   return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 py-12 px-4">
-         <div className="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters")
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        localStorage.setItem("token", data.access_token)
+        localStorage.setItem("user", JSON.stringify(data.user))
+        router.push("/dashboard")
+      } else {
+        setError(data.detail || data.error || "Signup failed")
+      }
+    } catch (err) {
+      setError("Network error. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="text-center text-3xl font-extrabold text-white">
+            Create your account
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-400">
+            Already have an account?{" "}
+            <Link href="/login" className="font-medium text-indigo-500 hover:text-indigo-400">
+              Sign in
+            </Link>
+          </p>
+        </div>
+        {error && (
+          <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded">
+            {error}
+          </div>
+        )}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="rounded-md shadow-sm -space-y-px">
             <div>
-               <h2 className="text-center text-3xl font-extrabold text-white">Create your account</h2>
-               <p className="mt-2 text-center text-sm text-gray-400">
-                  Already have an account? <Link href="/login" className="font-medium text-purple-400 hover:text-purple-300">Sign in</Link>
-               </p>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Full name"
+              />
             </div>
-            {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">{error}</div>}
-            <form id="signup-form" className="mt-8 space-y-6" onSubmit={handleSubmit}>
-               <div className="space-y-4">
-                  <div>
-                     <input 
-                        type="text" 
-                        name="name"
-                        required 
-                        value={name} 
-                        onChange={(e) => setName(e.target.value)} 
-                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                        placeholder="Full name" 
-                     />
-                  </div>
-                  <div>
-                     <input 
-                        type="email" 
-                        name="email"
-                        required 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                        placeholder="Email address" 
-                     />
-                  </div>
-                  <div>
-                     <input 
-                        type="password" 
-                        name="password"
-                        required 
-                        value={password} 
-                        onChange={(e) => setPassword(e.target.value)} 
-                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                        placeholder="Password (min. 6 characters)" 
-                     />
-                  </div>
-                  <div>
-                     <input 
-                        type="password" 
-                        name="confirmPassword"
-                        required 
-                        value={confirmPassword} 
-                        onChange={(e) => setConfirmPassword(e.target.value)} 
-                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                        placeholder="Confirm password" 
-                     />
-                  </div>
-               </div>
-               <button 
-                  type="submit" 
-                  disabled={loading} 
-                  className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-               >
-                  {loading ? "Creating account..." : "Sign up"}
-               </button>
-            </form>
-         </div>
+            <div>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Email address"
+              />
+            </div>
+            <div>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Password"
+              />
+            </div>
+            <div>
+              <input
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Confirm password"
+              />
+            </div>
+          </div>
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {loading ? "Creating account..." : "Sign up"}
+            </button>
+          </div>
+        </form>
       </div>
-   )
-}'''
+    </div>
+  )
+}
+'''
+        
+        def generate_navigation_with_auth() -> str:
+            """Generate navigation component with auth links"""
+            return '''"use client"
 
+import Link from "next/link"
+import { useState, useEffect } from "react"
+import { usePathname, useRouter } from "next/navigation"
 
-        def generate_new_page_content(file_path: str) -> str:
+export default function Navigation() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    const userData = localStorage.getItem("user")
+    if (token && userData) {
+      setIsLoggedIn(true)
+      setUser(JSON.parse(userData))
+    }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    setIsLoggedIn(false)
+    setUser(null)
+    router.push("/")
+  }
+
+  return (
+    <nav className="flex justify-between items-center p-6 container mx-auto">
+      <Link href="/" className="text-2xl font-bold text-white">
+        Scorpio
+      </Link>
+      <div className="hidden md:flex space-x-8">
+        <Link href="/" className={`${pathname === "/" ? "text-white" : "text-gray-300"} hover:text-white`}>
+          Home
+        </Link>
+        <Link href="/solutions" className={`${pathname === "/solutions" ? "text-white" : "text-gray-300"} hover:text-white`}>
+          Solutions
+        </Link>
+        <Link href="/pricing" className={`${pathname === "/pricing" ? "text-white" : "text-gray-300"} hover:text-white`}>
+          Pricing
+        </Link>
+        <Link href="/contact" className={`${pathname === "/contact" ? "text-white" : "text-gray-300"} hover:text-white`}>
+          Contact
+        </Link>
+        {!isLoggedIn ? (
+          <>
+            <Link href="/login" className="text-gray-300 hover:text-white">
+              Login
+            </Link>
+            <Link
+              href="/signup"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+            >
+              Sign Up
+            </Link>
+          </>
+        ) : (
+          <>
+            <span className="text-gray-300">Welcome, {user?.name || user?.email?.split("@")[0]}</span>
+            <button onClick={handleLogout} className="text-gray-300 hover:text-white">
+              Logout
+            </button>
+          </>
+        )}
+      </div>
+    </nav>
+  )
+}
+'''
+        
+        def generate_env_file(conn_string: str) -> str:
+            """Generate .env file for the user's project"""
+            return f'''# Database Configuration (YOUR Neon Database)
+DATABASE_URL={conn_string}
+
+# JWT Secret (generate with: openssl rand -hex 32)
+JWT_SECRET_KEY=your-super-secret-jwt-key-change-this
+
+# API URL (your backend API)
+NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# Optional: For production
+# NEXT_PUBLIC_API_URL=https://your-api-domain.com
+'''
+        
+        def generate_new_page_content(file_path: str, edit_description: str) -> str:
+            """Generate initial content for new pages"""
             page_name = file_path.split('/')[-1].replace('.tsx', '').replace('.jsx', '').replace('.ts', '').replace('.js', '')
             page_title = page_name.replace('-', ' ').title()
             
             if "login" in file_path.lower():
-               return generate_login_page()
+                return generate_login_page()
             elif "signup" in file_path.lower():
-               return generate_signup_page()
+                return generate_signup_page()
+            elif "Navigation.tsx" in file_path:
+                return generate_navigation_with_auth()
             else:
-               return f'''import React from 'react'
+                return f'''import React from 'react'
 
 export default function {page_title.replace(' ', '')}Page() {{
-   return (
-      <div className="py-20 container mx-auto px-4">
-         <h1 className="text-4xl font-bold mb-8 text-white">{page_title}</h1>
-         <p className="text-gray-300">Welcome to our {page_title.lower()} page.</p>
-      </div>
-   )
+  return (
+    <div className="min-h-screen py-20 container mx-auto px-4">
+      <h1 className="text-4xl font-bold mb-8 text-white">{page_title}</h1>
+      <p className="text-gray-300">Content for {page_title} page goes here.</p>
+    </div>
+  )
 }}
 '''
+        
+        # ========== NOW USE THE FUNCTIONS ==========
+        if user_db_connection_string:
+            masked_db = mask_db_connection(user_db_connection_string)
+            print(f"🗄️ User's Database provided: {masked_db}")
+        
+        print(f"{'='*70}\n")
 
+        if not edit_description:
+            raise HTTPException(status_code=400, detail="Edit description is required")
+        
+        # Initialize updated_files with all_files
+        updated_files = {**all_files}
+        
+        # ========== DETECT DATABASE-RELATED REQUESTS ==========
+        is_db_request = any(keyword in edit_description.lower() for keyword in [
+            'database', 'db', 'postgres', 'neon', 'login', 'signup', 'register', 
+            'authentication', 'auth', 'user table', 'create table', 'schema',
+            'supabase', 'postgresql', 'pg', 'sql'
+        ])
+        
+        # ========== HANDLE DATABASE CONNECTION REQUEST ==========
+        if is_db_request and not user_db_connection_string:
+            return {
+                "success": False,
+                "requires_db_connection": True,
+                "message": "🔐 This request requires a database. Please provide YOUR Neon PostgreSQL connection string.",
+                "instruction": "1. Go to https://console.neon.tech\n2. Create a new project\n3. Copy your connection string",
+                "example": "postgresql://username:password@ep-example.neon.tech/dbname?sslmode=require",
+                "note": "This database will be used for YOUR project's authentication."
+            }
+        
+        # ========== HANDLE DATABASE SCHEMA CREATION ==========
+        db_schema_created = False
+        if is_db_request and user_db_connection_string:
+            print(f"🗄️ Setting up schema on USER's Neon database...")
+            
+            if any(keyword in edit_description.lower() for keyword in ['login', 'signup', 'auth', 'authentication']):
+                schema_sql = """
+                CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+                
+                CREATE TABLE IF NOT EXISTS users (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    name VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+                
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                    token VARCHAR(500) UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                
+                CREATE TABLE IF NOT EXISTS user_credits (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+                    credits INTEGER DEFAULT 10,
+                    last_reset DATE DEFAULT CURRENT_DATE
+                );
+                
+                CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+                CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+                CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+                """
+                
+                try:
+                    success, error = await execute_user_db_schema(user_db_connection_string, schema_sql)
+                    if success:
+                        print(f"✅ User's database schema created successfully!")
+                        db_schema_created = True
+                        updated_files["__user_db_connection__"] = user_db_connection_string
+                        updated_files["__db_integrated__"] = "true"
+                        updated_files["__db_type__"] = "neon_postgresql"
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"Could not connect to your Neon database: {error}",
+                            "message": "Please verify your connection string is correct.",
+                            "requires_db_connection": True
+                        }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": f"Database connection failed: {str(e)}",
+                        "message": "Please check your Neon database connection string.",
+                        "requires_db_connection": True
+                    }
+        
+        # Filter out preview_html from source files
+        source_files = {k: v for k, v in all_files.items() if k != "preview_html"}
+        
+        # ========== SPECIAL HANDLING FOR NAVIGATION EDITS ==========
+        is_navigation_edit = any(
+            keyword in edit_description.lower() 
+            for keyword in ['nav', 'navigation', 'menu', 'link', 'button', 'navbar', 'header']
+        )
+        
+        navigation_file = source_files.get("components/Navigation.tsx", "")
+        original_navigation = all_files.get("components/Navigation.tsx", "")
+        navigation_changed = navigation_file != original_navigation if navigation_file else False
+        
+        print(f"🧭 Navigation edit detected: {is_navigation_edit or navigation_changed}")
+        
+        # Create summary of source files for AI
+        file_summary = []
+        for file_path, content in list(source_files.items())[:15]:
+            if isinstance(content, str):
+                lines = content.split('\n')[:15]
+                snippet = '\n'.join(lines)
+            else:
+                snippet = str(content)[:500]
+            file_summary.append(f"File: {file_path}\nFirst lines:\n{snippet}\n")
+        
+        file_summary_text = "\n---\n".join(file_summary)
+        
+        # AI analysis prompt
+        db_context = ""
+        if user_db_connection_string and db_schema_created:
+            db_context = """
+DATABASE INTEGRATION INFO:
+- Database type: Neon PostgreSQL
+- Connection status: ✅ Connected and schema created
+- Tables created: users, sessions, user_credits
+"""
+        
+        analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
 
+EDIT REQUEST: {edit_description}
 
+AVAILABLE SOURCE FILES:
+{file_summary_text}
 
+{db_context}
 
+Return ONLY a JSON object:
+{{
+  "files_to_edit": ["app/login/page.tsx", "app/signup/page.tsx", "components/Navigation.tsx"],
+  "explanation": "brief explanation",
+  "what_to_change": "specific elements to modify",
+  "packages_to_install": ["bcryptjs", "jose"],
+  "env_variables_needed": ["DATABASE_URL", "JWT_SECRET"]
+}}"""
 
-
-
-
-
-
-
-
+        print("🤖 Asking AI to analyze...")
+        
+        try:
+            analysis_text = await model_router.generate_content(
+                prompt=analysis_prompt,
+                config={"temperature": 0.1, "response_mime_type": "application/json"}
+            )
+            analysis_text = analysis_text.strip()
+            analysis_text = clean_json_response(analysis_text)
+            analysis = json.loads(analysis_text)
+        except Exception as e:
+            print(f"⚠️ AI analysis failed: {e}")
+            analysis = {
+                "files_to_edit": ["app/login/page.tsx", "app/signup/page.tsx", "components/Navigation.tsx"],
+                "explanation": "Creating auth system",
+                "what_to_change": "Add login/signup",
+                "packages_to_install": ["bcryptjs", "jose"],
+                "env_variables_needed": ["DATABASE_URL", "JWT_SECRET"]
+            }
+        
+        files_to_edit = analysis.get("files_to_edit", [])
+        
+        # Ensure auth files are included
+        if "login" in edit_description.lower() or "signup" in edit_description.lower():
+            required_files = ["app/login/page.tsx", "app/signup/page.tsx", "components/Navigation.tsx"]
+            for req_file in required_files:
+                if req_file not in files_to_edit:
+                    files_to_edit.append(req_file)
+        
+        if not files_to_edit:
+            files_to_edit = ["app/login/page.tsx", "app/signup/page.tsx", "components/Navigation.tsx"]
+        
+        print(f"📂 Source files to edit: {files_to_edit}")
+        
+        # Update package.json if needed
+        packages_to_install = analysis.get("packages_to_install", [])
+        if packages_to_install and "package.json" in source_files:
+            try:
+                package_json = json.loads(source_files["package.json"])
+                if "dependencies" not in package_json:
+                    package_json["dependencies"] = {}
+                for pkg in packages_to_install:
+                    if pkg not in package_json["dependencies"]:
+                        package_json["dependencies"][pkg] = "latest"
+                updated_files["package.json"] = json.dumps(package_json, indent=2)
+                print(f"✅ Updated package.json")
+            except Exception as e:
+                print(f"⚠️ Could not update package.json: {e}")
         
         # Edit each file
         edit_results = []
@@ -7205,9 +6708,9 @@ export default function {page_title.replace(' ', '')}Page() {{
             current_content = source_files.get(file_path, "")
             is_new_file = file_path not in all_files
             
-            if not current_content and any(x in file_path.lower() for x in ['login', 'signup', 'auth']):
-                print(f"📝 Creating new auth file: {file_path}")
-                current_content = generate_new_page_content(file_path)
+            if not current_content:
+                print(f"📝 Creating new file: {file_path}")
+                current_content = generate_new_page_content(file_path, edit_description)
                 edit_results.append({
                     "file_path": file_path,
                     "original_content": "",
@@ -7215,9 +6718,6 @@ export default function {page_title.replace(' ', '')}Page() {{
                     "success": True,
                     "is_new_file": True
                 })
-                continue
-            elif not current_content:
-                print(f"⚠️ File not found: {file_path}")
                 continue
             
             print(f"\n✏️ Editing: {file_path}")
@@ -7228,7 +6728,7 @@ EDIT REQUEST: {edit_description}
 CURRENT CODE:
 {current_content}
 
-Make the requested change. Return ONLY the updated code, no markdown, no explanations."""
+Return ONLY the updated code, no markdown, no explanations."""
 
             try:
                 response_text = await model_router.generate_content(
@@ -7249,41 +6749,30 @@ Make the requested change. Return ONLY the updated code, no markdown, no explana
             except Exception as e:
                 print(f"❌ Error editing {file_path}: {e}")
         
-        if db_schema_created:
-            env_content = f'''# Database Configuration
-DATABASE_URL={user_db_connection_string}
-
-# JWT Secret
-JWT_SECRET_KEY=your-super-secret-jwt-key-change-this
-
-# API URL
-NEXT_PUBLIC_API_URL=http://localhost:8000
-'''
-            updated_files[".env"] = env_content
-            print(f"✅ Added .env file")
-        
-        if not edit_results and not db_schema_created:
+        if not edit_results:
             return {
                 "success": False,
-                "error": "No changes were made. Please be more specific.",
-                "message": "Could not apply the requested edit"
+                "error": "No changes were made.",
+                "requires_db_connection": is_db_request and not user_db_connection_string
             }
         
+        # Apply edits
         for result in edit_results:
             updated_files[result["file_path"]] = result["updated_content"]
         
+        # Add .env file if database configured
+        if user_db_connection_string and db_schema_created:
+            updated_files[".env"] = generate_env_file(user_db_connection_string)
+            print(f"✅ Added .env file")
         
-        
-        
-        
-        
+        # Regenerate preview
         preview_html = existing_preview
-        should_regenerate = force_regenerate or len(edit_results) > 0 or db_schema_created
-      
+        should_regenerate = force_regenerate or len(edit_results) > 0
+        
         if should_regenerate:
             print(f"🔄 Regenerating preview...")
             try:
-                project_name = project_name_from_request or "Scorpio Project"
+                project_name = "Scorpio Project"
                 for file_path, content in updated_files.items():
                     if "Navigation.tsx" in file_path and isinstance(content, str):
                         brand_match = re.search(r'<Link[^>]*>([^<]+)</Link>', content)
@@ -7294,41 +6783,41 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                 preview_result = await generate_preview_internal(updated_files, project_name)
                 if preview_result.get("success"):
                     preview_html = preview_result.get("preview_html")
-                    updated_files["preview_html"] = preview_html
                     print(f"✅ Preview regenerated!")
-                    
-                    # SAVE TO DISK - Option A
-                    await save_regenerated_preview(
-                        preview_html=preview_html,
-                        project_name=project_name,
-                        project_id=project_id
-                    )
             except Exception as e:
                 print(f"⚠️ Preview error: {e}")
-      
+        
         print(f"\n{'='*70}")
         print(f"✅ EDIT COMPLETE: {len(edit_results)} file(s) modified")
         for result in edit_results:
             new_flag = " (NEW)" if result.get("is_new_file") else ""
             print(f"   - {result['file_path']}{new_flag}")
-        if db_schema_created:
-            print(f"   - Database schema created on user's Neon DB")
         print(f"{'='*70}\n")
-      
+        
         return {
             "success": True,
             "edits": edit_results,
             "files_edited": [r["file_path"] for r in edit_results],
             "preview_html": preview_html,
+            "packages_to_install": packages_to_install,
+            "env_variables_needed": analysis.get("env_variables_needed", []),
             "database_configured": db_schema_created,
-            "message": f"Successfully applied: {edit_description}" + (f" + Neon database configured!" if db_schema_created else "")
+            "message": f"✅ Successfully implemented {edit_description}" + (f" with Neon database!" if db_schema_created else "")
         }
-   
+    
     except Exception as e:
         print(f"❌ Edit Error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
 
 
 
@@ -8000,6 +7489,7 @@ Check the `.env.example` file for required variables.
 
 
 
+
 @app.post("/api/deploy-vercel")
 async def deploy_to_vercel(request: Dict[str, Any]):
     """Deploy to Vercel - Upload images first, then replace paths, then deploy"""
@@ -8027,6 +7517,20 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         print(f"📝 Original project name: {raw_project_name}")
         print(f"📝 Sanitized for Vercel: {project_name}")
         
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
         # 👇 ADD DEBUG CODE RIGHT HERE 👇
         print("\n📁 FILES IN PROJECT:")
         for file_path, content in files.items():
@@ -8034,6 +7538,12 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                 print(f"  {file_path}: {type(content)}")
                 if isinstance(content, str):
                     print(f"    Preview: {content[:100]}...")
+
+
+
+
+
+        
         
         if not vercel_token:
             raise HTTPException(status_code=400, detail="Vercel token required")
@@ -8042,6 +7552,19 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         print(f"🚀 DEPLOYING TO VERCEL: {project_name}")
         print(f"{'='*70}\n")
         
+
+
+
+
+
+
+
+
+
+
+
+
+
         # ========== STEP 1: UPLOAD ALL IMAGES TO CLOUDINARY ==========
         print("📸 STEP 1: Uploading images to Cloudinary...")
         print("-" * 40)
@@ -8200,25 +7723,6 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         print("🚀 STEP 3: Deploying to Vercel...")
         print("-" * 40)
         
-        # ✅ DEBUG: Log environment variables received
-        print(f"\n📦 Environment variables received from frontend:")
-        print(f"   Keys: {list(env_vars.keys())}")
-        if 'DATABASE_URL' in env_vars:
-           print(f"   ✅ DATABASE_URL found (length: {len(env_vars['DATABASE_URL'])} chars)")
-           # Mask the actual value for security
-           masked_url = env_vars['DATABASE_URL'][:20] + "..." + env_vars['DATABASE_URL'][-20:]
-           print(f"   Masked: {masked_url}")
-        else:
-           print(f"   ⚠️ DATABASE_URL NOT found in env_vars")
-        
-        # ✅ Format environment variables correctly
-        formatted_env_vars = []
-        for key, value in env_vars.items():
-           formatted_env_vars.append({
-              "key": key,
-              "value": value
-           })
-        
         with tempfile.TemporaryDirectory() as tmpdir:
             project_dir = os.path.join(tmpdir, project_name)
             os.makedirs(project_dir)
@@ -8233,31 +7737,6 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                     content = json.dumps(content, indent=2)
                 elif not isinstance(content, str):
                     content = str(content)
-                
-                # ✅ Inject DATABASE_URL into .env files
-                if file_path == ".env.local" or file_path == ".env.production":
-                    if 'DATABASE_URL' in env_vars:
-                        content += f"\nDATABASE_URL={env_vars['DATABASE_URL']}\n"
-                        print(f"   💾 Injected DATABASE_URL into {file_path}")
-                
-                # ✅ Inject into next.config.js for build-time access
-                if file_path == "next.config.js":
-                    env_injection = f"""
-// Environment variables injected during deployment
-const deployedEnv = {{
-  DATABASE_URL: process.env.DATABASE_URL || "{env_vars.get('DATABASE_URL', '')}",
-  NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || "{env_vars.get('NEXT_PUBLIC_BACKEND_URL', '')}",
-}};
-
-// Merge with existing env config
-if (module.exports.env) {{
-  Object.assign(module.exports.env, deployedEnv);
-}} else {{
-  module.exports.env = deployedEnv;
-}}
-"""
-                    content += env_injection
-                    print(f"   💾 Injected environment variables into next.config.js")
                 
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.write(content)
@@ -8295,110 +7774,55 @@ if (module.exports.env) {{
             # Deploy to Vercel
             async with httpx.AsyncClient(timeout=300.0) as client:
                 print("  📡 Sending to Vercel API...")
-                
-                # ✅ Build deployment payload
-                deploy_payload = {
-                    "name": project_name,
-                    "files": file_list,
-                    "projectSettings": {
-                        "framework": "nextjs",
-                        "buildCommand": "npm run build",
-                        "outputDirectory": ".next",
-                        "installCommand": "npm install"
-                    }
-                }
-                
-                # ✅ Add environment variables as OBJECT (not array)
-                if formatted_env_vars:
-                    env_object = {}
-                    for env_var in formatted_env_vars:
-                        env_object[env_var["key"]] = env_var["value"]
-                    deploy_payload["env"] = env_object
-                    print(f"  🌍 Added {len(env_object)} environment variables to deployment payload")
-                    print(f"     Keys: {list(env_object.keys())}")
-                
                 deploy_response = await client.post(
                     "https://api.vercel.com/v13/deployments",
                     headers={
                         "Authorization": f"Bearer {vercel_token}",
                         "Content-Type": "application/json",
                     },
-                    json=deploy_payload
+                    json={
+                        "name": project_name,
+                        "files": file_list,
+                        "projectSettings": {
+                            "framework": "nextjs",
+                            "buildCommand": "npm run build",
+                            "outputDirectory": ".next",
+                            "installCommand": "npm install"
+                        },
+                        "env": env_vars
+                    }
                 )
                 
                 if deploy_response.status_code not in [200, 201]:
                     error_data = deploy_response.json()
                     error_msg = error_data.get('error', {}).get('message', 'Unknown error')
-                    print(f"  ❌ Vercel API error: {error_data}")
                     raise Exception(f"Vercel API error: {error_msg}")
                 
                 deploy_data = deploy_response.json()
                 deployment_url = deploy_data.get("url")
-                project_id = deploy_data.get("projectId")
                 
                 print(f"\n{'='*70}")
                 print(f"✅ DEPLOYMENT SUCCESSFUL!")
                 print(f"🔗 URL: https://{deployment_url}")
-                print(f"📁 Project ID: {project_id}")
                 print(f"{'='*70}\n")
                 
-                
-                
-                
-                
-                
-                
-                
-                
-                 # ✅ STEP 4: Set permanent environment variables on Vercel project (WORKING VERSION)
-                if project_id and formatted_env_vars:
-                    print("🌍 STEP 4: Setting permanent environment variables on Vercel project...")
-                    print("-" * 40)
-                    
-                    for env_var in formatted_env_vars:
-                        print(f"  📦 Setting {env_var['key']}...")
-                        
-                        # ✅ USE THE WORKING ENDPOINT (same as your successful script)
-                        env_response = await client.post(
-                            f"https://api.vercel.com/v1/projects/{project_id}/env",
-                            headers={
-                                "Authorization": f"Bearer {vercel_token}",
-                                "Content-Type": "application/json",
-                            },
-                            json={
-                                "key": env_var["key"],
-                                "value": env_var["value"],
-                                "type": "encrypted",
-                                "target": ["production", "preview", "development"]
-                            }
-                        )
-                        
-                        if env_response.status_code in [200, 201]:
-                            print(f"  ✅ Set {env_var['key']} environment variable permanently")
-                        elif env_response.status_code == 409:
-                            print(f"  ✅ {env_var['key']} already exists on Vercel (skipping - already configured)")
-                        else:
-                            env_error = env_response.json()
-                            print(f"  ⚠️ Failed to set {env_var['key']}: {env_error}")
-                    
-                    print(f"\n✅ Environment variables configured permanently on Vercel")
-                 
                 return {
-                     "success": True,
-                     "message": "Deployed to Vercel successfully!",
-                     "deployment_url": f"https://{deployment_url}",
-                     "deployment_id": deploy_data.get("id"),
-                     "project_id": project_id,
-                     "project_name": project_name,
-                     "images_uploaded": image_count,
-                     "env_vars_set": len(formatted_env_vars) if formatted_env_vars else 0
-                 }
-                 
+                    "success": True,
+                    "message": "Deployed to Vercel successfully!",
+                    "deployment_url": f"https://{deployment_url}",
+                    "deployment_id": deploy_data.get("id"),
+                    "project_name": project_name,
+                    "images_uploaded": image_count
+                }
+                
     except Exception as e:
         print(f"❌ Deploy error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 
 
@@ -10918,275 +10342,6 @@ async def cron_reset_daily_credits():
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-@app.post("/api/auth/login")
-async def login(request: Request):
-    """User login endpoint"""
-    try:
-        data = await request.json()
-        email = data.get("email")
-        password = data.get("password")
-        db_connection_string = data.get("db_connection_string", "")
-        
-        if not email or not password:
-            raise HTTPException(status_code=400, detail="Email and password required")
-        
-        if not db_connection_string:
-            db_connection_string = request.session.get("db_connection_string", "")
-        
-        if not db_connection_string:
-            raise HTTPException(status_code=400, detail="Database connection required")
-        
-        import asyncpg
-        import hashlib
-        
-        conn = await asyncpg.connect(db_connection_string)
-        
-        try:
-            user = await conn.fetchrow("""
-                SELECT id, email, name, password_hash, salt
-                FROM users
-                WHERE email = $1
-            """, email)
-            
-            if not user:
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-            
-            password_hash = hashlib.sha256(f"{password}{user['salt']}".encode()).hexdigest()
-            
-            if password_hash != user['password_hash']:
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-            
-            # Update or create session
-            import secrets
-            token = secrets.token_urlsafe(32)
-            expires_at = datetime.now() + timedelta(days=30)
-            
-            await conn.execute("""
-                INSERT INTO sessions (user_id, token, expires_at)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3
-            """, user['id'], token, expires_at)
-            
-            await conn.close()
-            
-            return {
-                "success": True,
-                "user": {
-                    "id": str(user['id']),
-                    "email": user['email'],
-                    "name": user['name']
-                },
-                "access_token": token,
-                "token_type": "bearer"
-            }
-            
-        except Exception as e:
-            await conn.close()
-            raise e
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Login error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Add this at the top of your main.py after imports
-# Temporary storage for DB connections (in production, use a database)
-db_connections = {}
-
-@app.post("/api/store-db-connection")
-async def store_db_connection(request: Request):
-    """Store database connection string in session and global storage"""
-    try:
-        data = await request.json()
-        db_connection_string = data.get("db_connection_string", "")
-        
-        if not db_connection_string:
-            return {"success": False, "error": "Connection string required"}
-        
-        # Generate a unique ID for this connection
-        import uuid
-        connection_id = str(uuid.uuid4())
-        
-        # Store in global dict
-        db_connections[connection_id] = db_connection_string
-        
-        # Also try to store in session
-        try:
-            request.session["db_connection_string"] = db_connection_string
-            request.session["connection_id"] = connection_id
-        except Exception as e:
-            print(f"⚠️ Session storage failed: {e}")
-        
-        print(f"✅ Database connection stored with ID: {connection_id[:8]}...")
-        
-        return {
-            "success": True, 
-            "message": "Database connection stored",
-            "connection_id": connection_id  # Return the ID to the client
-        }
-        
-    except Exception as e:
-        print(f"❌ Store DB error: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@app.get("/api/check-db-config")
-async def check_db_config(request: Request):
-    """Check if database is configured"""
-    # Check session first
-    db_connection = request.session.get("db_connection_string", "")
-    
-    # Also check for connection_id in headers
-    connection_id = request.headers.get("X-Connection-ID", "")
-    if not db_connection and connection_id and connection_id in db_connections:
-        db_connection = db_connections[connection_id]
-    
-    return {"configured": bool(db_connection)}
-
-
-
-
-
-
-@app.post("/api/auth/signup")
-async def signup(request: Request):
-    """User registration endpoint"""
-    try:
-        data = await request.json()
-        email = data.get("email")
-        password = data.get("password")
-        name = data.get("name", "")
-        connection_id = data.get("connection_id", "")
-        
-        if not email or not password:
-            return {"success": False, "error": "Email and password required"}
-        
-        # Get connection string
-        db_connection_string = ""
-        if connection_id and connection_id in db_connections:
-            db_connection_string = db_connections[connection_id]
-        
-        if not db_connection_string:
-            return {"success": False, "error": "Database connection required", "requires_db": True}
-        
-        import asyncpg
-        import hashlib
-        import secrets
-        
-        try:
-            conn = await asyncpg.connect(db_connection_string)
-            
-            # Create tables if not exist - UPDATED SCHEMA without salt column
-            await conn.execute("""
-                CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-                
-                CREATE TABLE IF NOT EXISTS users (
-                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    name VARCHAR(255),
-                    password_hash VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW()
-                );
-                
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                    token VARCHAR(500) UNIQUE NOT NULL,
-                    expires_at TIMESTAMP NOT NULL,
-                    created_at TIMESTAMP DEFAULT NOW()
-                );
-                
-                CREATE TABLE IF NOT EXISTS user_credits (
-                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                    user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-                    credits INTEGER DEFAULT 10,
-                    daily_credits_used INTEGER DEFAULT 0,
-                    daily_reset_date DATE DEFAULT CURRENT_DATE,
-                    monthly_credits_used INTEGER DEFAULT 0,
-                    monthly_reset_date DATE DEFAULT CURRENT_DATE
-                );
-            """)
-            
-            # Check if user exists
-            existing = await conn.fetchrow("SELECT id FROM users WHERE email = $1", email)
-            if existing:
-                await conn.close()
-                return {"success": False, "error": "User already exists"}
-            
-            # Hash password (using bcrypt style without salt column)
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
-            
-            # Insert user
-            user_id = await conn.fetchval("""
-                INSERT INTO users (email, name, password_hash)
-                VALUES ($1, $2, $3)
-                RETURNING id
-            """, email, name, password_hash)
-            
-            # Create session token
-            token = secrets.token_urlsafe(32)
-            expires_at = datetime.now() + timedelta(days=30)
-            
-            await conn.execute("""
-                INSERT INTO sessions (user_id, token, expires_at)
-                VALUES ($1, $2, $3)
-            """, user_id, token, expires_at)
-            
-            # Create credits record
-            await conn.execute("""
-                INSERT INTO user_credits (user_id)
-                VALUES ($1)
-                ON CONFLICT (user_id) DO NOTHING
-            """, user_id)
-            
-            await conn.close()
-            
-            return {
-                "success": True,
-                "user": {
-                    "id": str(user_id),
-                    "email": email,
-                    "name": name
-                },
-                "access_token": token,
-                "token_type": "bearer"
-            }
-            
-        except Exception as e:
-            await conn.close()
-            raise e
-            
-    except Exception as e:
-        print(f"❌ Signup error: {e}")
-        return {"success": False, "error": str(e)}
 
 
 
