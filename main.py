@@ -2411,47 +2411,165 @@ footer {{
 .page {{ animation: fadeIn 0.3s ease; }}
 </style>
 
+
+
+
+
+
+
 ================================================================================
-JAVASCRIPT - WORKING NAVIGATION
+JAVASCRIPT - WORKING NAVIGATION WITH BRAND CLICK HANDLER (FIXED)
 ================================================================================
 <script>
 function showPage(pageId) {{
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const target = document.getElementById('page_' + pageId);
-    if (target) target.classList.add('active');
-    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(l => l.classList.remove('active'));
-    document.querySelectorAll(`[data-page="${{pageId}}"]`).forEach(l => l.classList.add('active'));
-    window.history.pushState({{}}, '', '/' + pageId);
+    console.log('🔄 showPage called with:', pageId);
+    
+    // Hide ALL pages
+    document.querySelectorAll('.page').forEach(page => {{
+        page.classList.remove('active');
+        page.style.display = 'none';
+    }});
+    
+    // Show the target page
+    const targetPage = document.getElementById('page_' + pageId);
+    if (targetPage) {{
+        targetPage.classList.add('active');
+        targetPage.style.display = 'block';
+        console.log('✅ Showing page:', pageId);
+    }} else {{
+        console.log('❌ Page not found:', 'page_' + pageId);
+        // Fallback - show home
+        const homePage = document.getElementById('page_home');
+        if (homePage) {{
+            homePage.classList.add('active');
+            homePage.style.display = 'block';
+        }}
+    }}
+    
+    // Update navigation active states
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.classList.remove('active');
+        if (link.getAttribute('data-page') === pageId) {{
+            link.classList.add('active');
+        }}
+    }});
+    
+    // Update URL
+    if (pageId !== 'home') {{
+        window.history.pushState({{}}, '', '/' + pageId);
+    }} else {{
+        window.history.pushState({{}}, '', '/');
+    }}
     window.scrollTo(0, 0);
 }}
 
 function toggleMenu() {{
-    document.getElementById('mobileMenu')?.classList.toggle('active');
-    document.getElementById('mobileOverlay')?.classList.toggle('active');
+    const menu = document.getElementById('mobileMenu');
+    const overlay = document.getElementById('mobileOverlay');
+    if (menu) menu.classList.toggle('active');
+    if (overlay) overlay.classList.toggle('active');
 }}
 
+// Handle brand/logo click - ALWAYS go to home page
+function handleBrandClick(e) {{
+    e.preventDefault();
+    e.stopPropagation();
+    showPage('home');
+    if (window.innerWidth <= 768) toggleMenu();
+}}
+
+// Handle navigation link clicks
+function handleNavClick(e) {{
+    e.preventDefault();
+    const pageId = this.getAttribute('data-page');
+    if (pageId) {{
+        showPage(pageId);
+        if (window.innerWidth <= 768) toggleMenu();
+    }}
+}}
+
+// ========== INITIALIZATION - CRITICAL FOR HOME PAGE ==========
+if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', init);
+}} else {{
+    init();
+}}
+
+function init() {{
+    console.log('🎯 Initializing navigation...');
+    
+    // Get current path or default to home
+    let currentPath = window.location.pathname.slice(1);
+    if (!currentPath || currentPath === '') {{
+        currentPath = 'home';
+    }}
+    console.log('📍 Current path:', currentPath);
+    
+    // Ensure ALL pages are hidden first
+    document.querySelectorAll('.page').forEach(page => {{
+        page.classList.remove('active');
+        page.style.display = 'none';
+    }});
+    
+    // Show the home page (or current path)
+    const targetPageId = currentPath === 'home' ? 'page_home' : 'page_' + currentPath;
+    const targetPage = document.getElementById(targetPageId);
+    
+    if (targetPage) {{
+        targetPage.classList.add('active');
+        targetPage.style.display = 'block';
+        console.log('✅ Activated page:', targetPageId);
+    }} else {{
+        // Fallback - show home
+        const homePage = document.getElementById('page_home');
+        if (homePage) {{
+            homePage.classList.add('active');
+            homePage.style.display = 'block';
+            console.log('✅ Fallback: Activated home page');
+        }}
+    }}
+    
+    // Update navigation active states
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.classList.remove('active');
+        if (link.getAttribute('data-page') === currentPath) {{
+            link.classList.add('active');
+        }}
+    }});
+    
+    // Add event listeners
+    const brandLink = document.querySelector('.brand');
+    if (brandLink) {{
+        brandLink.addEventListener('click', handleBrandClick);
+        console.log('✅ Brand click handler attached');
+    }}
+    
+    const hamburger = document.querySelector('.hamburger');
+    const overlay = document.getElementById('mobileOverlay');
+    if (hamburger) hamburger.addEventListener('click', toggleMenu);
+    if (overlay) overlay.addEventListener('click', toggleMenu);
+    
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.removeEventListener('click', handleNavClick);
+        link.addEventListener('click', handleNavClick);
+    }});
+    
+    console.log('✅ Navigation initialized successfully');
+}}
+
+// Handle browser back/forward
 window.addEventListener('popstate', () => {{
     const path = window.location.pathname.slice(1) || 'home';
     showPage(path);
 }});
-
-document.addEventListener('DOMContentLoaded', () => {{
-    const path = window.location.pathname.slice(1) || 'home';
-    showPage(path);
-    document.querySelector('.hamburger')?.addEventListener('click', toggleMenu);
-    document.getElementById('mobileOverlay')?.addEventListener('click', toggleMenu);
-    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
-        link.addEventListener('click', (e) => {{
-            e.preventDefault();
-            const pageId = link.getAttribute('data-page');
-            if (pageId) {{
-                showPage(pageId);
-                if (window.innerWidth <= 768) toggleMenu();
-            }}
-        }});
-    }});
-}});
 </script>
+
+
+
+
+
+
+
 
 ================================================================================
 RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
