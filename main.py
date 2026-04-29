@@ -2148,6 +2148,50 @@ DESIGN REQUIREMENTS
 6. ONLY ONE <style> tag and ONE <script> tag
 7. Use the EXTRACTED page content above - NO generic placeholders
 
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: USE THE EXTRACTED CONTENT BELOW - NO PLACEHOLDERS! 🚨🚨🚨
+================================================================================
+
+The content below is EXTRACTED DIRECTLY from your Next.js pages. 
+YOU MUST use this EXACT content for each page's HTML.
+
+DO NOT generate placeholder text like "Welcome to our page" or "Explore our offerings".
+USE THE EXACT CONTENT PROVIDED BELOW.
+
+================================================================================
+EXTRACTED PAGE CONTENTS - USE THESE EXACTLY:
+================================================================================
+
+{page_contents_json}
+
+================================================================================
+BRAND: {brand_name}
+NAVIGATION LINKS: {nav_links_json}
+AVAILABLE IMAGE: {first_image if first_image else 'None - use gradient background'}
+================================================================================
+
+For EACH page, copy the EXACT content from the extracted JSON above into the page div.
+If the content contains arrays/maps, render them as HTML cards/items.
+
+For example, if Programs page has program data, render the actual programs with their titles, descriptions, icons, etc.
+
+
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 COMPLETE CSS - USE THIS EXACTLY
 ================================================================================
