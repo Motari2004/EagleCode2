@@ -2151,6 +2151,18 @@ DESIGN REQUIREMENTS
 
 
 
+================================================================================
+🚨🚨🚨 CRITICAL JAVASCRIPT RULES - NO FLICKER, NO DISAPPEARING BACKGROUND 🚨🚨🚨
+================================================================================
+
+The JavaScript code MUST follow these rules:
+
+1. NEVER call showPage() inside init() - causes unnecessary hiding/showing
+2. ALWAYS check if a page is already active before hiding all pages
+3. ALWAYS return early in showPage() if already on the target page
+4. NEVER use inline styles that override CSS classes
+5. ALWAYS use CSS for display control, not JavaScript inline styles
+6. ALWAYS add a flag to prevent double initialization
 
 
 
@@ -2168,13 +2180,6 @@ USE THE EXACT CONTENT PROVIDED BELOW.
 EXTRACTED PAGE CONTENTS - USE THESE EXACTLY:
 ================================================================================
 
-{page_contents_json}
-
-================================================================================
-BRAND: {brand_name}
-NAVIGATION LINKS: {nav_links_json}
-AVAILABLE IMAGE: {first_image if first_image else 'None - use gradient background'}
-================================================================================
 
 For EACH page, copy the EXACT content from the extracted JSON above into the page div.
 If the content contains arrays/maps, render them as HTML cards/items.
