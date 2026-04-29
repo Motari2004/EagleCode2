@@ -1874,11 +1874,10 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
-
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
-    """Generate fully interactive HTML preview using AI - DARK THEME VERSION"""
+    """Generate beautiful HTML preview - extracts ALL pages and footer content"""
     try:
-        print(f"🤖 AI generating full equivalent HTML preview for: {project_name}")
+        print(f"🤖 AI generating beautiful HTML preview for: {project_name}")
 
         # ========== COLLECT NAVIGATION ==========
         nav_content = ""
@@ -1902,16 +1901,14 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     nav_content = content
                     break
 
-        # Extract brand and navigation links from Next.js structure
+        # Extract brand and navigation links
         brand_name = project_name
         nav_links = []
         
         if nav_content:
-            # Try to find brand name from various patterns
             brand_patterns = [
                 r'<Link\s+href="/"[^>]*>(.*?)</Link>',
                 r'<div\s+className="[^"]*brand[^"]*"[^>]*>(.*?)</div>',
-                r'const\s+\w+\s*=\s*["\']([^"\']+)["\']',
             ]
             for pattern in brand_patterns:
                 match = re.search(pattern, nav_content, re.DOTALL)
@@ -1920,11 +1917,9 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     if brand_name:
                         break
             
-            # Extract navigation links from Next.js Link components
             link_patterns = [
                 r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
                 r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
-                r'href="/([^"]+)".*?>(.*?)</Link>',
             ]
             
             for pattern in link_patterns:
@@ -1936,11 +1931,20 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 if nav_links:
                     break
         
+        if not nav_links:
+            nav_links = [("courses", "Courses"), ("about", "About"), ("contact", "Contact")]
+
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
-        # ========== COLLECT FOOTER CONTENT ==========
+        # ========== EXTRACT FOOTER CONTENT ==========
         footer_html = ""
-        footer_paths = ["components/Footer.tsx", "components/Footer.jsx", "app/components/Footer.tsx"]
+        footer_paths = [
+            "components/Footer.tsx",
+            "components/Footer.jsx",
+            "app/components/Footer.tsx",
+            "components/Footer/index.tsx",
+            "components/Layout/Footer.tsx"
+        ]
         
         for fp in footer_paths:
             if fp in files:
@@ -1955,560 +1959,394 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                         footer_html = match.group(0)
                 
                 if footer_html:
+                    # Clean up footer HTML
                     footer_html = re.sub(r'className=', 'class=', footer_html)
                     footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
                     footer_html = re.sub(r'</Link>', '</a>', footer_html)
                     footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
                     footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
+                    print(f"✅ Footer extracted: {len(footer_html)} chars")
                     break
-
-        # ========== HELPER FUNCTION FOR .TSX EXTRACTION ==========
-        def extract_tsx_content(content: str, route_name: str) -> str:
-            """Extract JSX content from .tsx files properly"""
-            
+        
+        # ========== EXTRACT ALL PAGE CONTENTS ==========
+        page_contents = {}
+        
+        # Helper function to extract content from TSX/JSX files
+        def extract_page_content(content: str, route_name: str) -> str:
+            """Extract meaningful content from page component"""
             if not content:
                 return ""
             
-            print(f"  🔍 Extracting from .tsx: {route_name}")
+            # Remove imports and exports
+            clean = re.sub(r'import\s+.*?from\s+["\'][^"\']+["\'];\s*', '', content)
+            clean = re.sub(r'export\s+default\s+\w+;?\s*', '', clean)
+            clean = re.sub(r'export\s+const\s+\w+\s*=\s*', '', clean)
             
-            # Remove TypeScript specific syntax for cleaner matching
-            clean_content = content
-            
-            # Remove interface and type declarations
-            clean_content = re.sub(r'interface\s+\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', '', clean_content, re.DOTALL)
-            clean_content = re.sub(r'type\s+\w+\s*=\s*[^;]+;', '', clean_content, re.DOTALL)
-            
-            # Try multiple extraction strategies for .tsx
-            
-            # Strategy 1: export default function ComponentName(): JSX.Element { return ( ... ) }
-            pattern1 = r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*:\s*\w+(?:\.\w+)?\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern1, clean_content, re.DOTALL)
+            # Extract return JSX
+            match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
             if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 1 matched")
-                return clean_jsx_output(jsx, route_name)
+                extracted = match.group(1)
+                # Convert JSX to HTML
+                extracted = re.sub(r'className=', 'class=', extracted)
+                extracted = re.sub(r'\{[^}]+\}', '', extracted)
+                extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
+                extracted = re.sub(r'</Link>', '</a>', extracted)
+                extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="">', extracted)
+                # Remove any remaining Next.js specific attributes
+                extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
+                extracted = re.sub(r'\s+priority', '', extracted)
+                return extracted.strip()
             
-            # Strategy 2: export default function ComponentName() { return ( ... ) }
-            pattern2 = r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern2, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 2 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 3: export default const ComponentName = (): JSX.Element => { return ( ... ) }
-            pattern3 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*:\s*\w+(?:\.\w+)?\s*=>\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern3, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 3 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 4: export default const ComponentName = () => { return ( ... ) }
-            pattern4 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern4, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 4 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 5: export default const ComponentName = () => ( ... ) (implicit return)
-            pattern5 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*;?'
-            match = re.search(pattern5, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 5 matched (arrow function implicit return)")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 6: Look for any return with JSX
-            pattern6 = r'return\s*\(\s*([\s\S]*?)\s*\)\s*;'
-            matches = re.finditer(pattern6, clean_content, re.DOTALL)
-            for match in matches:
-                jsx = match.group(1)
-                if re.search(r'<[a-zA-Z][^>]*>', jsx):
-                    print(f"  ✅ Strategy 6 matched (generic return)")
-                    return clean_jsx_output(jsx, route_name)
-            
-            print(f"  ❌ No extraction strategy matched for {route_name}")
             return ""
         
-        def clean_jsx_output(jsx: str, route_name: str) -> str:
-            """Clean JSX and convert to HTML"""
-            
-            # Remove JavaScript expressions
-            jsx = re.sub(r'\{[^}]+\}', '', jsx)
-            
-            # Convert className to class
-            jsx = re.sub(r'className=', 'class=', jsx)
-            
-            # Remove React-specific attributes
-            jsx = re.sub(r'\s+key=["\'][^"\']*["\']', '', jsx)
-            jsx = re.sub(r'\s+key=\{[\s\S]*?\}', '', jsx)
-            jsx = re.sub(r'suppressHydrationWarning', '', jsx)
-            
-            # Convert Next.js Link to a tags
-            jsx = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', jsx)
-            jsx = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', jsx)
-            jsx = re.sub(r'</Link>', '</a>', jsx)
-            
-            # Convert Next.js Image to img
-            jsx = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="">', jsx)
-            jsx = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="">', jsx)
-            
-            # CRITICAL: Remove ANY img tags from non-home pages
-            if route_name != "home":
-                jsx = re.sub(r'<img[^>]*>', '', jsx, flags=re.IGNORECASE)
-            
-            # Clean up whitespace
-            jsx = re.sub(r'\s+', ' ', jsx)
-            jsx = re.sub(r'>\s+<', '><', jsx)
-            
-            return jsx.strip()
-
-        # ========== PROCESS PAGES WITH .TSX SUPPORT ==========
-        page_contents = {}
-        
+        # Scan all files for page components
         for file_path, content in files.items():
-            # Match Next.js page patterns: app/page.tsx, app/about/page.tsx, app/solutions/page.tsx, etc.
+            # Match Next.js page patterns
             if file_path.endswith((".tsx", ".jsx", ".js")) and ("/app/" in file_path or file_path.startswith("app/")):
-                # Extract route from path
-                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").replace("/page.js", "").replace(".tsx", "").replace(".jsx", "").replace(".js", "")
+                # Skip non-page files
+                if "layout" in file_path.lower() or "error" in file_path.lower() or "loading" in file_path.lower():
+                    continue
+                
+                # Extract route name
+                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").replace("/page.js", "")
+                route = route.replace(".tsx", "").replace(".jsx", "").replace(".js", "")
                 route_name = route if route else "home"
                 route_name = route_name.replace("/", "_")
                 
-                print(f"\n📄 Found Next.js page: {file_path} -> {route_name}")
+                print(f"\n📄 Found page: {file_path} -> {route_name}")
                 
-                # Use the improved .tsx extractor
-                extracted_content = extract_tsx_content(content, route_name)
+                extracted_content = extract_page_content(content, route_name)
                 
                 if extracted_content and len(extracted_content) > 50:
-                    page_contents[route_name] = extracted_content[:8000]
+                    page_contents[route_name] = extracted_content[:10000]  # Limit size
                     print(f"  ✅ Extracted {len(extracted_content)} chars")
-                    # Debug: print first 100 chars
-                    preview = extracted_content[:150].replace('\n', ' ')
-                    print(f"  📝 Preview: {preview}...")
                 else:
-                    print(f"  ⚠️ Could not extract from {route_name}")
-                    # Store original content as reference for AI
-                    page_contents[route_name] = f"<!-- Original .tsx component content -->\n{content[:3000]}"
+                    # Create meaningful fallback content based on route name
+                    display_name = route_name.replace("_", " ").title()
+                    page_contents[route_name] = f'''
+                    <div class="container">
+                        <div class="hero" style="min-height: 40vh; margin: 2rem;">
+                            <div class="hero-content">
+                                <h1 class="gradient-text">{display_name}</h1>
+                                <p>Welcome to our {display_name.lower()} page. Explore what we have to offer.</p>
+                                <button class="btn" onclick="showPage('home')">Back to Home</button>
+                            </div>
+                        </div>
+                        <div class="grid">
+                            <div class="card">
+                                <h3>About {display_name}</h3>
+                                <p>Learn more about our {display_name.lower()} offerings and how we can help you.</p>
+                                <button class="btn" style="margin-top: 1rem;">Learn More</button>
+                            </div>
+                            <div class="card">
+                                <h3>Our {display_name} Services</h3>
+                                <p>Discover the range of services we provide in {display_name.lower()}.</p>
+                                <button class="btn" style="margin-top: 1rem;">View Services</button>
+                            </div>
+                            <div class="card">
+                                <h3>Contact Us About {display_name}</h3>
+                                <p>Have questions? Reach out to our team for more information.</p>
+                                <button class="btn" style="margin-top: 1rem;">Get in Touch</button>
+                            </div>
+                        </div>
+                    </div>
+                    '''
+                    print(f"  ⚠️ Using fallback content for {route_name}")
 
-        # Add navigation pages that weren't found in files
+        # Ensure all navigation pages have content
         for href, label in nav_links:
             route_key = href.replace("/", "_")
-            if route_key not in page_contents and href not in page_contents:
+            if route_key not in page_contents:
                 page_contents[route_key] = f'''
-                <div class="container mx-auto px-4 py-16">
-                    <h1 class="text-4xl md:text-5xl font-bold mb-6 gradient-text">{label}</h1>
-                    <div class="card p-8">
-                        <p class="text-gray-300">Welcome to our {label.lower()} page.</p>
+                <div class="container">
+                    <div class="hero" style="min-height: 40vh; margin: 2rem;">
+                        <div class="hero-content">
+                            <h1 class="gradient-text">{label}</h1>
+                            <p>Welcome to our {label.lower()} page. Explore our offerings and find what suits you best.</p>
+                            <button class="btn" onclick="showPage('home')">Back to Home</button>
+                        </div>
+                    </div>
+                    <div class="grid">
+                        <div class="card">
+                            <h3>Featured {label}</h3>
+                            <p>Discover amazing opportunities in our {label.lower()} section.</p>
+                            <button class="btn" style="margin-top: 1rem;">Learn More</button>
+                        </div>
+                        <div class="card">
+                            <h3>Upcoming {label}</h3>
+                            <p>Stay updated with the latest news and events in {label.lower()}.</p>
+                            <button class="btn" style="margin-top: 1rem;">View Details</button>
+                        </div>
+                        <div class="card">
+                            <h3>Contact Us About {label}</h3>
+                            <p>Have questions? Reach out to our team for more information.</p>
+                            <button class="btn" style="margin-top: 1rem;">Get in Touch</button>
+                        </div>
                     </div>
                 </div>
                 '''
 
-        # Print summary of extracted pages
+        # Print summary
         print(f"\n📊 EXTRACTION SUMMARY:")
+        print(f"  - Brand: {brand_name}")
+        print(f"  - Navigation links: {len(nav_links)}")
+        print(f"  - Pages extracted: {len(page_contents)}")
         for route, content in page_contents.items():
-            print(f"  - {route}: {len(content)} chars")
+            print(f"    • {route}: {len(content)} chars")
+        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
 
         # ========== COLLECT AVAILABLE IMAGES ==========
-        image_paths = []
         first_image = None
-        
         for file_path in files.keys():
-            if file_path.startswith("public/images/") and file_path.endswith((".jpg", ".png", ".jpeg", ".webp")):
-                img_path = "/" + file_path.replace("public/", "")
-                image_paths.append(img_path)
-                if not first_image:
-                    first_image = img_path
-        
-        print(f"\n🖼️ Found {len(image_paths)} images, first: {first_image}")
+            if file_path.startswith("public/images/") and file_path.endswith((".jpg", ".png", ".jpeg")):
+                first_image = "/" + file_path.replace("public/", "")
+                break
 
-        # ========== STRICT IMAGE INSTRUCTION FOR AI ==========
-        image_instruction = f"""    
+        print(f"\n🖼️ First image: {first_image}")
+
+        # ========== PREPARE DATA FOR PROMPT ==========
+        nav_links_json = json.dumps(nav_links)
+        page_contents_json = json.dumps(page_contents, indent=2)[:15000]
         
+        # Get home page content
+        home_content = page_contents.get('home', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
         
+        # Get backend URL
+        BACKEND_URL = os.environ.get("BACKEND_URL", "https://eaglecode2-2.onrender.com")
         
-        
-        
-        
-        
-                                                                                                                                                                                                                                                                                                                                                                                                                                
+        # ========== BUILD PROMPT WITH ALL EXTRACTED CONTENT ==========
+        prompt = f"""Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
+
 ================================================================================
-                    CRITICAL - HERO IMAGE RULES (STRICT)
+EXTRACTED CONTENT - USE EXACTLY
 ================================================================================
 
-AVAILABLE IMAGE: {first_image if first_image else 'No images available - use gradient background only'}
+BRAND NAME: {brand_name}
 
-RULE 1 - HOME PAGE ONLY:
+NAVIGATION LINKS: {nav_links_json}
 
-- The hero image MUST appear ONLY on the home page
-- Use {first_image if first_image else 'gradient background'} as full screen background on home page
-- NO dark overlays on the image (no bg-black, no overlay divs)
-- Use text-shadow for text readability instead of overlays
+HOME PAGE CONTENT:
+{home_content}
 
-RULE 2 - NO IMAGES ON OTHER PAGES:
-- ABSOLUTELY NO img tags on any page except home
-- DO NOT create hero banners with images on other pages
-- Faculty page: use emoji icons (👨‍🏫 👩‍🔬 💻 📚) instead of photos
-- Use ONLY gradient backgrounds on non-home pages
+ALL PAGE CONTENTS (use these for their respective pages):
+{page_contents_json}
 
-RULE 3 - CORRECT NON-HOME PAGE STRUCTURE:
-Use this exact pattern for pages except home:
+FOOTER HTML (USE THIS EXACTLY IF PROVIDED, OTHERWISE CREATE DEFAULT):
+{footer_html if footer_html else "Create a beautiful footer with copyright, social links, and navigation"}
 
-<div class="page-header" style="padding: 4rem 0; text-align: center; background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);">
-    <div class="container">
-        <h1 style="color: white; font-size: 3rem;">Page Title</h1>
-        <p style="color: #9ca3af;">Page description goes here</p>
-    </div>
-</div>
+AVAILABLE IMAGE: {first_image if first_image else 'None - use gradient background'}
 
-VIOLATION = INVALID RESPONSE
-"""
+================================================================================
+DESIGN REQUIREMENTS
+================================================================================
 
-        # ========== DARK GRADIENT STYLES ==========
-        light_styles = """
+1. Modern dark theme with purple/pink gradients (#c084fc, #f472b6)
+2. Glass morphism effects (backdrop-blur, semi-transparent backgrounds)
+3. Smooth animations and hover effects
+4. Fully responsive (mobile hamburger menu at 768px)
+5. NO Tailwind CDN - use ONLY custom CSS below
+6. ONLY ONE <style> tag and ONE <script> tag
+7. Use the EXTRACTED page content above - NO generic placeholders
+
+================================================================================
+COMPLETE CSS - USE THIS EXACTLY
+================================================================================
 <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        min-height: 100vh;
-        position: relative;
-    }
-    
-    /* Fixed gradient background - no movement */
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 50%, #0f0f12 100%);
-        z-index: -2;
-    }
-    
-    /* Navbar */
-    nav {
-        background: rgba(26, 26, 30, 0.95);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 100;
-        height: 72px;
-    }
-    
-    .nav-container {
-        max-width: 1280px;
-        margin: 0 auto;
-        height: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 1.5rem;
-    }
-    
-    .brand-link {
-        font-weight: 800;
-        font-size: 1.5rem;
-        text-decoration: none;
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-        cursor: pointer;
-    }
-    
-    .nav-link {
-        color: #9ca3af;
-        text-decoration: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        transition: all 0.2s ease;
-    }
-    
-    .nav-link:hover { color: #c084fc; background: rgba(192, 132, 252, 0.1); }
-    .nav-link.active { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
-    
-    /* Pages - ALL pages start hidden */
-    .page {
-        display: none;
-        animation: fadeIn 0.3s ease;
-        min-height: calc(100vh - 72px);
-        width: 100%;
-        position: relative;
-    }
-    
-    .page.active { 
-        display: block; 
-    }
-    
-    /* HOME PAGE specific styles - ONLY applies to home page */
-    #page_home {
-        padding-top: 0px;
-        position: relative;
-    }
-    
-    /* Hero section - ONLY inside home page */
-    #page_home .hero-section {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 100vh;
-        overflow: hidden;
-        z-index: 1;
-    }
-    
-    #page_home .hero-image {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    #page_home .home-content {
-        position: relative;
-        z-index: 10;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-    }
-    
-    /* NON-HOME PAGES - Clean gradient headers, NO absolute positioning */
-    #page_catalogue, #page_solutions, #page_about, #page_contact, #page_services,
-    #page_products, #page_pricing, #page_blog, #page_faq, [id^="page_"]:not(#page_home) {
-        padding-top: 88px;
-        background: transparent;
-    }
-    
-    /* Page header for non-home pages */
-    .page-header {
-        padding: 3rem 0;
-        text-align: center;
-        background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
-        margin-bottom: 2rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    
-    .page-header h1 {
-        color: white;
-        font-size: 2.5rem;
-        margin-bottom: 0.75rem;
-    }
-    
-    .page-header p {
-        color: #9ca3af;
-        font-size: 1.1rem;
-        max-width: 600px;
-        margin: 0 auto;
-    }
-    
-    /* Safety - Hide any hero elements outside home page */
-    .page:not(#page_home) .hero-section,
-    .page:not(#page_home) .hero-image,
-    .page:not(#page_home) .home-content,
-    .page:not(#page_home) [class*="hero"],
-    .page:not(#page_home) [class*="Hero"] {
-        display: none !important;
-    }
-    
-    /* Cards */
-    .card {
-        background: linear-gradient(135deg, #1a1a1e 0%, #121216 100%);
-        border-radius: 1rem;
-        padding: 1.5rem;
-        transition: all 0.3s ease;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .card:hover { transform: translateY(-4px); border-color: #c084fc; }
-    
-    /* Buttons */
-    .btn-primary {
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 2rem;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .btn-primary:hover { transform: translateY(-2px); }
-    
-    /* Container */
-    .container { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }
-    
-    /* Utilities */
-    .gradient-text {
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-    }
-    
-    .hero-text-shadow { text-shadow: 0 2px 15px rgba(0, 0, 0, 0.6); }
-    
-    /* Mobile Menu */
-    .hamburger {
-        display: none;
-        flex-direction: column;
-        gap: 4px;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        z-index: 101;
-    }
-    
-    .hamburger span {
-        width: 25px;
-        height: 3px;
-        background: #9ca3af;
-        border-radius: 2px;
-    }
-    
-    .mobile-menu {
-        position: fixed;
-        top: 0;
-        right: -100%;
-        width: 280px;
-        height: 100vh;
-        background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
-        z-index: 100;
-        transition: 0.3s;
-        padding: 80px 24px;
-    }
-    
-    .mobile-menu.active { right: 0; }
-    
-    .mobile-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.5);
-        z-index: 99;
-        display: none;
-    }
-    
-    .mobile-overlay.active { display: block; }
-    
-    .mobile-nav-link {
-        display: block;
-        padding: 12px 16px;
-        color: #9ca3af;
-        text-decoration: none;
-        border-radius: 0.5rem;
-        margin-bottom: 8px;
-    }
-    
-    .mobile-nav-link.active { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
-    
-    /* Grid utilities */
-    .grid { display: grid; }
-    .grid-cols-1 { grid-template-columns: repeat(1, 1fr); }
-    .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-    .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-    .gap-4 { gap: 1rem; }
-    .gap-6 { gap: 1.5rem; }
-    .gap-8 { gap: 2rem; }
-    
-    @media (max-width: 768px) {
-        .nav-links { display: none !important; }
-        .hamburger { display: flex !important; }
-        .grid-cols-2, .grid-cols-3 { grid-template-columns: repeat(1, 1fr); }
-        .page-header h1 { font-size: 2rem; }
-    }
-</style>
-"""
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
+body {{
+    font-family: 'Inter', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+}}
 
+header {{
+    background: rgba(26, 26, 30, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    height: 72px;
+}}
 
+.nav-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+}}
 
+.brand {{
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-decoration: none;
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
 
+.nav-links {{
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}}
 
+.nav-link {{
+    color: #9ca3af;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+}}
 
+.nav-link:hover, .nav-link.active {{
+    color: #c084fc;
+    background: rgba(192,132,252,0.1);
+}}
 
+.page {{
+    display: none;
+    min-height: calc(100vh - 72px);
+    padding-top: 88px;
+}}
 
+.page.active {{ display: block; }}
 
+.container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}}
 
+.card {{
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.3s;
+}}
 
+.card:hover {{
+    transform: translateY(-4px);
+    border-color: #c084fc;
+}}
 
+.gradient-text {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
 
+.btn {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}}
 
+.btn:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(192,132,252,0.3);
+}}
 
+.hero {{
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+    border-radius: 1rem;
+    margin: 1rem;
+    overflow: hidden;
+}}
 
+.hero-bg {{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.35;
+}}
 
+.hero-content {{
+    position: relative;
+    z-index: 10;
+    padding: 3rem;
+}}
 
+.hero-content h1 {{
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+}}
 
+.hero-content p {{
+    font-size: 1.2rem;
+    color: #9ca3af;
+    margin-bottom: 2rem;
+}}
 
+.grid {{
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}}
 
+/* Footer */
+footer {{
+    background: linear-gradient(180deg, rgba(15,15,18,0.8) 0%, #1a1a2e 100%);
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin-top: 4rem;
+    padding: 3rem 0 2rem;
+}}
 
+.footer-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}}
 
+.footer-section h4 {{
+    color: #c084fc;
+    margin-bottom: 1rem;
+}}
 
+.footer-section a {{
+    color: #9ca3af;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.5rem;
+    transition: color 0.2s;
+}}
 
+.footer-section a:hover {{ color: #c084fc; }}
 
+.copyright {{
+    text-align: center;
+    padding-top: 2rem;
+    margin-top: 2rem;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: #6b7280;
+    font-size: 0.875rem;
+}}
 
-
-
-        # ========== AI PROMPT ==========
-        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with MODERN DARK THEME.
-
-
-
-================================================================================
-CRITICAL: DO NOT DUPLICATE SCRIPTS OR STYLES
-================================================================================
-
-- Include ONLY ONE <style> tag with ALL CSS
-- Include ONLY ONE <script> tag with ALL JavaScript
-- DO NOT add multiple style blocks or script blocks
-- DO NOT add Tailwind CDN and custom CSS - use ONLY the custom CSS provided
-
-
-PROJECT: {brand_name}
-NAVIGATION LINKS: {json.dumps(nav_links)}
-
-PAGE CONTENTS FROM NEXT.JS FILES (USE THESE EXACTLY FOR EACH PAGE):
-{json.dumps(page_contents, indent=2)[:15000]}
-
-FOOTER HTML (USE THIS EXACTLY IF PROVIDED):
-{footer_html if footer_html else "Create a simple footer with copyright and navigation links"}
-
-{image_instruction}
-
-
-
-
-
-================================================================================
-REQUIREMENTS
-================================================================================
-
-1. Each page div: id="page_XXX" class="page"
-2. Home page: id="page_home" class="page active"
-3. Home page ONLY gets hero image - NO overlays on hero image
-4. Non-home pages: NO images, ONLY gradient backgrounds
-5. Brand name clickable to home page
-6. Use purple/pink gradients (#c084fc, #f472b6) for accents
-7. Hero section MUST be INSIDE #page_home div
-8. Should use the extracted data from pages to make html instead of placeholder
-9. The content from frontend is used in html pages
-10. Should use the extracted content only
-11. No new content or placeholders when we are haivng the extracted content to use eg we have Admission content extracted we should use it exactly as it is
-
-================================================================================
-MOBILE NAVIGATION - MANDATORY
-================================================================================
-
-Add these CSS rules in your ONE style tag:
-
+/* Mobile Menu */
 .hamburger {{
     display: none;
     flex-direction: column;
@@ -2516,8 +2354,8 @@ Add these CSS rules in your ONE style tag:
     background: transparent;
     border: none;
     cursor: pointer;
-    z-index: 101;
 }}
+
 .hamburger span {{
     width: 25px;
     height: 3px;
@@ -2531,22 +2369,22 @@ Add these CSS rules in your ONE style tag:
     right: -100%;
     width: 280px;
     height: 100vh;
-    background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-    z-index: 100;
-    transition: right 0.3s ease;
+    background: #1a1a1e;
+    z-index: 200;
+    transition: right 0.3s;
     padding: 80px 24px;
 }}
+
 .mobile-menu.active {{ right: 0; }}
 
 .mobile-overlay {{
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 99;
+    background: rgba(0,0,0,0.5);
+    z-index: 199;
     display: none;
 }}
+
 .mobile-overlay.active {{ display: block; }}
 
 .mobile-nav-link {{
@@ -2556,168 +2394,96 @@ Add these CSS rules in your ONE style tag:
     text-decoration: none;
     border-radius: 0.5rem;
     margin-bottom: 8px;
-    transition: all 0.2s ease;
-}}
-.mobile-nav-link:hover,
-.mobile-nav-link.active {{
-    color: #c084fc;
-    background: rgba(192, 132, 252, 0.15);
 }}
 
 @media (max-width: 768px) {{
-    .nav-links {{ display: none !important; }}
-    .hamburger {{ display: flex !important; }}
-    .page {{ display: none !important; }}
-    .page.active {{ display: block !important; }}
+    .nav-links {{ display: none; }}
+    .hamburger {{ display: flex; }}
+    .hero-content h1 {{ font-size: 2rem; }}
+    .footer-container {{ grid-template-columns: 1fr; text-align: center; }}
 }}
 
-================================================================================
-JAVASCRIPT - INCLUDE EXACTLY ONCE
-================================================================================
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
 
+.page {{ animation: fadeIn 0.3s ease; }}
+</style>
+
+================================================================================
+JAVASCRIPT - WORKING NAVIGATION
+================================================================================
 <script>
 function showPage(pageId) {{
-    document.querySelectorAll('.page').forEach(page => {{
-        page.classList.remove('active');
-        page.style.display = 'none';
-    }});
-    const targetPage = document.getElementById('page_' + pageId);
-    if (targetPage) {{
-        targetPage.classList.add('active');
-        targetPage.style.display = 'block';
-    }}
-    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
-        link.classList.remove('active');
-    }});
-    document.querySelectorAll(`[data-page="${{pageId}}"]`).forEach(link => {{
-        link.classList.add('active');
-    }});
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById('page_' + pageId);
+    if (target) target.classList.add('active');
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll(`[data-page="${{pageId}}"]`).forEach(l => l.classList.add('active'));
     window.history.pushState({{}}, '', '/' + pageId);
     window.scrollTo(0, 0);
 }}
 
 function toggleMenu() {{
-    const menu = document.getElementById('mobileMenu');
-    const overlay = document.getElementById('mobileOverlay');
-    if (menu) menu.classList.toggle('active');
-    if (overlay) overlay.classList.toggle('active');
+    document.getElementById('mobileMenu')?.classList.toggle('active');
+    document.getElementById('mobileOverlay')?.classList.toggle('active');
 }}
 
-window.addEventListener('popstate', function() {{
+window.addEventListener('popstate', () => {{
     const path = window.location.pathname.slice(1) || 'home';
     showPage(path);
 }});
+
+document.addEventListener('DOMContentLoaded', () => {{
+    const path = window.location.pathname.slice(1) || 'home';
+    showPage(path);
+    document.querySelector('.hamburger')?.addEventListener('click', toggleMenu);
+    document.getElementById('mobileOverlay')?.addEventListener('click', toggleMenu);
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.addEventListener('click', (e) => {{
+            e.preventDefault();
+            const pageId = link.getAttribute('data-page');
+            if (pageId) {{
+                showPage(pageId);
+                if (window.innerWidth <= 768) toggleMenu();
+            }}
+        }});
+    }});
+}});
 </script>
 
-
 ================================================================================
-FINAL CHECKLIST - VERIFY BEFORE OUTPUT
+RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 ================================================================================
-
-[ ] Hamburger button is on the RIGHT side of navbar
-[ ] Mobile menu slides in from RIGHT (right: -100% to right: 0)
-[ ] Brand name is on the LEFT side
-[ ] ONLY ONE <style> tag
-[ ] ONLY ONE <script> tag
-[ ] Home page has hero image inside #page_home
-[ ] Non-home pages have NO images
-[ ] Mobile menu works at 768px breakpoint
-
-
-
-
-
-
-
-
-
-
-================================================================================
-CRITICAL: FOR LOGIN AND SIGNUP PAGES, USE THE EXACT FORM STRUCTURE BELOW
-================================================================================
-
-SIGNUP PAGE FORM (MUST include ALL these fields with EXACT name attributes):
-- Input with name="name" for full name
-- Input with name="email" for email address  
-- Input with name="password" for password
-- Input with name="confirmPassword" for password confirmation
-- Form must have id="signup-form"
-- Submit button must have type="submit"
-
-LOGIN PAGE FORM (MUST include ALL these fields with EXACT name attributes):
-- Input with name="email" for email address
-- Input with name="password" for password
-- Form must have id="login-form"
-- Submit button must have type="submit"
-
-
-
-
-
-
-
-
-Return ONLY complete HTML. NO explanations.
 """
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.1, "max_output_tokens": 48000}
-)
-        
-        
-        
-        
+            config={"temperature": 0.2, "max_output_tokens": 25000}
+        )
 
         preview_html = clean_html_response(response_text)
 
-        # Inject styles
-        if '<style>' in preview_html:
-            preview_html = preview_html.replace('<style>', light_styles + '<style>')
-        elif '</head>' in preview_html:
-            preview_html = preview_html.replace('</head>', light_styles + '</head>')
-        else:
-            preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{light_styles}</head>')
-
+        # Ensure doctype
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
 
         # Inject base64 images
-        print("🖼️ Injecting images...")
         for file_key, content in files.items():
-            if not file_key.startswith("public/images/") or not isinstance(content, str):
-                continue
-            if not content.startswith("__binary_base64__"):
-                continue
-            
-            public_path = "/" + file_key[len("public/"):]
-            raw_b64 = content[len("__binary_base64__"):]
-            data_uri = f"data:image/jpeg;base64,{raw_b64}"
-            
-            preview_html = re.sub(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
-            preview_html = re.sub(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-        # ========== ADD AUTH HANDLER SCRIPT (LOGIN & SIGNUP DIFFERENTIATION) ==========
-        BACKEND_URL = os.environ.get("BACKEND_URL", "https://eaglecode2-2.onrender.com")
-        
+            if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
+                public_path = "/" + file_key[len("public/"):]
+                raw_b64 = content[len("__binary_base64__"):]
+                data_uri = f"data:image/jpeg;base64,{raw_b64}"
+                preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
+                preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
+
+        # ========== AUTH HANDLER SCRIPT ==========
         auth_script = f"""
 <script>
-// Get stored connection ID from localStorage
 const CONNECTION_ID = localStorage.getItem("connection_id");
+const BACKEND_URL = "{BACKEND_URL}";
 
-// SIGNUP HANDLER - For creating new accounts
 async function handleSignup(event) {{
     event.preventDefault();
     const form = event.target;
@@ -2726,12 +2492,10 @@ async function handleSignup(event) {{
     const password = form.querySelector('[name="password"]')?.value;
     const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
     
-    // Signup specific validations
     if (password !== confirmPassword) {{
         alert('❌ Passwords do not match');
         return;
     }}
-    
     if (password.length < 6) {{
         alert('❌ Password must be at least 6 characters');
         return;
@@ -2742,28 +2506,19 @@ async function handleSignup(event) {{
     if (submitBtn) submitBtn.innerText = 'Creating account...';
     
     try {{
-        const response = await fetch(`${{window.BACKEND_URL || "{BACKEND_URL}"}}/api/auth/signup`, {{
+        const response = await fetch(`${{BACKEND_URL}}/api/auth/signup`, {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{
-                name, 
-                email, 
-                password,
-                connection_id: CONNECTION_ID
-            }})
+            body: JSON.stringify({{ name, email, password, connection_id: CONNECTION_ID }})
         }});
-        
         const data = await response.json();
-        
         if (data.success) {{
             alert('✅ Account created successfully! You can now log in.');
             form.reset();
-            // Redirect to login page after 1.5 seconds
             setTimeout(() => {{
                 const loginLink = document.querySelector('a[href="/login"]');
                 if (loginLink && typeof showPage === 'function') {{
-                    const pageId = loginLink.getAttribute('data-page') || 'login';
-                    showPage(pageId);
+                    showPage('login');
                 }}
             }}, 1500);
         }} else if (data.requires_db) {{
@@ -2772,14 +2527,12 @@ async function handleSignup(event) {{
             alert('❌ ' + (data.error || 'Signup failed'));
         }}
     }} catch (error) {{
-        console.error('Signup error:', error);
-        alert('❌ Network error. Make sure backend is running on {BACKEND_URL}');
+        alert('❌ Network error. Make sure backend is running');
     }} finally {{
         if (submitBtn) submitBtn.innerText = originalText;
     }}
 }}
 
-// LOGIN HANDLER - For existing users
 async function handleLogin(event) {{
     event.preventDefault();
     const form = event.target;
@@ -2791,31 +2544,18 @@ async function handleLogin(event) {{
     if (submitBtn) submitBtn.innerText = 'Logging in...';
     
     try {{
-        const response = await fetch(`${{window.BACKEND_URL || "{BACKEND_URL}"}}/api/auth/login`, {{
+        const response = await fetch(`${{BACKEND_URL}}/api/auth/login`, {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{
-                email, 
-                password,
-                connection_id: CONNECTION_ID
-            }})
+            body: JSON.stringify({{ email, password, connection_id: CONNECTION_ID }})
         }});
-        
         const data = await response.json();
-        
         if (data.success) {{
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
             alert('✅ Login successful! Welcome ' + (data.user.name || data.user.email));
-            // Redirect to dashboard or home
             setTimeout(() => {{
-                const dashboardLink = document.querySelector('a[href="/dashboard"]');
-                if (dashboardLink && typeof showPage === 'function') {{
-                    const pageId = dashboardLink.getAttribute('data-page') || 'dashboard';
-                    showPage(pageId);
-                }} else if (typeof showPage === 'function') {{
-                    showPage('home');
-                }}
+                if (typeof showPage === 'function') showPage('home');
             }}, 1000);
         }} else if (data.requires_db) {{
             alert('❌ Database not configured. Please add your Neon DB connection string first.');
@@ -2823,80 +2563,45 @@ async function handleLogin(event) {{
             alert('❌ ' + (data.error || 'Login failed'));
         }}
     }} catch (error) {{
-        console.error('Login error:', error);
-        alert('❌ Network error. Make sure backend is running on {BACKEND_URL}');
+        alert('❌ Network error. Make sure backend is running');
     }} finally {{
         if (submitBtn) submitBtn.innerText = originalText;
     }}
 }}
 
-// Auto-detect and attach handlers to forms
 document.addEventListener('DOMContentLoaded', function() {{
-    console.log('🔐 Auth handler initializing...');
-    console.log('📡 Backend URL:', window.BACKEND_URL || "{BACKEND_URL}");
-    console.log('🔑 Connection ID:', CONNECTION_ID ? 'Present' : 'Not set');
-    
     document.querySelectorAll('form').forEach(form => {{
         const hasPassword = form.querySelector('[type="password"]');
         const hasEmail = form.querySelector('[type="email"]');
-        const submitBtn = form.querySelector('[type="submit"]');
-        const submitText = submitBtn?.innerText?.toLowerCase() || '';
+        const submitText = form.querySelector('[type="submit"]')?.innerText?.toLowerCase() || '';
         const formId = form.id?.toLowerCase() || '';
         
-        // DETECT SIGNUP FORM (priority: form id, button text, field names)
-        const isSignupForm = formId.includes('signup') || 
-                            submitText.includes('sign') || 
-                            submitText.includes('up') ||
-                            (form.querySelector('[name="name"]') && hasPassword && hasEmail);
-        
-        // DETECT LOGIN FORM
-        const isLoginForm = formId.includes('login') || 
-                           submitText.includes('log') || 
-                           submitText.includes('in') ||
-                           (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        const isSignupForm = formId.includes('signup') || submitText.includes('sign') || submitText.includes('up') || (form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        const isLoginForm = formId.includes('login') || submitText.includes('log') || submitText.includes('in') || (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
         
         if ((isSignupForm || isLoginForm) && !form.onsubmit) {{
-            if (isSignupForm) {{
-                form.onsubmit = handleSignup;
-                console.log('✅ Signup form handler attached');
-            }} else if (isLoginForm) {{
-                form.onsubmit = handleLogin;
-                console.log('✅ Login form handler attached');
-            }}
+            if (isSignupForm) form.onsubmit = handleSignup;
+            else if (isLoginForm) form.onsubmit = handleLogin;
         }}
     }});
 }});
 </script>
 """
 
-        # Inject auth script before closing body
+        # Inject auth script
         if '</body>' in preview_html:
             preview_html = preview_html.replace('</body>', f'{auth_script}\n</body>')
         else:
-            preview_html = preview_html + auth_script            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
+            preview_html = preview_html + auth_script
 
-        print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
+        print(f"✅ Beautiful preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
 
     except Exception as e:
         print(f"❌ AI Preview Error: {e}")
         import traceback
         traceback.print_exc()
-        raise
-    
+        return {"success": False, "error": str(e)}
     
     
     
