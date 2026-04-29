@@ -2627,7 +2627,7 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.2, "max_output_tokens": 25000}
+            config={"temperature": 0.1, "max_output_tokens": 40000}
         )
 
         preview_html = clean_html_response(response_text)
