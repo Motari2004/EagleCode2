@@ -2309,13 +2309,9 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
         
-        
-        
-        
-        
          # Helper function to extract content from TSX/JSX files
         def extract_page_content(content: str, route_name: str) -> str:
-            """Extract meaningful content from page component"""
+            """Extract meaningful content from page component - captures ALL sections including Why Choose Us"""
             if not content:
                 return ""
             
@@ -2328,15 +2324,38 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
             # Remove 'use client' directive
             clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
             
-            # Extract return JSX - handle both arrow functions and regular functions
-            match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
-            if not match:
+            # Extract return JSX using bracket counting (handles nested parentheses properly)
+            start_match = re.search(r'return\s*\(', clean)
+            if not start_match:
                 # Try without parentheses
-                match = re.search(r'return\s+([\s\S]*?);\s*\}', clean, re.DOTALL)
+                start_match = re.search(r'return\s+', clean)
+                if not start_match:
+                    return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1></div>'
             
-            if match:
-                extracted = match.group(1)
-                
+            start_pos = start_match.end()
+            
+            # Count brackets to find the matching closing parenthesis
+            open_count = 1
+            i = start_pos
+            extracted = ""
+            
+            while i < len(clean) and open_count > 0:
+                char = clean[i]
+                extracted += char
+                if char == '(':
+                    open_count += 1
+                elif char == ')':
+                    open_count -= 1
+                i += 1
+            
+            # Find the semicolon after the closing parenthesis
+            semicolon_match = re.search(r';', extracted)
+            if semicolon_match:
+                extracted = extracted[:semicolon_match.start()]
+            
+            extracted = extracted.strip()
+            
+            if extracted:
                 # Convert JSX to HTML (preserve all content)
                 extracted = re.sub(r'className=', 'class=', extracted)
                 extracted = re.sub(r'htmlFor=', 'for=', extracted)
@@ -2350,35 +2369,25 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
                 extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
                 
-                # Preserve Fragment syntax (<>...</>)
+                # Preserve Fragment syntax
                 extracted = re.sub(r'<>', '<div>', extracted)
                 extracted = re.sub(r'</>', '</div>', extracted)
                 
-                # Keep curly brace expressions - DON'T remove them
-                # They will be shown as-is and the AI will render them
-                
-                # Remove only problematic Next.js specific attributes
+                # Remove problematic Next.js attributes
                 extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
                 extracted = re.sub(r'\s+priority\s*', '', extracted)
                 extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
-                
-                # Remove empty fragments
                 extracted = re.sub(r'<Fragment>', '', extracted)
                 extracted = re.sub(r'</Fragment>', '', extracted)
                 
-                # Clean up excessive whitespace but preserve meaningful spaces
+                # Clean up whitespace
                 extracted = re.sub(r'>\s+<', '><', extracted)
                 extracted = re.sub(r'\n{3,}', '\n\n', extracted)
                 
                 return extracted.strip()
             
-            # Fallback: return a simple div with the route name
+            # Fallback
             return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
-        
-        
-        
-        
-        
         
         
         
@@ -2509,7 +2518,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 
                 # ========== CHANGE THIS PART - USE ELIF ==========
                 elif extracted_content and len(extracted_content) > 50:
-                    page_contents[route_name] = extracted_content[:10000]  # Limit size
+                    page_contents[route_name] = extracted_content[:1000000]  # Limit size
                     print(f"  ✅ Extracted {len(extracted_content)} chars")
                 else:
                     # Create meaningful fallback content based on route name
@@ -3266,7 +3275,7 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.1, "max_output_tokens": 40000}
+            config={"temperature": 0.1, "max_output_tokens": 4000000}
         )
 
         preview_html = clean_html_response(response_text)
@@ -6311,7 +6320,7 @@ Return ONLY valid JSON like this:
                 prompt=theme_prompt,
                 config={
                     "temperature": 0.1,
-                    "max_output_tokens": 200,
+                    "max_output_tokens": 200000,
                     "response_mime_type": "application/json",
                 }
             )
@@ -6913,8 +6922,6 @@ CRITICAL RULES:
 
 
 
-
-
             # ========== JSON PARSING ==========
             try:
                 clean_text = clean_json_response(full_response)
@@ -6924,13 +6931,11 @@ CRITICAL RULES:
                     print(f"✅ JSON parsed successfully on attempt {retry_count + 1}")
                     
                     # ========== INSERT IMAGE WAITING CODE HERE ==========
-                    # After AI generation completes successfully, WAIT for images
                     await websocket.send_json({
                         "type": "status",
                         "message": "⏳ Waiting for images to finish processing..."
                     })
                     
-                    # Wait for background images to complete (with timeout)
                     try:
                         await asyncio.wait_for(background_image_task, timeout=15)
                         print(f"✅ Images ready: {len([k for k in image_data if image_data[k]])}/2")
@@ -6951,44 +6956,50 @@ CRITICAL RULES:
                     break  # Exit retry loop
                     
                 except json.JSONDecodeError as e1:
-                    # ... rest of your error handling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                     print(f"⚠️ Initial parse failed: {e1}")
+                    
+                    # DEBUG: Show problem area
+                    if hasattr(e1, 'pos'):
+                        pos = e1.pos
+                        start = max(0, pos - 200)
+                        end = min(len(clean_text), pos + 200)
+                        print(f"\n📍 Problem area around position {pos}:")
+                        print(clean_text[start:end])
+                        print(f"{' ' * (min(200, pos - start))}^--- Error here\n")
+                    
                     try:
                         fixed_text = fix_json_errors(clean_text)
                         project_files = json.loads(fixed_text)
                         print(f"✅ JSON fixed and parsed successfully on attempt {retry_count + 1}")
                         break
+                        
                     except json.JSONDecodeError as e2:
                         print(f"⚠️ Fixed parse still failed: {e2}")
+                        
                         try:
                             print("🛠️ Attempting advanced string repair...")
-                            fixed_text2 = re.sub(r'"([^"]*?)(?=\s*[,}])', r'"\1"', clean_text)
-                            fixed_text2 = fix_json_errors(fixed_text2)
-                            project_files = json.loads(fixed_text2)
-                            print(f"✅ JSON recovered using string repair!")
-                            break
-
-
+                            first_brace = clean_text.find('{')
+                            last_brace = clean_text.rfind('}')
+                            
+                            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                                extracted_json = clean_text[first_brace:last_brace + 1]
+                                project_files = json.loads(extracted_json)
+                                print(f"✅ JSON extracted and parsed successfully!")
+                                break
+                            else:
+                                raise ValueError("No valid JSON object found")
+                                
                         except Exception as repair_error:
                             print(f"❌ Repair failed: {repair_error}")
+                            
+                            # Save to debug file
+                            try:
+                                with open(f"debug_failed_response_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", "w", encoding="utf-8") as f:
+                                    f.write(full_response[:20000])
+                                print(f"💾 Saved failed response to debug file")
+                            except:
+                                pass
+                            
                             if retry_count == max_retries - 1:
                                 print(f"❌ All {max_retries} attempts failed")
                                 await websocket.send_json({
@@ -7002,6 +7013,8 @@ CRITICAL RULES:
 
             except Exception as parse_error:
                 print(f"❌ Unexpected parsing error: {parse_error}")
+                import traceback
+                traceback.print_exc()
                 if retry_count == max_retries - 1:
                     await websocket.send_json({
                         "type": "error",
@@ -7011,6 +7024,30 @@ CRITICAL RULES:
                 retry_count += 1
                 await asyncio.sleep(2 ** retry_count)
                 continue
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # ========== REPLACE NAME PLACEHOLDERS ==========
         for file_path, content in project_files.items():
@@ -7736,7 +7773,7 @@ UPDATED CODE:"""
                     try:
                         link_response = await model_router.generate_content(
                             prompt=link_prompt,
-                            config={"temperature": 0.1, "max_output_tokens": 2000}
+                            config={"temperature": 0.1, "max_output_tokens": 200000}
                         )
                         new_content = link_response.strip()
                       
@@ -8781,7 +8818,7 @@ Make the requested change. Return ONLY the updated code, no markdown, no explana
             try:
                 response_text = await model_router.generate_content(
                     prompt=edit_prompt,
-                    config={"temperature": 0.01, "max_output_tokens": 10192}
+                    config={"temperature": 0.01, "max_output_tokens": 1019200}
                 )
                 updated_content = extract_code_from_response(response_text.strip())
                 
@@ -9129,7 +9166,7 @@ Updated HTML preview:"""
             prompt=prompt,
             config={
                 "temperature": 0.1,
-                "max_output_tokens": 8192,
+                "max_output_tokens": 819200,
             }
         )
 
@@ -9221,7 +9258,7 @@ Return ONLY the raw HTML code starting with <!DOCTYPE html>:"""
 
             response_text = await model_router.generate_content(
                 prompt=prompt,
-                config={"temperature": 0.2, "max_output_tokens": 8192}
+                config={"temperature": 0.2, "max_output_tokens": 819200}
             )
             updated_preview = clean_html_response(response_text.strip())  # ✅ Define updated_preview here
 
@@ -9305,7 +9342,7 @@ Files: {list(files.keys())[:15]}"""
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.3, "max_output_tokens": 8192}
+            config={"temperature": 0.3, "max_output_tokens": 819200}
         )
 
         preview_html = clean_html_response(response_text.strip())
@@ -10442,7 +10479,7 @@ Component:
                     prompt=ai_prompt,
                     config={
                         "temperature": 0.1,
-                        "max_output_tokens": 4000,
+                        "max_output_tokens": 400000,
                     }
                 )
                 

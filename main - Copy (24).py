@@ -3557,6 +3557,21 @@ def fix_json_errors(text: str) -> str:
     return text.strip()
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def clean_html_response(text: str) -> str:
     """Aggressively clean HTML response from AI"""
     text = text.strip()
@@ -6837,6 +6852,18 @@ CRITICAL RULES:
                 retry_count += 1
                 await asyncio.sleep(2 ** retry_count)
                 continue
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
 
         # ========== REPLACE NAME PLACEHOLDERS ==========
         for file_path, content in project_files.items():
