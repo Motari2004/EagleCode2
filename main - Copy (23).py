@@ -2111,70 +2111,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
     try:
         print(f"🤖 AI generating beautiful HTML preview for: {project_name}")
 
-
-
-
-
-
-
-
-
-
-        # ========== ADD THIS FUNCTION RIGHT HERE ==========
-        def clean_onError_handlers(html: str) -> str:
-            """Convert string onError handlers to actual JavaScript"""
-            import re
-            
-            # Count how many fixes were made
-            fixes_count = 0
-            
-            # Fix pattern: onError="{(e) => { ... }}"
-            pattern = r'onError="\{\(e\)\s*=>\s*\{([^}]+)\}\}"'
-            html, count = re.subn(pattern, r'onError={(e) => { \1 }}', html)
-            fixes_count += count
-            
-            # Fix any onError with quotes
-            pattern2 = r'onError="([^"]+)"'
-            def fix_handler(match):
-                handler = match.group(1)
-                handler = handler.strip()
-                if handler.startswith('{') and handler.endswith('}'):
-                    handler = handler[1:-1]
-                return f'onError={{{handler}}}'
-            html, count = re.subn(pattern2, fix_handler, html)
-            fixes_count += count
-            
-            # Fix escaped characters
-            html = html.replace('&quot;', '"')
-            html = html.replace('&#39;', "'")
-            html = html.replace('&#123;', '{')
-            html = html.replace('&#125;', '}')
-            
-            # Fix double braces
-            html, count = re.subn(r'onError=\{\{(.+?)\}\}', r'onError={\1}', html)
-            fixes_count += count
-            
-            if fixes_count > 0:
-                print(f"🔧 Fixed {fixes_count} onError handler(s) in preview HTML")
-            
-            return html
-        # ========== END OF FUNCTION ==========
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== COLLECT NAVIGATION ==========
         nav_content = ""
         nav_paths = [
@@ -2232,22 +2168,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== EXTRACT FOOTER CONTENT ==========
         footer_html = ""
         footer_paths = [
@@ -2261,12 +2181,8 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         for fp in footer_paths:
             if fp in files:
                 content = files[fp]
-                # Remove 'use client' and imports first
-                clean_footer = re.sub(r'^["\']use client["\'];\s*$', '', content, flags=re.MULTILINE)
-                clean_footer = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', clean_footer, flags=re.MULTILINE)
-                
                 # Extract JSX return content
-                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean_footer, re.DOTALL)
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', content, re.DOTALL)
                 if match:
                     footer_html = match.group(1)
                 else:
@@ -2275,29 +2191,14 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                         footer_html = match.group(0)
                 
                 if footer_html:
-                    # Clean up footer HTML (preserve content)
+                    # Clean up footer HTML
                     footer_html = re.sub(r'className=', 'class=', footer_html)
                     footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
                     footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                    footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
                     footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
-                    # Don't remove curly braces in footer
-                    # footer_html = re.sub(r'\{[^}]+\}', '', footer_html)  # COMMENTED OUT
                     print(f"✅ Footer extracted: {len(footer_html)} chars")
                     break
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         # ========== EXTRACT ALL PAGE CONTENTS ==========
         page_contents = {}
@@ -2305,7 +2206,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
         
-
         
         
         
@@ -2313,74 +2213,37 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
         
-         # Helper function to extract content from TSX/JSX files
+        # Helper function to extract content from TSX/JSX files
         def extract_page_content(content: str, route_name: str) -> str:
             """Extract meaningful content from page component"""
             if not content:
                 return ""
             
-            # Remove imports and exports (but keep the JSX structure)
-            clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)
-            clean = re.sub(r'^export\s+default\s+\w+;?\s*$', '', clean, flags=re.MULTILINE)
-            clean = re.sub(r'^export\s+const\s+\w+\s*=\s*', '', clean, flags=re.MULTILINE)
-            clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
             
-            # Remove 'use client' directive
-            clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
             
-            # Extract return JSX - handle both arrow functions and regular functions
+            
+            
+            # Remove imports and exports
+            clean = re.sub(r'import\s+.*?from\s+["\'][^"\']+["\'];\s*', '', content)
+            clean = re.sub(r'export\s+default\s+\w+;?\s*', '', clean)
+            clean = re.sub(r'export\s+const\s+\w+\s*=\s*', '', clean)
+            
+            # Extract return JSX
             match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
-            if not match:
-                # Try without parentheses
-                match = re.search(r'return\s+([\s\S]*?);\s*\}', clean, re.DOTALL)
-            
             if match:
                 extracted = match.group(1)
-                
-                # Convert JSX to HTML (preserve all content)
+                # Convert JSX to HTML
                 extracted = re.sub(r'className=', 'class=', extracted)
-                extracted = re.sub(r'htmlFor=', 'for=', extracted)
-                
-                # Convert Next.js Link to a tags
+                extracted = re.sub(r'\{[^}]+\}', '', extracted)
                 extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
-                extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
                 extracted = re.sub(r'</Link>', '</a>', extracted)
-                
-                # Convert Next.js Image to img tags
-                extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
-                extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
-                
-                # Preserve Fragment syntax (<>...</>)
-                extracted = re.sub(r'<>', '<div>', extracted)
-                extracted = re.sub(r'</>', '</div>', extracted)
-                
-                # Keep curly brace expressions - DON'T remove them
-                # They will be shown as-is and the AI will render them
-                
-                # Remove only problematic Next.js specific attributes
+                extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="">', extracted)
+                # Remove any remaining Next.js specific attributes
                 extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
-                extracted = re.sub(r'\s+priority\s*', '', extracted)
-                extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
-                
-                # Remove empty fragments
-                extracted = re.sub(r'<Fragment>', '', extracted)
-                extracted = re.sub(r'</Fragment>', '', extracted)
-                
-                # Clean up excessive whitespace but preserve meaningful spaces
-                extracted = re.sub(r'>\s+<', '><', extracted)
-                extracted = re.sub(r'\n{3,}', '\n\n', extracted)
-                
+                extracted = re.sub(r'\s+priority', '', extracted)
                 return extracted.strip()
             
-            # Fallback: return a simple div with the route name
-            return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
-        
-        
-        
-        
-        
-        
-        
+            return ""
         
         
         
@@ -2551,32 +2414,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     
                     
                     
-        # Print summary
-        print(f"\n📊 EXTRACTION SUMMARY:")
-        print(f"  - Brand: {brand_name}")
-        print(f"  - Navigation links: {len(nav_links)}")
-        print(f"  - Pages extracted: {len(page_contents)}")
-        for route, content in page_contents.items():
-            print(f"    • {route}: {len(content)} chars")
-        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
-
-        # ========== DEBUG: CHECK WHAT WAS EXTRACTED ==========
-        print(f"\n🔍 DEBUG - page_contents keys: {list(page_contents.keys())}")
-        for key in page_contents.keys():
-            preview = page_contents[key][:100] if page_contents[key] else "(empty)"
-            print(f"  Key: '{key}' - Content preview: {preview}...")
-        # ====================================================
-
-        # ========== COLLECT AVAILABLE IMAGES ==========
-        first_image = None        
-                           
-                    
-                    
-                    
-                    
-                    
-                    
-                    
 
         # Ensure all navigation pages have content
         for href, label in nav_links:
@@ -2634,42 +2471,13 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         page_contents_json = json.dumps(page_contents, indent=2)[:15000]
         
         # Get home page content
-        home_content = page_contents.get('page', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
+        home_content = page_contents.get('home', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
         
         # Get backend URL
         BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
         
-        
-        
-        
-        
-        
-        
-        
-        prompt = f"""CRITICAL: You MUST include Tailwind CSS CDN in the <head> tag:
-<script src="https://cdn.tailwindcss.com"></script>
-
-Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
-
-USE Tailwind CSS classes for ALL positioning, layout, spacing, colors, and responsive design.
-ONLY use custom CSS for things Tailwind doesn't provide (like custom gradients, animations, or complex hover effects).
-
-================================================================================
-REQUIRED STRUCTURE FOR HOME PAGE HERO:
-================================================================================
-<section class="relative h-screen w-full overflow-hidden">
-  <img src="[image-url]" class="absolute inset-0 w-full h-full object-cover" />
-  <div class="absolute inset-0 bg-black/50"></div>
-  <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
-    <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">[Brand Name]</h1>
-    <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[Tagline]</p>
-    <button class="btn">[CTA Text]</button>
-  </div>
-</section>
-        
-        
-        
-        
+        # ========== BUILD PROMPT WITH ALL EXTRACTED CONTENT ==========
+        prompt = f"""Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 ================================================================================
 EXTRACTED CONTENT - USE EXACTLY
@@ -2705,29 +2513,7 @@ DESIGN REQUIREMENTS
 
 
 
-================================================================================
-SPECIFIC INSTRUCTION FOR HOME PAGE (page_home)
-================================================================================
 
-The home page content above (from app/page.tsx) contains:
-
-- A hero section with an image
-- An h1 heading with your actual brand name (like "Amber College Prep")
-- A paragraph with your actual description
-- A button with your actual button text (like "Explore Programs")
-
-YOU MUST use these EXACT values. For example:
-
-✅ CORRECT: <h1>Amber College Prep</h1>
-❌ WRONG: <h1>Welcome to our website</h1>
-
-✅ CORRECT: <p>Empowering the next generation of scholars...</p>
-❌ WRONG: <p>Welcome to our website</p>
-
-✅ CORRECT: <button>Explore Programs</button>
-❌ WRONG: <button>Get Started</button>
-
-================================================================================
 
 
 
@@ -2811,9 +2597,6 @@ For example, if Programs page has program data, render the actual programs with 
 ================================================================================
 COMPLETE CSS - USE THIS EXACTLY
 ================================================================================
-
-
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
@@ -3072,27 +2855,6 @@ footer {{
 }}
 
 .page {{ animation: fadeIn 0.3s ease; }}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 </style>
 
 
@@ -3260,10 +3022,6 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 ================================================================================
 """
 
-
-
-
-
         response_text = await model_router.generate_content(
             prompt=prompt,
             config={"temperature": 0.1, "max_output_tokens": 40000}
@@ -3271,24 +3029,9 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 
         preview_html = clean_html_response(response_text)
 
-        # ========== CLEAN ONERROR HANDLERS ==========
-        preview_html = clean_onError_handlers(preview_html)  # ← ADD THIS LINE
-        # ============================================
-
         # Ensure doctype
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
 
         # Inject base64 images
         for file_key, content in files.items():

@@ -6,7 +6,6 @@ import jwt  # noqa
 import asyncio
 from html2image import Html2Image
 from pathlib import Path
-import json as json_module
 
 from fastapi.staticfiles import StaticFiles
 
@@ -1020,237 +1019,6 @@ def create_deployment_files(original_files: Dict[str, Any], image_urls: Dict[str
 
 
 
-
-
-
-
-
-
-async def manage_package_json(current_content: str, edit_description: str) -> tuple[Optional[str], List[str]]:
-    """
-    Intelligently add or remove dependencies from package.json
-    
-    Returns:
-        tuple: (updated_content, list_of_changes_made)
-    """
-    try:
-        # Parse current package.json
-        package_data = json_module.loads(current_content)
-        
-        # Ensure dependencies object exists
-        if "dependencies" not in package_data:
-            package_data["dependencies"] = {}
-        if "devDependencies" not in package_data:
-            package_data["devDependencies"] = {}
-        
-        changes_made = []
-        edit_lower = edit_description.lower()
-        
-        # ========== BLACKLIST: Words that are NOT npm packages ==========
-        blacklist = {
-            'signup', 'login', 'auth', 'sign up', 'log in',
-            'page', 'pages', 'route', 'routes', 'api', 'component',
-            'create', 'delete', 'remove', 'add', 'install', 'update',
-            'implement', 'implementation', 'implementatino',  # ← typo from your logs
-            'neon', 'database', 'postgres', 'postgresql',  # These are aliases, not real packages
-            'frontend', 'backend', 'fullstack', 'app', 'application',
-            'user', 'users', 'profile', 'dashboard', 'home',
-            'build', 'deploy', 'start', 'dev', 'production'
-        }
-        
-        # ========== SPECIAL CASE: Signup/Login Creation ==========
-        # Auto-add auth dependencies when signup or login is being created
-        is_auth_creation = any(phrase in edit_lower for phrase in [
-            'create signup', 'create login', 'create auth', 'add signup', 'add login',
-            'create sign up', 'signup page', 'login page', 'authentication',
-            'add authentication', 'add auth', 'implement signup'
-        ])
-        
-        if is_auth_creation:
-            print(f"🔐 Auth creation detected - auto-adding auth dependencies")
-            
-            # Remove any invalid package entries that might exist
-            for invalid in blacklist:
-                if invalid in package_data["dependencies"]:
-                    del package_data["dependencies"][invalid]
-                    changes_made.append(f"Removed invalid entry: {invalid}")
-                    print(f"  🗑️ Removed invalid entry: {invalid}")
-            
-            # Required auth dependencies
-            auth_deps = {
-                "bcryptjs": "^2.4.3",
-                "jsonwebtoken": "^9.0.2",
-                "@neondatabase/serverless": "^0.10.4"
-            }
-            
-            for pkg, version in auth_deps.items():
-                if pkg not in package_data["dependencies"]:
-                    package_data["dependencies"][pkg] = version
-                    changes_made.append(f"Added {pkg}@{version} to dependencies (auth required)")
-                    print(f"  ✅ Added {pkg}@{version}")
-            
-            # Required dev dependencies
-            auth_dev_deps = {
-                "@types/bcryptjs": "^2.4.6",
-                "@types/jsonwebtoken": "^9.0.7"
-            }
-            
-            for pkg, version in auth_dev_deps.items():
-                if pkg not in package_data["devDependencies"]:
-                    package_data["devDependencies"][pkg] = version
-                    changes_made.append(f"Added {pkg}@{version} to devDependencies (auth required)")
-                    print(f"  ✅ Added {pkg}@{version}")
-            
-            if changes_made:
-                updated_content = json_module.dumps(package_data, indent=2)
-                return updated_content, changes_made
-        
-        # ========== DETECT OPERATION TYPE ==========
-        is_removal = any(keyword in edit_lower for keyword in [
-            'remove', 'delete', 'uninstall', 'drop', 'get rid of', 'eliminate'
-        ])
-        
-        is_addition = any(keyword in edit_lower for keyword in [
-            'add', 'install', 'include', 'append', 'insert'
-        ]) or not is_removal
-        
-        # ========== EXTRACT PACKAGE NAMES FROM DESCRIPTION ==========
-        package_patterns = [
-            r'["\']([^"\']+)["\']',
-            r'`([^`]+)`',
-            r'@([a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_]+)',
-            r'([a-zA-Z0-9\-_@/]+)(?:\s*@\s*[\d\.\^~]+)?'
-        ]
-        
-        detected_packages = set()
-        for pattern in package_patterns:
-            matches = re.findall(pattern, edit_lower)
-            for match in matches:
-                pkg = match.strip().strip("'\"`")
-                # Skip blacklisted words
-                if pkg.lower() in blacklist:
-                    continue
-                if pkg and len(pkg) > 2 and pkg not in ['add', 'remove', 'delete', 'install', 'package', 'json']:
-                    if not pkg.startswith(('http://', 'https://', 'file:')):
-                        detected_packages.add(pkg)
-        
-        # Also clean up any existing invalid entries from package.json
-        for invalid in blacklist:
-            if invalid in package_data["dependencies"]:
-                del package_data["dependencies"][invalid]
-                changes_made.append(f"Removed invalid entry: {invalid}")
-                print(f"  🗑️ Removed invalid entry: {invalid}")
-        
-        # Package name mapping for common references
-        package_mapping = {
-            'neon': '@neondatabase/serverless',
-            'neondatabase': '@neondatabase/serverless',
-            'neon database': '@neondatabase/serverless',
-            'postgres': 'pg',
-            'postgresql': 'pg',
-            'jwt': 'jsonwebtoken',
-            'json web token': 'jsonwebtoken',
-            'bcrypt': 'bcryptjs',
-            '@types/jwt': '@types/jsonwebtoken',
-            '@types/bcrypt': '@types/bcryptjs',
-        }
-        
-        # Apply mapping
-        expanded_packages = set()
-        for pkg in detected_packages:
-            pkg_lower = pkg.lower()
-            if pkg_lower in package_mapping:
-                expanded_packages.add(package_mapping[pkg_lower])
-            else:
-                expanded_packages.add(pkg)
-        
-        detected_packages = expanded_packages
-        
-        # Package versions database
-        package_versions = {
-            "@neondatabase/serverless": "^0.10.4",
-            "jsonwebtoken": "^9.0.2",
-            "bcryptjs": "^2.4.3",
-            "@types/jsonwebtoken": "^9.0.7",
-            "@types/bcryptjs": "^2.4.6",
-            "pg": "^8.11.3",
-            "dotenv": "^16.3.1",
-            "axios": "^1.6.0",
-            "lodash": "^4.17.21",
-        }
-        
-        # Execute additions or removals
-        if is_removal:
-            print(f"🗑️ Removing packages: {detected_packages}")
-            for pkg in detected_packages:
-                if pkg in package_data["dependencies"]:
-                    del package_data["dependencies"][pkg]
-                    changes_made.append(f"Removed {pkg} from dependencies")
-                    print(f"  ✅ Removed {pkg}")
-                
-                if pkg in package_data["devDependencies"]:
-                    del package_data["devDependencies"][pkg]
-                    changes_made.append(f"Removed {pkg} from devDependencies")
-                    print(f"  ✅ Removed {pkg} from devDependencies")
-        else:
-            print(f"📦 Adding packages: {detected_packages}")
-            for pkg in detected_packages:
-                is_dev = pkg.startswith('@types/') or 'types' in pkg.lower()
-                version = package_versions.get(pkg, "^1.0.0")
-                
-                if is_dev:
-                    if pkg not in package_data["devDependencies"]:
-                        package_data["devDependencies"][pkg] = version
-                        changes_made.append(f"Added {pkg}@{version} to devDependencies")
-                        print(f"  ✅ Added {pkg} to devDependencies")
-                else:
-                    if pkg not in package_data["dependencies"]:
-                        package_data["dependencies"][pkg] = version
-                        changes_made.append(f"Added {pkg}@{version} to dependencies")
-                        print(f"  ✅ Added {pkg} to dependencies")
-        
-        # Handle special requests
-        if any(phrase in edit_lower for phrase in ['remove database', 'remove neon', 'remove @neondatabase']):
-            for db_pkg in ['@neondatabase/serverless', 'pg']:
-                if db_pkg in package_data["dependencies"]:
-                    del package_data["dependencies"][db_pkg]
-                    changes_made.append(f"Removed {db_pkg}")
-                    print(f"  ✅ Removed {db_pkg}")
-        
-        if any(phrase in edit_lower for phrase in ['add database', 'add neon']):
-            if '@neondatabase/serverless' not in package_data["dependencies"]:
-                package_data["dependencies"]['@neondatabase/serverless'] = '^0.10.4'
-                changes_made.append("Added @neondatabase/serverless")
-                print(f"  ✅ Added @neondatabase/serverless")
-        
-        if changes_made:
-            updated_content = json_module.dumps(package_data, indent=2)
-            return updated_content, changes_made
-        else:
-            return None, []
-            
-    except Exception as e:
-        print(f"❌ Package.json management error: {e}")
-        return None, []
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def extract_brand_name(files: dict) -> str:
     """Extract brand name from Navigation.tsx"""
     nav_content = files.get("components/Navigation.tsx", "")
@@ -2111,70 +1879,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
     try:
         print(f"🤖 AI generating beautiful HTML preview for: {project_name}")
 
-
-
-
-
-
-
-
-
-
-        # ========== ADD THIS FUNCTION RIGHT HERE ==========
-        def clean_onError_handlers(html: str) -> str:
-            """Convert string onError handlers to actual JavaScript"""
-            import re
-            
-            # Count how many fixes were made
-            fixes_count = 0
-            
-            # Fix pattern: onError="{(e) => { ... }}"
-            pattern = r'onError="\{\(e\)\s*=>\s*\{([^}]+)\}\}"'
-            html, count = re.subn(pattern, r'onError={(e) => { \1 }}', html)
-            fixes_count += count
-            
-            # Fix any onError with quotes
-            pattern2 = r'onError="([^"]+)"'
-            def fix_handler(match):
-                handler = match.group(1)
-                handler = handler.strip()
-                if handler.startswith('{') and handler.endswith('}'):
-                    handler = handler[1:-1]
-                return f'onError={{{handler}}}'
-            html, count = re.subn(pattern2, fix_handler, html)
-            fixes_count += count
-            
-            # Fix escaped characters
-            html = html.replace('&quot;', '"')
-            html = html.replace('&#39;', "'")
-            html = html.replace('&#123;', '{')
-            html = html.replace('&#125;', '}')
-            
-            # Fix double braces
-            html, count = re.subn(r'onError=\{\{(.+?)\}\}', r'onError={\1}', html)
-            fixes_count += count
-            
-            if fixes_count > 0:
-                print(f"🔧 Fixed {fixes_count} onError handler(s) in preview HTML")
-            
-            return html
-        # ========== END OF FUNCTION ==========
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== COLLECT NAVIGATION ==========
         nav_content = ""
         nav_paths = [
@@ -2232,22 +1936,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== EXTRACT FOOTER CONTENT ==========
         footer_html = ""
         footer_paths = [
@@ -2261,12 +1949,8 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         for fp in footer_paths:
             if fp in files:
                 content = files[fp]
-                # Remove 'use client' and imports first
-                clean_footer = re.sub(r'^["\']use client["\'];\s*$', '', content, flags=re.MULTILINE)
-                clean_footer = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', clean_footer, flags=re.MULTILINE)
-                
                 # Extract JSX return content
-                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean_footer, re.DOTALL)
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', content, re.DOTALL)
                 if match:
                     footer_html = match.group(1)
                 else:
@@ -2275,123 +1959,45 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                         footer_html = match.group(0)
                 
                 if footer_html:
-                    # Clean up footer HTML (preserve content)
+                    # Clean up footer HTML
                     footer_html = re.sub(r'className=', 'class=', footer_html)
                     footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
                     footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                    footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
                     footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
-                    # Don't remove curly braces in footer
-                    # footer_html = re.sub(r'\{[^}]+\}', '', footer_html)  # COMMENTED OUT
                     print(f"✅ Footer extracted: {len(footer_html)} chars")
                     break
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         # ========== EXTRACT ALL PAGE CONTENTS ==========
         page_contents = {}
         
-        
-        
-        
-
-        
-        
-        
-        
-        
-        
-        
-         # Helper function to extract content from TSX/JSX files
+        # Helper function to extract content from TSX/JSX files
         def extract_page_content(content: str, route_name: str) -> str:
             """Extract meaningful content from page component"""
             if not content:
                 return ""
             
-            # Remove imports and exports (but keep the JSX structure)
-            clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)
-            clean = re.sub(r'^export\s+default\s+\w+;?\s*$', '', clean, flags=re.MULTILINE)
-            clean = re.sub(r'^export\s+const\s+\w+\s*=\s*', '', clean, flags=re.MULTILINE)
-            clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
+            # Remove imports and exports
+            clean = re.sub(r'import\s+.*?from\s+["\'][^"\']+["\'];\s*', '', content)
+            clean = re.sub(r'export\s+default\s+\w+;?\s*', '', clean)
+            clean = re.sub(r'export\s+const\s+\w+\s*=\s*', '', clean)
             
-            # Remove 'use client' directive
-            clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
-            
-            # Extract return JSX - handle both arrow functions and regular functions
+            # Extract return JSX
             match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean, re.DOTALL)
-            if not match:
-                # Try without parentheses
-                match = re.search(r'return\s+([\s\S]*?);\s*\}', clean, re.DOTALL)
-            
             if match:
                 extracted = match.group(1)
-                
-                # Convert JSX to HTML (preserve all content)
+                # Convert JSX to HTML
                 extracted = re.sub(r'className=', 'class=', extracted)
-                extracted = re.sub(r'htmlFor=', 'for=', extracted)
-                
-                # Convert Next.js Link to a tags
+                extracted = re.sub(r'\{[^}]+\}', '', extracted)
                 extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
-                extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
                 extracted = re.sub(r'</Link>', '</a>', extracted)
-                
-                # Convert Next.js Image to img tags
-                extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
-                extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
-                
-                # Preserve Fragment syntax (<>...</>)
-                extracted = re.sub(r'<>', '<div>', extracted)
-                extracted = re.sub(r'</>', '</div>', extracted)
-                
-                # Keep curly brace expressions - DON'T remove them
-                # They will be shown as-is and the AI will render them
-                
-                # Remove only problematic Next.js specific attributes
+                extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="">', extracted)
+                # Remove any remaining Next.js specific attributes
                 extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
-                extracted = re.sub(r'\s+priority\s*', '', extracted)
-                extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
-                
-                # Remove empty fragments
-                extracted = re.sub(r'<Fragment>', '', extracted)
-                extracted = re.sub(r'</Fragment>', '', extracted)
-                
-                # Clean up excessive whitespace but preserve meaningful spaces
-                extracted = re.sub(r'>\s+<', '><', extracted)
-                extracted = re.sub(r'\n{3,}', '\n\n', extracted)
-                
+                extracted = re.sub(r'\s+priority', '', extracted)
                 return extracted.strip()
             
-            # Fallback: return a simple div with the route name
-            return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+            return ""
         
         # Scan all files for page components
         for file_path, content in files.items():
@@ -2551,32 +2157,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     
                     
                     
-        # Print summary
-        print(f"\n📊 EXTRACTION SUMMARY:")
-        print(f"  - Brand: {brand_name}")
-        print(f"  - Navigation links: {len(nav_links)}")
-        print(f"  - Pages extracted: {len(page_contents)}")
-        for route, content in page_contents.items():
-            print(f"    • {route}: {len(content)} chars")
-        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
-
-        # ========== DEBUG: CHECK WHAT WAS EXTRACTED ==========
-        print(f"\n🔍 DEBUG - page_contents keys: {list(page_contents.keys())}")
-        for key in page_contents.keys():
-            preview = page_contents[key][:100] if page_contents[key] else "(empty)"
-            print(f"  Key: '{key}' - Content preview: {preview}...")
-        # ====================================================
-
-        # ========== COLLECT AVAILABLE IMAGES ==========
-        first_image = None        
-                           
-                    
-                    
-                    
-                    
-                    
-                    
-                    
 
         # Ensure all navigation pages have content
         for href, label in nav_links:
@@ -2634,42 +2214,13 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         page_contents_json = json.dumps(page_contents, indent=2)[:15000]
         
         # Get home page content
-        home_content = page_contents.get('page', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
+        home_content = page_contents.get('home', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
         
         # Get backend URL
-        BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+        BACKEND_URL = os.environ.get("BACKEND_URL", "https://eaglecode2-2.onrender.com")
         
-        
-        
-        
-        
-        
-        
-        
-        prompt = f"""CRITICAL: You MUST include Tailwind CSS CDN in the <head> tag:
-<script src="https://cdn.tailwindcss.com"></script>
-
-Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
-
-USE Tailwind CSS classes for ALL positioning, layout, spacing, colors, and responsive design.
-ONLY use custom CSS for things Tailwind doesn't provide (like custom gradients, animations, or complex hover effects).
-
-================================================================================
-REQUIRED STRUCTURE FOR HOME PAGE HERO:
-================================================================================
-<section class="relative h-screen w-full overflow-hidden">
-  <img src="[image-url]" class="absolute inset-0 w-full h-full object-cover" />
-  <div class="absolute inset-0 bg-black/50"></div>
-  <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
-    <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">[Brand Name]</h1>
-    <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[Tagline]</p>
-    <button class="btn">[CTA Text]</button>
-  </div>
-</section>
-        
-        
-        
-        
+        # ========== BUILD PROMPT WITH ALL EXTRACTED CONTENT ==========
+        prompt = f"""Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 ================================================================================
 EXTRACTED CONTENT - USE EXACTLY
@@ -2701,63 +2252,6 @@ DESIGN REQUIREMENTS
 5. NO Tailwind CDN - use ONLY custom CSS below
 6. ONLY ONE <style> tag and ONE <script> tag
 7. Use the EXTRACTED page content above - NO generic placeholders
-
-
-
-
-================================================================================
-SPECIFIC INSTRUCTION FOR HOME PAGE (page_home)
-================================================================================
-
-The home page content above (from app/page.tsx) contains:
-
-- A hero section with an image
-- An h1 heading with your actual brand name (like "Amber College Prep")
-- A paragraph with your actual description
-- A button with your actual button text (like "Explore Programs")
-
-YOU MUST use these EXACT values. For example:
-
-✅ CORRECT: <h1>Amber College Prep</h1>
-❌ WRONG: <h1>Welcome to our website</h1>
-
-✅ CORRECT: <p>Empowering the next generation of scholars...</p>
-❌ WRONG: <p>Welcome to our website</p>
-
-✅ CORRECT: <button>Explore Programs</button>
-❌ WRONG: <button>Get Started</button>
-
-================================================================================
-
-
-
-
-================================================================================
-🚨🚨🚨 CRITICAL: SIGNUP & LOGIN PAGE REQUIREMENTS 🚨🚨🚨
-================================================================================
-
-When generating the HTML preview, you MUST follow these rules for authentication pages:
-
-**SIGNUP PAGE (page_signup) - MUST have:**
-1. Form with id="signup-form"
-2. Form with onsubmit="handleSignup(event); return false;"
-3. Input with name="name" for full name
-4. Input with name="email" for email address
-5. Input with name="password" for password
-6. Input with name="confirmPassword" for password confirmation
-7. Submit button that says "Sign up"
-
-**LOGIN PAGE (page_login) - MUST have:**
-1. Form with id="login-form"
-2. Form with onsubmit="handleLogin(event); return false;"
-3. Input with name="email" for email address
-4. Input with name="password" for password
-5. Submit button that says "Sign in"
-
-
-
-
-
 
 
 
@@ -2811,9 +2305,6 @@ For example, if Programs page has program data, render the actual programs with 
 ================================================================================
 COMPLETE CSS - USE THIS EXACTLY
 ================================================================================
-
-
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
@@ -3072,27 +2563,6 @@ footer {{
 }}
 
 .page {{ animation: fadeIn 0.3s ease; }}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 </style>
 
 
@@ -3260,10 +2730,6 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 ================================================================================
 """
 
-
-
-
-
         response_text = await model_router.generate_content(
             prompt=prompt,
             config={"temperature": 0.1, "max_output_tokens": 40000}
@@ -3271,24 +2737,9 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 
         preview_html = clean_html_response(response_text)
 
-        # ========== CLEAN ONERROR HANDLERS ==========
-        preview_html = clean_onError_handlers(preview_html)  # ← ADD THIS LINE
-        # ============================================
-
         # Ensure doctype
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
 
         # Inject base64 images
         for file_key, content in files.items():
@@ -3299,28 +2750,11 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
                 preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
                 preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
 
-
-
-
-
-
-
-
-
-
         # ========== AUTH HANDLER SCRIPT ==========
         auth_script = f"""
 <script>
+const CONNECTION_ID = localStorage.getItem("connection_id");
 const BACKEND_URL = "{BACKEND_URL}";
-
-// Get connection string directly from localStorage
-function getDbConnection() {{
-    let conn = localStorage.getItem("neon_db_connection");
-    if (!conn) {{
-        conn = sessionStorage.getItem("neon_db_connection");
-    }}
-    return conn;
-}}
 
 async function handleSignup(event) {{
     event.preventDefault();
@@ -3329,15 +2763,6 @@ async function handleSignup(event) {{
     const email = form.querySelector('[name="email"]')?.value;
     const password = form.querySelector('[name="password"]')?.value;
     const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
-    
-    // Get connection string directly
-    const dbConnection = getDbConnection();
-    console.log("🔑 DB Connection found:", dbConnection ? "Yes ✅" : "No ❌");
-    
-    if (!dbConnection) {{
-        alert('❌ Database not connected. Please add your Neon DB connection string first.\\n\\nOpen console and run:\\nlocalStorage.setItem("neon_db_connection", "your-connection-string")');
-        return;
-    }}
     
     if (password !== confirmPassword) {{
         alert('❌ Passwords do not match');
@@ -3356,16 +2781,9 @@ async function handleSignup(event) {{
         const response = await fetch(`${{BACKEND_URL}}/api/auth/signup`, {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ 
-                name, 
-                email, 
-                password, 
-                db_connection_string: dbConnection 
-            }})
+            body: JSON.stringify({{ name, email, password, connection_id: CONNECTION_ID }})
         }});
         const data = await response.json();
-        console.log("📡 Signup response:", data);
-        
         if (data.success) {{
             alert('✅ Account created successfully! You can now log in.');
             form.reset();
@@ -3381,7 +2799,6 @@ async function handleSignup(event) {{
             alert('❌ ' + (data.error || 'Signup failed'));
         }}
     }} catch (error) {{
-        console.error('Signup error:', error);
         alert('❌ Network error. Make sure backend is running');
     }} finally {{
         if (submitBtn) submitBtn.innerText = originalText;
@@ -3394,13 +2811,6 @@ async function handleLogin(event) {{
     const email = form.querySelector('[name="email"]')?.value;
     const password = form.querySelector('[name="password"]')?.value;
     
-    // Get connection string directly
-    const dbConnection = getDbConnection();
-    if (!dbConnection) {{
-        alert('❌ Database not connected. Please add your Neon DB connection string first.');
-        return;
-    }}
-    
     const submitBtn = form.querySelector('[type="submit"]');
     const originalText = submitBtn?.innerText || 'Login';
     if (submitBtn) submitBtn.innerText = 'Logging in...';
@@ -3409,14 +2819,9 @@ async function handleLogin(event) {{
         const response = await fetch(`${{BACKEND_URL}}/api/auth/login`, {{
             method: 'POST',
             headers: {{ 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ 
-                email, 
-                password, 
-                db_connection_string: dbConnection 
-            }})
+            body: JSON.stringify({{ email, password, connection_id: CONNECTION_ID }})
         }});
         const data = await response.json();
-        
         if (data.success) {{
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
@@ -3430,27 +2835,13 @@ async function handleLogin(event) {{
             alert('❌ ' + (data.error || 'Login failed'));
         }}
     }} catch (error) {{
-        console.error('Login error:', error);
         alert('❌ Network error. Make sure backend is running');
     }} finally {{
         if (submitBtn) submitBtn.innerText = originalText;
     }}
 }}
 
-// Listen for database connection from parent window (for iframe preview)
-window.addEventListener('message', function(event) {{
-    if (event.data && event.data.type === 'SET_DB_CONNECTION') {{
-        localStorage.setItem('neon_db_connection', event.data.db_connection);
-        console.log('✅ DB Connection received from parent');
-    }}
-}});
-
 document.addEventListener('DOMContentLoaded', function() {{
-    // Request connection string from parent if not present
-    if (!getDbConnection() && window.parent !== window) {{
-        window.parent.postMessage({{ type: 'GET_DB_CONNECTION' }}, '*');
-    }}
-    
     document.querySelectorAll('form').forEach(form => {{
         const hasPassword = form.querySelector('[type="password"]');
         const hasEmail = form.querySelector('[type="email"]');
@@ -3469,16 +2860,6 @@ document.addEventListener('DOMContentLoaded', function() {{
 </script>
 """
 
-
-
-
-
-
-
-
-
-
-
         # Inject auth script
         if '</body>' in preview_html:
             preview_html = preview_html.replace('</body>', f'{auth_script}\n</body>')
@@ -3487,11 +2868,6 @@ document.addEventListener('DOMContentLoaded', function() {{
 
         print(f"✅ Beautiful preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
-    
-    
-    
-    
-    
 
     except Exception as e:
         print(f"❌ AI Preview Error: {e}")
@@ -3860,353 +3236,6 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 ================================================================================
-SPECIFIC RULE FOR app/page.tsx - MUST HAVE 'use client'
-================================================================================
-
-STATEMENT: app/page.tsx MUST have 'use client' as the FIRST line because it contains 
-images with onError handlers and buttons with onClick handlers.
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨🚨🚨 THREE MANDATORY RULES FOR ALL GENERATED CODE 🚨🚨🚨
-================================================================================
-
-These rules MUST be followed for EVERY file generated. Violations will cause Vercel build failures.
-
-================================================================================
-RULE 1: IMAGE ERROR HANDLERS - MUST USE OPTIONAL CHAINING
-================================================================================
-
-STATEMENT: When generating any image with an onError handler, you MUST use 
-optional chaining (?.) when accessing parentElement.
-
-REQUIREMENT: Replace `parentElement.classList` with `parentElement?.classList`
-
-EXAMPLE - CORRECT:
-```tsx
-onError={(e) => {
-  e.currentTarget.style.display = 'none';
-  e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-950', 'via-zinc-950', 'to-pink-950');
-}}
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨🚨🚨 CRITICAL RULES FOR ALL GENERATED CODE 🚨🚨🚨
-================================================================================
-
-RULE 1: IMAGE ERROR HANDLERS - ALWAYS use optional chaining
-================================================================================
-
-When generating any image with an onError handler, ALWAYS use this pattern:
-
-✅ CORRECT:
-```tsx
-onError={(e) => {
-  e.currentTarget.style.display = 'none';
-  e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-950', 'via-zinc-950', 'to-pink-950');
-}}
-❌ WRONG (causes build error):
-onError={(e) => {
-  e.currentTarget.style.display = 'none';
-  e.currentTarget.parentElement.classList.add(...);  // Missing ?.
-}}
-
-
-
-
-
-
-================================================================================
-RULE 2: ALL PAGES WITH EVENT HANDLERS MUST HAVE 'use client'
-================================================================================
-
-Any file that contains ANY of the following MUST have 'use client' as the FIRST line:
-
-Event Handlers:
-- onError
-- onClick
-- onSubmit
-- onChange
-- onMouseEnter
-- onMouseLeave
-- onFocus
-- onBlur
-- onKeyDown
-- onKeyUp
-- onScroll
-
-React Hooks:
-- useState
-- useEffect
-- useCallback
-- useMemo
-- useRef
-- useContext
-- useReducer
-
-Next.js Hooks:
-- useRouter
-- usePathname
-- useSearchParams
-
-Browser APIs:
-- localStorage
-- sessionStorage
-- window
-- document
-
-✅ CORRECT (this will build successfully):
-```tsx
-'use client';
-
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-
-export default function MyPage() {
-  const [count, setCount] = useState(0);
-  const router = useRouter();
-  
-  return (
-    <button onClick={() => setCount(count + 1)}>
-      Click me
-    </button>
-  );
-}
-❌ WRONG (this will FAIL the Vercel build):
-import React, { useState } from 'react';  // Missing 'use client'
-
-export default function MyPage() {
-  const [count, setCount] = useState(0);  // ERROR: useState requires 'use client'
-  
-  return <button onClick={() => setCount(count + 1)}>Click</button>;
-}
-❌ WRONG (this will also FAIL):
-import React from 'react';
-
-export default function MyPage() {
-  return (
-    <img 
-      src="/image.jpg" 
-      onError={(e) => {  // ERROR: onError requires 'use client'
-        e.currentTarget.style.display = 'none';
-      }}
-    />
-  );
-}
-
-
-
-
-
-
-
-================================================================================
-WHICH FILES NEED 'use client'? - COMPLETE LIST
-================================================================================
-
-✅ MUST HAVE 'use client' - CLIENT COMPONENTS:
-
-app/page.tsx                    # If it has: onError, onClick, useState, useRouter
-app/signup/page.tsx             # Has forms, onSubmit, onChange, useState
-app/login/page.tsx              # Has forms, onSubmit, onChange, useState
-app/contact/page.tsx            # Has forms, onSubmit, onChange, useState
-app/about/page.tsx              # If it has images with onError
-app/dashboard/page.tsx          # Usually has client interactions
-app/profile/page.tsx            # Has forms, user interactions
-app/settings/page.tsx           # Has forms, toggles, switches
-app/cart/page.tsx               # Has add/remove buttons
-app/checkout/page.tsx           # Has forms, payment interactions
-app/search/page.tsx             # Has input, filters
-app/blog/[slug]/page.tsx        # If it has comments, likes, shares
-
-components/Navigation.tsx       # Always - has onClick, useState (mobile menu)
-components/Footer.tsx           # If it has newsletter form, social links
-components/Button.tsx           # Always - has onClick
-components/Modal.tsx            # Always - has open/close state
-components/Dropdown.tsx         # Always - has toggle state
-components/Tabs.tsx             # Always - has active tab state
-components/Carousel.tsx         # Always - has next/prev buttons
-components/ImageGallery.tsx     # Has onError for images
-components/VideoPlayer.tsx      # Has play/pause controls
-components/FormInput.tsx        # Has onChange, onBlur
-components/FileUploader.tsx     # Has file selection
-components/StarRating.tsx       # Has onClick for rating
-components/NewsletterSignup.tsx # Has form submission
-components/SearchBar.tsx        # Has input, search functionality
-components/CartIcon.tsx         # Has onClick for cart
-components/UserMenu.tsx         # Has onClick for dropdown
-components/MobileMenu.tsx       # Has toggle state
-components/DarkModeToggle.tsx   # Has toggle state
-
-hooks/useAuth.ts                # Always - uses useState, useEffect
-hooks/useLocalStorage.ts        # Always - uses localStorage
-hooks/useMediaQuery.ts          # Always - uses window.matchMedia
-hooks/useScrollPosition.ts      # Always - uses window.scroll
-hooks/useWindowSize.ts          # Always - uses window resize
-
-context/AuthContext.tsx         # Always - has useState, useEffect
-context/ThemeContext.tsx        # Always - has useState
-context/CartContext.tsx         # Always - has useState
-
-lib/api-client.ts               # If it uses fetch in browser
-lib/storage.ts                  # If it uses localStorage/sessionStorage
-
-================================================================================
-❌ DO NOT NEED 'use client' - SERVER COMPONENTS:
-================================================================================
-
-app/layout.tsx                  # Can stay Server Component
-app/loading.tsx                 # Server Component (loading UI)
-app/error.tsx                   # Server Component (error UI)
-app/not-found.tsx               # Server Component (404 page)
-app/api/*/route.ts              # API routes - run on server only
-
-components/ServerComponent.tsx  # No client interactions
-components/MarkdownRenderer.tsx # Pure rendering
-
-lib/db.ts                       # Database utilities - server only
-lib/auth-server.ts              # Server-side auth only
-lib/email-service.ts            # Email sending - server only
-
-types/index.ts                  # TypeScript types - no runtime code
-utils/constants.ts              # Constants - no hooks
-utils/helpers.ts                # Pure functions - no hooks
-
-middleware.ts                   # Runs on server
-next.config.js                  # Configuration file
-tailwind.config.ts              # Configuration file
-postcss.config.js               # Configuration file
-
-================================================================================
-QUICK CHECKLIST FOR AI:
-================================================================================
-
-Ask yourself these questions:
-
-1. Does the file have any event handlers? (onClick, onSubmit, onError, onChange)
-   → YES: Add 'use client'
-
-2. Does the file use any React Hooks? (useState, useEffect, useCallback)
-   → YES: Add 'use client'
-
-3. Does the file use Next.js client hooks? (useRouter, usePathname, useSearchParams)
-   → YES: Add 'use client'
-
-4. Does the file use browser APIs? (localStorage, sessionStorage, window, document)
-   → YES: Add 'use client'
-
-5. Is the file a page with forms or user interaction?
-   → YES: Add 'use client'
-
-6. Is the file a component that will be interactive?
-   → YES: Add 'use client'
-
-If you answered YES to ANY question → ADD 'use client' at the top
-
-================================================================================
-EXAMPLES OF CORRECT 'use client' PLACEMENT:
-================================================================================
-
-✅ app/signup/page.tsx (needs it - has form):
-```tsx
-'use client';
-
-import React, { useState } from 'react';
-import Link from 'next/link';
-
-export default function SignupPage() {
-  const [email, setEmail] = useState('');
-  
-  return (
-    <form onSubmit={...}>
-      <input onChange={(e) => setEmail(e.target.value)} />
-    </form>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-FOOTER GENERATION RULE - DYNAMIC IMPORTS
-================================================================================
-
-When generating components/Footer.tsx, the AI MUST:
-
-1. First, write the Footer JSX with all the icons it wants to use
-2. Then, look at EVERY icon used in the JSX
-3. Finally, add ALL those icons to the import statement
-
-================================================================================
-STEP BY STEP PROCESS FOR AI:
-================================================================================
-
-STEP 1: Design the Footer JSX with icons
-Example:
-```tsx
-<div>
-  <GraduationCap className="w-8 h-8" />
-  <Mail className="w-4 h-4" />
-  <Phone className="w-4 h-4" />
-  <MapPin className="w-4 h-4" />
-  <Send className="w-4 h-4" />
-  <Facebook className="w-5 h-5" />
-  <Twitter className="w-5 h-5" />
-  <Instagram className="w-5 h-5" />
-  <Heart className="w-3 h-3" />
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
 🚨 CRITICAL: HOME PAGE HERO BACKGROUND - ALWAYS USE IMAGE 🚨
 ================================================================================
 
@@ -4264,7 +3293,6 @@ CRITICAL SITE STRUCTURE & NAVIGATION
        - It must contain the Brand Name, a brief description, and a copyright notice with the current year (2026).
        - Should be haivng the social media icons and links
        - Style the footer with a "glass" effect or a clean, dark aesthetic to match the senior designer requirements.
-       - ALL Lucide imports MUST be declared at the top
 
 ================================================================================
 TECHNICAL BUILD RULES — NO EXCEPTIONS
@@ -4590,7 +3618,6 @@ Create a premium, elegant Footer component for the Next.js website.
 File path: "components/Footer.tsx"
 
 Requirements:
-- All lucide imports should be at the top.
 - Make it a modern glassmorphism-style footer with subtle backdrop blur.
 - Use the project's purple-pink gradient theme: bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
 - Include a decorative top border with gradient: bg-gradient-to-r from-transparent via-purple-500 to-transparent
@@ -7388,10 +6415,6 @@ async def edit_file(request: Dict[str, Any]):
         # Initialize updated_files with all_files
         updated_files = {**all_files}
 
-
-        # ✅ ADD THIS LINE HERE - edit_results initialization at the TOP
-        edit_results = []  # <--- ADD THIS RIGHT HERE
-
         # Helper function to create simple preview after deletion
         def create_simple_preview(files: Dict[str, Any], project_name: str) -> str:
             """Create a simple HTML preview when AI generation fails"""
@@ -7503,106 +6526,12 @@ async def edit_file(request: Dict[str, Any]):
 </html>'''
             return html
 
-
-
-
-
-
-
-
         # ========== STEP 1: CHECK FOR DELETION REQUESTS (HIGHEST PRIORITY) ==========
         deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
         is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
       
-        # Also check for package.json specific deletions
-        is_package_json_deletion = 'package.json' in edit_description.lower() and any(keyword in edit_description.lower() for keyword in ['remove', 'delete'])
-        
-        if is_deletion_request or is_package_json_deletion:
+        if is_deletion_request:
             print(f"🤖 AI analyzing deletion request: {edit_description}")
-            
-            
-            
-            
-        # SPECIAL HANDLE FOR PACKAGE.JSON DELETIONS
-        if is_package_json_deletion or '@neondatabase' in edit_description.lower() or 'package.json' in edit_description.lower():
-            print(f"📦 Detected package.json modification request")
-            
-            # Look for package.json file
-            package_json_path = "package.json"
-            if package_json_path in updated_files:
-                current_package_json = updated_files[package_json_path]
-                
-                # Use the manage_package_json function to remove the dependency
-                updated_content, changes = await manage_package_json(current_package_json, edit_description)
-                
-                if updated_content and changes:
-                    # Update the file in memory
-                    updated_files[package_json_path] = updated_content
-                    
-                    # CRITICAL: Add to edit_results so frontend knows file changed
-                    edit_results.append({
-                        "file_path": package_json_path,
-                        "original_content": current_package_json,
-                        "updated_content": updated_content,
-                        "success": True,
-                        "is_new_file": False,
-                        "changes": changes
-                    })
-                    
-                    print(f"✅ package.json updated: {changes}")
-                    
-                    # Regenerate preview
-                    new_preview_html = existing_preview
-                    try:
-                        preview_result = await generate_preview_internal(updated_files, project_name_from_request or "Scorpio Project")
-                        if preview_result.get("success"):
-                            new_preview_html = preview_result.get("preview_html")
-                            updated_files["preview_html"] = new_preview_html
-                            await save_regenerated_preview(
-                                preview_html=new_preview_html,
-                                project_name=project_name_from_request or "Scorpio Project",
-                                project_id=project_id
-                            )
-                    except Exception as preview_error:
-                        print(f"⚠️ Preview error: {preview_error}")
-                    
-                    # Return with the updated file so frontend can apply the change
-                    return {
-                        "success": True,
-                        "deleted_files": [],
-                        "removed_links": [],
-                        "edits": edit_results,  # ← ADD THIS
-                        "files_edited": [package_json_path],  # ← ADD THIS
-                        "updated_files": {
-                            package_json_path: updated_content
-                        },
-                        "preview_html": new_preview_html,
-                        "message": f"✅ Updated package.json: {', '.join(changes)}"
-                    }
-                else:
-                    print(f"⚠️ No changes made to package.json")
-                    return {
-                        "success": True,
-                        "message": "No matching dependencies found to remove",
-                        "preview_html": existing_preview
-                    }
-            else:
-                print(f"⚠️ package.json not found")
-                return {
-                    "success": False,
-                    "message": "package.json not found in project",
-                    "preview_html": existing_preview
-                }
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
           
             # Create summary of existing pages for AI
             existing_pages = []
@@ -7823,46 +6752,6 @@ UPDATED CODE:"""
                 "files_edited": all_deleted_files
             }
 
-
-
-
-
-
-
-
-
-
-        # ========== INSERT THIS RIGHT HERE (BEFORE STEP 2) ==========
-        # Check if this is a package.json edit (skip database modal)
-        is_package_json_edit = False
-        
-        # Check edit description for dependency-related keywords
-        if ('dependencies' in edit_description.lower() or 
-            'package.json' in edit_description.lower() or 
-            '@neondatabase' in edit_description.lower() or
-            'jsonwebtoken' in edit_description.lower()):
-            is_package_json_edit = True
-            print(f"📦 Detected package.json/dependency edit - will skip database modal")
-        # ================================================================
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== STEP 2: CHECK FOR DATABASE REQUESTS ==========
         is_db_request = any(keyword in edit_description.lower() for keyword in [
             'database', 'db', 'postgres', 'neon', 'login', 'signup', 'register',
@@ -7870,17 +6759,6 @@ UPDATED CODE:"""
             'integrating', 'connect to database', 'neon database'
         ])
       
-      
-      
-        # ✅ ADD THIS RIGHT HERE - Override for package.json edits
-        if is_package_json_edit:
-            is_db_request = False
-            print(f"📦 Package.json edit detected - overriding is_db_request to False")
-      
-      
-      
-      
-        # ✅ NOW check the condition (after override)
         if is_db_request and not user_db_connection_string:
             print(f"🗄️ Database request detected, asking for connection string...")
             return {
@@ -7891,15 +6769,6 @@ UPDATED CODE:"""
                 "example": "postgresql://username:password@ep-example.neon.tech/dbname?sslmode=require",
                 "note": "This database will be used for YOUR project's authentication."
             }
-            
-            
-            
-            
-            
-            
-      
-      
-      
       
         db_schema_created = False
         if is_db_request and user_db_connection_string:
@@ -7992,20 +6861,16 @@ UPDATED CODE:"""
 
 
 
+
+
+
+
+
+
         # ========== STEP 3: CONTINUE WITH NORMAL EDITING ==========
         source_files = {k: v for k, v in all_files.items() if k != "preview_html"}
       
         print(f"📂 Processing normal edit request...")
-        
-        # ========== NEW: Check if this is a signup/login request ==========
-        is_signup_request = any(phrase in edit_description.lower() for phrase in [
-            'signup', 'login', 'implement signup', 'implement login', 
-            'create signup', 'create login', 'add signup', 'add login',
-            'authentication', 'auth', 'sign up', 'log in'
-        ])
-        
-        if is_signup_request:
-            print(f"🔐 Signup/Login request detected - layout.tsx will NOT be edited")
       
         # Create summary for AI
         file_summary = []
@@ -8018,27 +6883,35 @@ UPDATED CODE:"""
             file_summary.append(f"File: {file_path}\nFirst lines:\n{snippet}\n")
       
         file_summary_text = "\n---\n".join(file_summary)
-        
-        # ========== UPDATED PROMPT with instruction for signup ==========
-        if is_signup_request:
-            analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
-
-⚠️ CRITICAL: This is a SIGNUP/LOGIN implementation request.
-- DO NOT edit app/layout.tsx - it should remain unchanged
-- ONLY edit files directly related to signup/login functionality
-
-EDIT REQUEST: {edit_description}
-AVAILABLE SOURCE FILES:
-{file_summary_text}
-
-Return ONLY a JSON object with:
-{{
-  "files_to_edit": ["app/signup/page.tsx", "app/api/auth/signup/route.ts"],
-  "explanation": "brief explanation",
-  "what_to_change": "specific elements to modify"
-}}"""
-        else:
-            analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+        analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
 EDIT REQUEST: {edit_description}
 AVAILABLE SOURCE FILES:
 {file_summary_text}
@@ -8048,8 +6921,27 @@ Return ONLY a JSON object with:
   "explanation": "brief explanation",
   "what_to_change": "specific elements to modify"
 }}"""
-        
         print("🤖 Asking AI to analyze...")
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
       
         try:
             analysis_text = await model_router.generate_content(
@@ -8058,66 +6950,59 @@ Return ONLY a JSON object with:
             )
             analysis_text = analysis_text.strip()
             analysis_text = clean_json_response(analysis_text)
-            # Use json_module instead of json
-            analysis = json_module.loads(analysis_text)
-            print(f"✅ AI analysis: {analysis.get('files_to_edit', [])}")
-            
-            # ========== FILTER OUT layout.tsx for signup requests ==========
-            if is_signup_request:
-                original_files = analysis.get("files_to_edit", [])
-                filtered_files = [f for f in original_files if 'layout.tsx' not in f and 'layout' not in f]
-                if len(filtered_files) != len(original_files):
-                    print(f"   🚫 Removed layout.tsx from edit list (signup request)")
-                    analysis["files_to_edit"] = filtered_files
-                    
+            analysis = json.loads(analysis_text)
         except Exception as e:
             print(f"⚠️ AI analysis failed: {e}")
-            # Fallback: intelligently determine which file to edit
             analysis = {
                 "files_to_edit": [],
                 "explanation": "Edit request",
                 "what_to_change": edit_description
             }
-            
-            # Intelligent fallback based on edit description
-            edit_lower = edit_description.lower()
-            
-            # ========== UPDATED FALLBACK - NEVER include layout.tsx for signup ==========
-            if 'signup' in edit_lower or 'sign up' in edit_lower:
-                analysis["files_to_edit"] = ["app/signup/page.tsx"]
-                print(f"📂 Signup detected - only editing app/signup/page.tsx (layout.tsx protected)")
-            elif 'login' in edit_lower or 'log in' in edit_lower:
-                analysis["files_to_edit"] = ["app/login/page.tsx"]
-                print(f"📂 Login detected - only editing app/login/page.tsx (layout.tsx protected)")
-            elif 'auth' in edit_lower or 'authentication' in edit_lower:
-                analysis["files_to_edit"] = ["app/signup/page.tsx", "app/login/page.tsx"]
-                print(f"📂 Auth detected - only editing auth pages (layout.tsx protected)")
-            elif 'page' in edit_lower or 'home' in edit_lower or 'hero' in edit_lower:
-                analysis["files_to_edit"] = ["app/page.tsx"]
-            elif 'layout' in edit_lower or 'navigation' in edit_lower or 'nav' in edit_lower:
-                analysis["files_to_edit"] = ["app/layout.tsx", "components/Navigation.tsx"]
-            elif 'footer' in edit_lower:
-                analysis["files_to_edit"] = ["components/Footer.tsx"]
-            elif 'contact' in edit_lower:
-                analysis["files_to_edit"] = ["app/contact/page.tsx"]
-            elif 'about' in edit_lower:
-                analysis["files_to_edit"] = ["app/about/page.tsx"]
-            else:
-                # Default to page.tsx, NOT layout.tsx
-                if "app/page.tsx" in source_files:
-                    analysis["files_to_edit"] = ["app/page.tsx"]
-                elif source_files:
-                    analysis["files_to_edit"] = [list(source_files.keys())[0]]
-            
-            print(f"📂 Fallback files to edit: {analysis['files_to_edit']}")
       
         files_to_edit = analysis.get("files_to_edit", [])
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+# ========== UPDATED GRANULAR AUTH LOGIC ==========
+        lower_desc = edit_description.lower()
         
-        # ========== FINAL SAFETY CHECK - Remove layout.tsx if signup request ==========
-        if is_signup_request:
-            if 'app/layout.tsx' in files_to_edit:
-                files_to_edit.remove('app/layout.tsx')
-                print(f"   🛡️ FINAL SAFETY: Removed layout.tsx from edit list")
+        # Check for Login intent specifically
+        if any(x in lower_desc for x in ['login', 'sign in', 'signin']):
+            if "app/login/page.tsx" not in files_to_edit:
+                files_to_edit.append("app/login/page.tsx")
+        
+        # Check for Signup intent specifically
+        if any(x in lower_desc for x in ['signup', 'register', 'sign up']):
+            if "app/signup/page.tsx" not in files_to_edit:
+                files_to_edit.append("app/signup/page.tsx")
+
+        # Check for general Auth/DB intent or if we added a page above
+        if any(x in lower_desc for x in ['auth', 'database', 'db', 'login', 'signup']):
+            if "components/Navigation.tsx" not in files_to_edit:
+                files_to_edit.append("components/Navigation.tsx")
+            print(f"📌 Tailored auth files added to edit list")
+        
+        # ========== FALLBACK LOGIC ==========
+        if not files_to_edit:
+            for file_path in source_files.keys():
+                if any(x in file_path.lower() for x in ['page', 'layout', 'component', 'navigation']):
+                    files_to_edit.append(file_path)
+                    break
+        
+        if not files_to_edit and source_files:
+            files_to_edit = [list(source_files.keys())[0]]
+      
+        print(f"📂 Final source files to edit: {files_to_edit}")
 
 
 
@@ -8125,13 +7010,6 @@ Return ONLY a JSON object with:
 
 
 
-        # ========== EXCLUDE API ROUTES FROM MAIN EDIT LOOP ==========
-        # API routes will be created separately in the auth creation block
-        api_routes_removed = [f for f in files_to_edit if "api/" in f or "route.ts" in f]
-        if api_routes_removed:
-            files_to_edit = [f for f in files_to_edit if "api/" not in f and "route.ts" not in f]
-            print(f"   🛡️ REMOVED API routes from main edit loop: {api_routes_removed}")
-            print(f"   📂 API routes will be created by auth creation block")
 
 
 
@@ -8257,30 +7135,21 @@ export default function LoginPage() {
 }'''
 
 
-
-
-
-
-
-
-
-
-
-
         def generate_signup_page() -> str:
             return '''"use client"
 
 import React, { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 export default function SignupPage() {
+   const router = useRouter()
    const [name, setName] = useState("")
    const [email, setEmail] = useState("")
    const [password, setPassword] = useState("")
    const [confirmPassword, setConfirmPassword] = useState("")
    const [error, setError] = useState("")
    const [loading, setLoading] = useState(false)
-   const [showSuccessModal, setShowSuccessModal] = useState(false)
 
    const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault()
@@ -8302,11 +7171,9 @@ export default function SignupPage() {
          })
          const data = await response.json()
          if (data.success) {
-            setShowSuccessModal(true)
-            setName("")
-            setEmail("")
-            setPassword("")
-            setConfirmPassword("")
+            localStorage.setItem("token", data.access_token)
+            localStorage.setItem("user", JSON.stringify(data.user))
+            router.push("/dashboard")
          } else { 
             setError(data.detail || data.error || "Signup failed") 
          }
@@ -8318,399 +7185,86 @@ export default function SignupPage() {
    }
 
    return (
-      <>
-         {/* Success Modal */}
-         {showSuccessModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowSuccessModal(false)} />
-               <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-white/10 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-4">
-                     <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                     </svg>
-                  </div>
-                  <h3 className="text-xl font-bold text-center text-white mb-2">Account Created!</h3>
-                  <p className="text-center text-gray-400 mb-6">
-                     Your account has been created successfully. You can now log in.
-                  </p>
-                  <button
-                     onClick={() => setShowSuccessModal(false)}
-                     className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold transition-all duration-300"
-                  >
-                     Close
-                  </button>
-               </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 py-12 px-4">
+         <div className="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+            <div>
+               <h2 className="text-center text-3xl font-extrabold text-white">Create your account</h2>
+               <p className="mt-2 text-center text-sm text-gray-400">
+                  Already have an account? <Link href="/login" className="font-medium text-purple-400 hover:text-purple-300">Sign in</Link>
+               </p>
             </div>
-         )}
-
-         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 py-12 px-4">
-            <div className="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
-               <div>
-                  <h2 className="text-center text-3xl font-extrabold text-white">Create your account</h2>
-                  <p className="mt-2 text-center text-sm text-gray-400">
-                     Already have an account? <Link href="/login" className="font-medium text-purple-400 hover:text-purple-300">Sign in</Link>
-                  </p>
-               </div>
-               {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">{error}</div>}
-               <form id="signup-form" className="mt-8 space-y-6" onSubmit={handleSubmit}>
-                  <div className="space-y-4">
-                     <div>
-                        <input 
-                           type="text" 
-                           name="name"
-                           required 
-                           value={name} 
-                           onChange={(e) => setName(e.target.value)} 
-                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                           placeholder="Full name" 
-                        />
-                     </div>
-                     <div>
-                        <input 
-                           type="email" 
-                           name="email"
-                           required 
-                           value={email} 
-                           onChange={(e) => setEmail(e.target.value)} 
-                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                           placeholder="Email address" 
-                        />
-                     </div>
-                     <div>
-                        <input 
-                           type="password" 
-                           name="password"
-                           required 
-                           value={password} 
-                           onChange={(e) => setPassword(e.target.value)} 
-                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                           placeholder="Password (min. 6 characters)" 
-                        />
-                     </div>
-                     <div>
-                        <input 
-                           type="password" 
-                           name="confirmPassword"
-                           required 
-                           value={confirmPassword} 
-                           onChange={(e) => setConfirmPassword(e.target.value)} 
-                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
-                           placeholder="Confirm password" 
-                        />
-                     </div>
+            {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">{error}</div>}
+            <form id="signup-form" className="mt-8 space-y-6" onSubmit={handleSubmit}>
+               <div className="space-y-4">
+                  <div>
+                     <input 
+                        type="text" 
+                        name="name"
+                        required 
+                        value={name} 
+                        onChange={(e) => setName(e.target.value)} 
+                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                        placeholder="Full name" 
+                     />
                   </div>
-                  <button 
-                     type="submit" 
-                     disabled={loading} 
-                     className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     {loading ? "Creating account..." : "Sign up"}
-                  </button>
-               </form>
-            </div>
+                  <div>
+                     <input 
+                        type="email" 
+                        name="email"
+                        required 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                        placeholder="Email address" 
+                     />
+                  </div>
+                  <div>
+                     <input 
+                        type="password" 
+                        name="password"
+                        required 
+                        value={password} 
+                        onChange={(e) => setPassword(e.target.value)} 
+                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                        placeholder="Password (min. 6 characters)" 
+                     />
+                  </div>
+                  <div>
+                     <input 
+                        type="password" 
+                        name="confirmPassword"
+                        required 
+                        value={confirmPassword} 
+                        onChange={(e) => setConfirmPassword(e.target.value)} 
+                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                        placeholder="Confirm password" 
+                     />
+                  </div>
+               </div>
+               <button 
+                  type="submit" 
+                  disabled={loading} 
+                  className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                  {loading ? "Creating account..." : "Sign up"}
+               </button>
+            </form>
          </div>
-      </>
+      </div>
    )
 }'''
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        def generate_signup_api_route() -> str:
-            return '''import { NextRequest, NextResponse } from "next/server";
-import { hash } from "bcryptjs";
-import { sign } from "jsonwebtoken";
-import { neon } from '@neondatabase/serverless';
-
-export async function POST(request: NextRequest) {
-    try {
-        const body = await request.json();
-        const { name, email, password } = body;
-
-        if (!email || !password) {
-            return NextResponse.json(
-                { success: false, error: "Email and password required" },
-                { status: 400 }
-            );
-        }
-
-        // Use DATABASE_URL from Vercel environment variables
-        const DATABASE_URL = process.env.DATABASE_URL;
-        
-        if (!DATABASE_URL) {
-            console.error("DATABASE_URL not configured in environment");
-            return NextResponse.json(
-                { success: false, error: "Database not configured. Please add DATABASE_URL to your environment variables." },
-                { status: 500 }
-            );
-        }
-
-        const sql = neon(DATABASE_URL);
-
-        await sql`
-            CREATE TABLE IF NOT EXISTS users (
-                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
-                name TEXT,
-                password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            );
-        `;
-
-        await sql`
-            CREATE TABLE IF NOT EXISTS sessions (
-                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-                token TEXT UNIQUE NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-        `;
-
-        await sql`
-            CREATE TABLE IF NOT EXISTS user_credits (
-                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-                user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-                credits INTEGER DEFAULT 10,
-                daily_credits_used INTEGER DEFAULT 0,
-                daily_reset_date DATE DEFAULT CURRENT_DATE,
-                monthly_credits_used INTEGER DEFAULT 0,
-                monthly_reset_date DATE DEFAULT CURRENT_DATE
-            );
-        `;
-
-        const existingUser = await sql`
-            SELECT id FROM users WHERE email = ${email}
-        `;
-
-        if (existingUser.length > 0) {
-            return NextResponse.json(
-                { success: false, error: "User already exists" },
-                { status: 400 }
-            );
-        }
-
-        const hashedPassword = await hash(password, 10);
-
-        const newUser = await sql`
-            INSERT INTO users (email, name, password_hash)
-            VALUES (${email}, ${name || ""}, ${hashedPassword})
-            RETURNING id, email, name
-        `;
-
-        const user = newUser[0];
-        const token = sign(
-            { userId: user.id, email: user.email },
-            process.env.JWT_SECRET || "your-secret-key",
-            { expiresIn: "30d" }
-        );
-
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
-
-        await sql`
-            INSERT INTO sessions (user_id, token, expires_at)
-            VALUES (${user.id}, ${token}, ${expiresAt.toISOString()})
-        `;
-
-        await sql`
-            INSERT INTO user_credits (user_id)
-            VALUES (${user.id})
-            ON CONFLICT (user_id) DO NOTHING
-        `;
-
-        return NextResponse.json({
-            success: true,
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-            },
-            access_token: token,
-            token_type: "bearer",
-        });
-    } catch (error) {
-        console.error("Signup error:", error);
-        return NextResponse.json(
-            { success: false, error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}'''
-
-
-
-
-
-
-
-
-
-        def generate_login_api_route() -> str:
-            return '''import { NextRequest, NextResponse } from "next/server";
-import { compare } from "bcryptjs";
-import { sign } from "jsonwebtoken";
-import { neon } from '@neondatabase/serverless';
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { email, password, db_connection_string } = body;
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { success: false, error: "Email and password required" },
-        { status: 400 }
-      );
-    }
-
-    if (!db_connection_string) {
-      return NextResponse.json(
-        { success: false, error: "Database connection required", requires_db: true },
-        { status: 400 }
-      );
-    }
-
-    const sql = neon(db_connection_string);
-
-    const users = await sql`
-      SELECT id, email, name, password_hash FROM users WHERE email = ${email}
-    `;
-
-    if (users.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "Invalid credentials" },
-        { status: 401 }
-      );
-    }
-
-    const user = users[0];
-    const isValid = await compare(password, user.password_hash);
-
-    if (!isValid) {
-      return NextResponse.json(
-        { success: false, error: "Invalid credentials" },
-        { status: 401 }
-      );
-    }
-
-    const token = sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "30d" }
-    );
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    await sql`
-      INSERT INTO sessions (user_id, token, expires_at)
-      VALUES (${user.id}, ${token}, ${expiresAt.toISOString()})
-      ON CONFLICT (user_id) DO UPDATE SET token = ${token}, expires_at = ${expiresAt.toISOString()}
-    `;
-
-    return NextResponse.json({
-      success: true,
-      user: { id: user.id, email: user.email, name: user.name },
-      access_token: token,
-      token_type: "bearer",
-    });
-  } catch (error) {
-    console.error("Login error:", error);
-    return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}'''
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         def generate_new_page_content(file_path: str) -> str:
-            """Generate content for new files based on file path"""
-            
-            # ========== API ROUTE - Return API route code ==========
-            if "api/" in file_path and ("signup" in file_path.lower() or "login" in file_path.lower()):
-                if "signup" in file_path.lower():
-                    print(f"   🔧 Generating API route code for: {file_path}")
-                    return generate_signup_api_route()
-                elif "login" in file_path.lower():
-                    print(f"   🔧 Generating API route code for: {file_path}")
-                    return generate_login_api_route()
-            
-            # ========== PAGE COMPONENT ==========
             page_name = file_path.split('/')[-1].replace('.tsx', '').replace('.jsx', '').replace('.ts', '').replace('.js', '')
             page_title = page_name.replace('-', ' ').title()
             
             if "login" in file_path.lower():
-                return generate_login_page()
+               return generate_login_page()
             elif "signup" in file_path.lower():
-                return generate_signup_page()
+               return generate_signup_page()
             else:
-                return f'''import React from 'react'
+               return f'''import React from 'react'
 
 export default function {page_title.replace(' ', '')}Page() {{
    return (
@@ -8731,22 +7285,12 @@ export default function {page_title.replace(' ', '')}Page() {{
 
 
 
+
+
+
         
         # Edit each file
         edit_results = []
-        
-        # Track if we created auth pages
-        auth_created = False
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         for file_path in files_to_edit:
             current_content = source_files.get(file_path, "")
@@ -8755,7 +7299,6 @@ export default function {page_title.replace(' ', '')}Page() {{
             if not current_content and any(x in file_path.lower() for x in ['login', 'signup', 'auth']):
                 print(f"📝 Creating new auth file: {file_path}")
                 current_content = generate_new_page_content(file_path)
-                auth_created = True  # ← ADD THIS LINE HERE
                 edit_results.append({
                     "file_path": file_path,
                     "original_content": "",
@@ -8819,12 +7362,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
         
         for result in edit_results:
             updated_files[result["file_path"]] = result["updated_content"]
-            
-            
-            
-            
-            
-            
+        
         
         
         
@@ -8864,89 +7402,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
         for result in edit_results:
             new_flag = " (NEW)" if result.get("is_new_file") else ""
             print(f"   - {result['file_path']}{new_flag}")
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-               # After creating signup page, create ONLY the corresponding API route
-        if auth_created or db_schema_created:
-            print(f"\n📡 Creating API route for authentication...")
-            
-            # Check which auth page was requested and create only that API route
-            signup_requested = any("signup" in f for f in files_to_edit)
-            login_requested = any("login" in f for f in files_to_edit)
-            
-            if signup_requested:
-                signup_api_path = "app/api/auth/signup/route.ts"
-                if signup_api_path not in updated_files:
-                    updated_files[signup_api_path] = generate_signup_api_route()
-                    edit_results.append({
-                        "file_path": signup_api_path,
-                        "original_content": "",
-                        "updated_content": generate_signup_api_route(),
-                        "success": True,
-                        "is_new_file": True
-                    })
-                    print(f"✅ Created signup API route: {signup_api_path}")
-                
-                # ========== UPDATE package.json WITH REQUIRED DEPENDENCIES ==========
-                print(f"\n📦 Managing package.json...")
-                
-                package_json_path = "package.json"
-                current_package_json = updated_files.get(package_json_path, "")
-                
-                if current_package_json:
-                    try:
-                        # Use the manage_package_json function
-                        updated_content, changes = await manage_package_json(current_package_json, edit_description)
-                        
-                        if updated_content and changes:
-                            updated_files[package_json_path] = updated_content
-                            
-                            # Add to edit_results
-                            edit_results.append({
-                                "file_path": package_json_path,
-                                "original_content": current_package_json,
-                                "updated_content": updated_content,
-                                "success": True,
-                                "is_new_file": False,
-                                "changes": changes
-                            })
-                            print(f"✅ package.json updated with {len(changes)} change(s)")
-                            for change in changes:
-                                print(f"   • {change}")
-                        else:
-                            print(f"✅ No changes needed to package.json")
-                    except Exception as e:
-                        print(f"⚠️ Failed to update package.json: {e}")
-                        import traceback
-                        traceback.print_exc()
-                else:
-                    print(f"⚠️ package.json not found - cannot manage dependencies")
-            
-            if login_requested:
-                login_api_path = "app/api/auth/login/route.ts"
-                if login_api_path not in updated_files:
-                    updated_files[login_api_path] = generate_login_api_route()
-                    edit_results.append({
-                        "file_path": login_api_path,
-                        "original_content": "",
-                        "updated_content": generate_login_api_route(),
-                        "success": True,
-                        "is_new_file": True
-                    })
-                    print(f"✅ Created login API route: {login_api_path}")
-        
         if db_schema_created:
             print(f"   - Database schema created on user's Neon DB")
-        
         print(f"{'='*70}\n")
       
         return {
@@ -8963,6 +7420,10 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 
 
 
@@ -9657,36 +8118,13 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         print(f"📝 Original project name: {raw_project_name}")
         print(f"📝 Sanitized for Vercel: {project_name}")
         
-        # ========== DEBUG: CHECK IMAGE FORMATS ==========
-        print("\n" + "="*70)
-        print("🔍 IMAGE FORMAT DEBUG - Checking what format images are in:")
-        print("="*70)
-        
-        image_files_found = False
+        # 👇 ADD DEBUG CODE RIGHT HERE 👇
+        print("\n📁 FILES IN PROJECT:")
         for file_path, content in files.items():
             if file_path.startswith("public/images/"):
-                image_files_found = True
-                print(f"\n📸 File: {file_path}")
-                print(f"   Type: {type(content).__name__}")
-                
-                if isinstance(content, dict):
-                    print(f"   Dict keys: {list(content.keys())}")
-                elif isinstance(content, str):
-                    print(f"   String length: {len(content)}")
-                    print(f"   First 200 chars: {content[:200]}")
-                    if content.startswith('{'):
-                        try:
-                            import json as json_module
-                            parsed = json_module.loads(content)
-                            print(f"   ✓ String is valid JSON")
-                            print(f"   JSON keys: {list(parsed.keys())}")
-                        except:
-                            print(f"   ✗ String looks like JSON but parse failed")
-        
-        if not image_files_found:
-            print("\n⚠️ No image files found in the project!")
-        
-        print("="*70 + "\n")
+                print(f"  {file_path}: {type(content)}")
+                if isinstance(content, str):
+                    print(f"    Preview: {content[:100]}...")
         
         if not vercel_token:
             raise HTTPException(status_code=400, detail="Vercel token required")
@@ -9701,7 +8139,6 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         
         image_urls = {}
         image_count = 0
-        uploaded_image_paths = []
         
         for file_path, content in files.items():
             # Skip non-image files
@@ -9710,81 +8147,64 @@ async def deploy_to_vercel(request: Dict[str, Any]):
             
             is_binary_image = False
             base64_data = None
+            binary_bytes = None
             
-            print(f"  📸 Processing: {file_path}")
+            # Case 1: String with __binary_base64__ prefix
+            if isinstance(content, str) and content.startswith("__binary_base64__"):
+                is_binary_image = True
+                base64_data = content.replace("__binary_base64__", "")
+                print(f"  📸 Found base64 string: {file_path}")
             
-            # Case 1: String that is JSON with __type = "binary_image"
-            if isinstance(content, str) and content.startswith('{') and '"__type"' in content:
-                try:
-                    import json as json_module
-                    data_obj = json_module.loads(content)
+            # Case 2: Dict with binary image data (from your frontend)
+            elif isinstance(content, dict):
+                print(f"  📸 Found image dict: {file_path}")
+                print(f"     Keys: {list(content.keys())}")
+                
+                # Check for 'data' key containing Uint8Array or bytes
+                if 'data' in content:
+                    data = content['data']
                     
-                    if data_obj.get("__type") == "binary_image":
-                        data_content = data_obj.get("data")
-                        
-                        if isinstance(data_content, dict):
-                            # Convert Uint8Array dict to bytes
-                            print(f"     Converting Uint8Array dict to bytes...")
-                            byte_list = []
-                            # Sort keys numerically to ensure correct order
-                            for key in sorted(data_content.keys(), key=lambda x: int(x) if x.isdigit() else 0):
-                                if key.isdigit():
-                                    byte_list.append(data_content[key])
-                            
-                            binary_bytes = bytes(byte_list)
-                            print(f"     Converted {len(binary_bytes)} bytes")
-                            
-                            # Convert to base64
-                            import base64 as b64
-                            base64_data = b64.b64encode(binary_bytes).decode('utf-8')
-                            is_binary_image = True
-                            print(f"     Converted to base64 (length: {len(base64_data)})")
-                            
-                        elif isinstance(data_content, str):
-                            base64_data = data_content
-                            is_binary_image = True
-                            print(f"     Found string data")
-                            
-                except Exception as e:
-                    print(f"     Error parsing JSON: {e}")
-            
-            # Case 2: Already a dict (fallback)
-            elif isinstance(content, dict) and content.get("__type") == "binary_image":
-                data_content = content.get("data")
-                if isinstance(data_content, dict):
-                    print(f"     Converting Uint8Array dict to bytes...")
-                    byte_list = []
-                    for key in sorted(data_content.keys(), key=lambda x: int(x) if x.isdigit() else 0):
-                        if key.isdigit():
-                            byte_list.append(data_content[key])
-                    binary_bytes = bytes(byte_list)
+                    # Handle Uint8Array (comes as dict with '0', '1', '2'... keys or actual bytes)
+                    if isinstance(data, dict):
+                        # Convert dict of numbered keys to bytes
+                        print(f"     Converting Uint8Array dict to bytes...")
+                        byte_list = []
+                        for i in range(len(data)):
+                            if str(i) in data:
+                                byte_list.append(data[str(i)])
+                        binary_bytes = bytes(byte_list)
+                        is_binary_image = True
+                        print(f"     Converted Uint8Array to {len(binary_bytes)} bytes")
+                    
+                    elif isinstance(data, (bytes, bytearray)):
+                        binary_bytes = bytes(data)
+                        is_binary_image = True
+                        print(f"     Found bytes data: {len(binary_bytes)} bytes")
+                    
+                    elif isinstance(data, str):
+                        # Check if it's base64
+                        if data.startswith('data:image'):
+                            base64_data = data.split(',')[1] if ',' in data else data
+                        else:
+                            base64_data = data
+                        is_binary_image = True
+                        print(f"     Found string data: {len(base64_data)} chars")
+                
+                # Alternative: check for 'base64' key
+                elif 'base64' in content:
+                    base64_data = content['base64']
+                    is_binary_image = True
+                    print(f"     Found base64 data: {len(base64_data)} chars")
+                
+                # Convert binary_bytes to base64 for Cloudinary upload
+                if binary_bytes and not base64_data:
                     import base64 as b64
                     base64_data = b64.b64encode(binary_bytes).decode('utf-8')
-                    is_binary_image = True
-                    print(f"     Converted dict to base64 (length: {len(base64_data)})")
-            
-            # Case 3: Raw base64 string
-            elif isinstance(content, str) and len(content) > 1000 and not content.startswith('<'):
-                base64_data = content
-                is_binary_image = True
-                print(f"     Using as raw base64 (length: {len(base64_data)})")
-            
-            # Case 4: String with __binary_base64__ prefix
-            elif isinstance(content, str) and content.startswith("__binary_base64__"):
-                base64_data = content.replace("__binary_base64__", "")
-                is_binary_image = True
-                print(f"     Found __binary_base64__ prefix (length: {len(base64_data)})")
+                    print(f"     Converted {len(binary_bytes)} bytes to base64")
             
             if is_binary_image and base64_data:
                 try:
                     print(f"  ☁️ Uploading to Cloudinary: {file_path}")
-                    
-                    # Clean base64 data (remove any data:image prefix)
-                    if ',' in base64_data and base64_data.startswith('data:'):
-                        base64_data = base64_data.split(',')[1]
-                    
-                    # Also remove any whitespace or newlines
-                    base64_data = base64_data.strip().replace('\n', '').replace('\r', '')
                     
                     upload_result = cloudinary.uploader.upload(
                         f"data:image/jpeg;base64,{base64_data}",
@@ -9794,7 +8214,6 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                     )
                     
                     image_urls[file_path] = upload_result['secure_url']
-                    uploaded_image_paths.append(file_path)
                     print(f"  ✅ Uploaded successfully!")
                     print(f"     URL: {upload_result['secure_url'][:80]}...")
                     image_count += 1
@@ -9804,7 +8223,8 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                     import traceback
                     traceback.print_exc()
             else:
-                print(f"  ⚠️ Could not extract image data from {file_path}")
+                if file_path.startswith("public/images/"):
+                    print(f"  ⚠️ No valid image data for {file_path}")
         
         print(f"\n✅ STEP 1 COMPLETE: Uploaded {image_count} images to Cloudinary\n")
         
@@ -9816,35 +8236,8 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                 print(f"  {public_path} -> {url}")
         print()
         
-        # ========== STEP 1.5: REMOVE IMAGES FROM DEPLOYMENT FILES ==========
-        print("🗑️ STEP 1.5: Removing uploaded images from deployment package...")
-        print("-" * 40)
-        
-        # Create a new files dict WITHOUT the images that were uploaded
-        files_without_images = {}
-        removed_count = 0
-        
-        for file_path, content in files.items():
-            # Skip ALL image files that were uploaded
-            if file_path in uploaded_image_paths:
-                print(f"  🗑️ Removing {file_path} from deployment (using Cloudinary URL)")
-                removed_count += 1
-                continue
-            # Also skip any file in public/images/ that might have been missed
-            if file_path.startswith("public/images/"):
-                print(f"  🗑️ Removing {file_path} from deployment (using Cloudinary URL)")
-                removed_count += 1
-                continue
-            files_without_images[file_path] = content
-        
-        print(f"  ✅ Removed {removed_count} image files from deployment")
-        print(f"  📁 Remaining files: {len(files_without_images)}")
-        
-        # Use the filtered files for the rest of the deployment
-        files = files_without_images
-        
         # ========== STEP 2: REPLACE IMAGE PATHS IN ALL FILES ==========
-        print("\n🔄 STEP 2: Replacing image paths with Cloudinary URLs...")
+        print("🔄 STEP 2: Replacing image paths with Cloudinary URLs...")
         print("-" * 40)
         
         deployment_files = {}
@@ -9854,165 +8247,147 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         for local_path, cloudinary_url in image_urls.items():
             public_path = "/" + local_path.replace("public/", "")
             path_to_url[public_path] = cloudinary_url
-            print(f"  📋 Mapping: {public_path} -> {cloudinary_url[:60]}...")
-        
-        replacements_count = 0
+            print(f"  📋 Mapping: {public_path}")
         
         for file_path, content in files.items():
             # Skip preview_html and metadata
             if file_path == "preview_html" or file_path == "__image_urls__":
                 continue
             
+            # Skip binary images (already uploaded, don't include in deployment)
+            if isinstance(content, dict) and content.get('__type') == 'binary_image':
+                continue
+            
+            if isinstance(content, str) and content.startswith("__binary_base64__"):
+                continue
+            
             # For text files, replace image paths
             if isinstance(content, str):
                 updated_content = content
-                file_replaced = False
+                replaced = False
                 
                 for old_path, new_url in path_to_url.items():
                     if old_path in updated_content:
                         updated_content = updated_content.replace(old_path, new_url)
-                        file_replaced = True
-                        replacements_count += 1
-                        print(f"  🔄 {file_path}: '{old_path}' -> Cloudinary URL")
+                        replaced = True
+                        print(f"  🔄 {file_path}: '{old_path}' -> replaced")
+                
+                # Also check for src pattern
+                for old_path, new_url in path_to_url.items():
+                    pattern = f'src="{old_path}"'
+                    if pattern in updated_content:
+                        updated_content = updated_content.replace(pattern, f'src="{new_url}"')
+                        replaced = True
                 
                 deployment_files[file_path] = updated_content
-                if file_replaced:
+                if replaced:
                     print(f"  ✅ {file_path} updated with Cloudinary URLs")
             else:
                 deployment_files[file_path] = content
         
-        print(f"\n✅ STEP 2 COMPLETE: Replaced {replacements_count} image references in {len(deployment_files)} files\n")
+        print(f"\n✅ STEP 2 COMPLETE: Replaced paths in {len(deployment_files)} files\n")
         
-        # ========== STEP 3: CREATE/GET PROJECT AND SET ENV VARS ==========
-        print("🌍 STEP 3: Setting up Vercel project and environment variables...")
+        # ========== STEP 3: DEPLOY TO VERCEL ==========
+        print("🚀 STEP 3: Deploying to Vercel...")
         print("-" * 40)
         
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            # First, get or create the project
-            project_id = None
+        # ✅ DEBUG: Log environment variables received
+        print(f"\n📦 Environment variables received from frontend:")
+        print(f"   Keys: {list(env_vars.keys())}")
+        if 'DATABASE_URL' in env_vars:
+           print(f"   ✅ DATABASE_URL found (length: {len(env_vars['DATABASE_URL'])} chars)")
+           # Mask the actual value for security
+           masked_url = env_vars['DATABASE_URL'][:20] + "..." + env_vars['DATABASE_URL'][-20:]
+           print(f"   Masked: {masked_url}")
+        else:
+           print(f"   ⚠️ DATABASE_URL NOT found in env_vars")
+        
+        # ✅ Format environment variables correctly
+        formatted_env_vars = []
+        for key, value in env_vars.items():
+           formatted_env_vars.append({
+              "key": key,
+              "value": value
+           })
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = os.path.join(tmpdir, project_name)
+            os.makedirs(project_dir)
             
-            # Check if project exists
-            projects_response = await client.get(
-                f"https://api.vercel.com/v9/projects/{project_name}",
-                headers={"Authorization": f"Bearer {vercel_token}"}
-            )
+            # Write deployment files
+            file_count = 0
+            for file_path, content in deployment_files.items():
+                full_path = os.path.join(project_dir, file_path)
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                
+                if isinstance(content, dict):
+                    content = json.dumps(content, indent=2)
+                elif not isinstance(content, str):
+                    content = str(content)
+                
+                # ✅ Inject DATABASE_URL into .env files
+                if file_path == ".env.local" or file_path == ".env.production":
+                    if 'DATABASE_URL' in env_vars:
+                        content += f"\nDATABASE_URL={env_vars['DATABASE_URL']}\n"
+                        print(f"   💾 Injected DATABASE_URL into {file_path}")
+                
+                # ✅ Inject into next.config.js for build-time access
+                if file_path == "next.config.js":
+                    env_injection = f"""
+// Environment variables injected during deployment
+const deployedEnv = {{
+  DATABASE_URL: process.env.DATABASE_URL || "{env_vars.get('DATABASE_URL', '')}",
+  NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || "{env_vars.get('NEXT_PUBLIC_BACKEND_URL', '')}",
+}};
+
+// Merge with existing env config
+if (module.exports.env) {{
+  Object.assign(module.exports.env, deployedEnv);
+}} else {{
+  module.exports.env = deployedEnv;
+}}
+"""
+                    content += env_injection
+                    print(f"   💾 Injected environment variables into next.config.js")
+                
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                file_count += 1
             
-            if projects_response.status_code == 200:
-                project_data = projects_response.json()
-                project_id = project_data.get("id")
-                print(f"📁 Found existing project: {project_id}")
-            else:
-                # Create new project
-                create_response = await client.post(
-                    "https://api.vercel.com/v9/projects",
-                    headers={"Authorization": f"Bearer {vercel_token}"},
-                    json={
-                        "name": project_name,
-                        "framework": "nextjs"
-                    }
-                )
-                if create_response.status_code in [200, 201]:
-                    project_data = create_response.json()
-                    project_id = project_data.get("id")
-                    print(f"📁 Created new project: {project_id}")
-                else:
-                    print(f"⚠️ Failed to create project: {create_response.status_code}")
+            print(f"  📁 Wrote {file_count} files to temp directory")
             
-            # ========== STEP 4: SET ENVIRONMENT VARIABLES ==========
-            if project_id and env_vars:
-                print(f"\n🌍 Setting environment variables BEFORE deployment...")
-                for key, value in env_vars.items():
-                    # First, delete existing variable if exists
-                    env_response = await client.get(
-                        f"https://api.vercel.com/v1/projects/{project_id}/env",
-                        headers={"Authorization": f"Bearer {vercel_token}"}
-                    )
-                    if env_response.status_code == 200:
-                        existing_vars = env_response.json()
-                        for var in existing_vars:
-                            if var.get("key") == key:
-                                await client.delete(
-                                    f"https://api.vercel.com/v1/projects/{project_id}/env/{var.get('id')}",
-                                    headers={"Authorization": f"Bearer {vercel_token}"}
-                                )
-                                print(f"  🗑️ Removed existing {key}")
+            # Build file list for Vercel
+            file_list = []
+            total_size = 0
+            for root, dirs, files_in_dir in os.walk(project_dir):
+                for file in files_in_dir:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, project_dir).replace('\\', '/')
                     
-                    # Set new environment variable
-                    set_response = await client.post(
-                        f"https://api.vercel.com/v1/projects/{project_id}/env",
-                        headers={
-                            "Authorization": f"Bearer {vercel_token}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "key": key,
-                            "value": value,
-                            "type": "encrypted",
-                            "target": ["production", "preview", "development"]
-                        }
-                    )
-                    if set_response.status_code in [200, 201]:
-                        print(f"  ✅ Set {key} environment variable")
-                    elif set_response.status_code == 409:
-                        print(f"  ✅ {key} already exists")
-                    else:
-                        print(f"  ⚠️ Failed to set {key}: {set_response.status_code}")
-                
-                print(f"\n✅ Environment variables configured on Vercel project")
-            
-            # ========== STEP 5: CREATE DEPLOYMENT ==========
-            print(f"\n🚀 STEP 5: Creating deployment...")
-            print("-" * 40)
-            
-            with tempfile.TemporaryDirectory() as tmpdir:
-                project_dir = os.path.join(tmpdir, project_name)
-                os.makedirs(project_dir)
-                
-                # Write deployment files
-                file_count = 0
-                for file_path, content in deployment_files.items():
-                    full_path = os.path.join(project_dir, file_path)
-                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                    with open(file_path, "rb") as f:
+                        file_content = f.read()
                     
-                    if isinstance(content, dict):
-                        content = json.dumps(content, indent=2)
-                    elif not isinstance(content, str):
-                        content = str(content)
-                    
-                    with open(full_path, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    file_count += 1
+                    file_list.append({
+                        "file": arcname,
+                        "data": base64.b64encode(file_content).decode('utf-8'),
+                        "encoding": "base64"
+                    })
+                    total_size += len(file_content)
+            
+            print(f"  📦 Total size: {total_size / 1024 / 1024:.2f} MB")
+            
+            if total_size > 9 * 1024 * 1024:
+                return {
+                    "success": False,
+                    "message": f"Project too large ({total_size / 1024 / 1024:.2f} MB)",
+                    "manual_deploy": True
+                }
+            
+            # Deploy to Vercel
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                print("  📡 Sending to Vercel API...")
                 
-                print(f"  📁 Wrote {file_count} files to temp directory")
-                
-                # Build file list for Vercel
-                file_list = []
-                total_size = 0
-                for root, dirs, files_in_dir in os.walk(project_dir):
-                    for file in files_in_dir:
-                        file_path = os.path.join(root, file)
-                        arcname = os.path.relpath(file_path, project_dir).replace('\\', '/')
-                        
-                        with open(file_path, "rb") as f:
-                            file_content = f.read()
-                        
-                        file_list.append({
-                            "file": arcname,
-                            "data": base64.b64encode(file_content).decode('utf-8'),
-                            "encoding": "base64"
-                        })
-                        total_size += len(file_content)
-                
-                print(f"  📦 Total size: {total_size / 1024 / 1024:.2f} MB")
-                
-                if total_size > 9 * 1024 * 1024:
-                    return {
-                        "success": False,
-                        "message": f"Project too large ({total_size / 1024 / 1024:.2f} MB)",
-                        "manual_deploy": True
-                    }
-                
-                # Create deployment
+                # ✅ Build deployment payload
                 deploy_payload = {
                     "name": project_name,
                     "files": file_list,
@@ -10023,6 +8398,15 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                         "installCommand": "npm install"
                     }
                 }
+                
+                # ✅ Add environment variables as OBJECT (not array)
+                if formatted_env_vars:
+                    env_object = {}
+                    for env_var in formatted_env_vars:
+                        env_object[env_var["key"]] = env_var["value"]
+                    deploy_payload["env"] = env_object
+                    print(f"  🌍 Added {len(env_object)} environment variables to deployment payload")
+                    print(f"     Keys: {list(env_object.keys())}")
                 
                 deploy_response = await client.post(
                     "https://api.vercel.com/v13/deployments",
@@ -10041,30 +8425,73 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                 
                 deploy_data = deploy_response.json()
                 deployment_url = deploy_data.get("url")
+                project_id = deploy_data.get("projectId")
                 
                 print(f"\n{'='*70}")
                 print(f"✅ DEPLOYMENT SUCCESSFUL!")
                 print(f"🔗 URL: https://{deployment_url}")
                 print(f"📁 Project ID: {project_id}")
-                print(f"📸 Images uploaded to Cloudinary: {image_count}")
                 print(f"{'='*70}\n")
                 
+                
+                
+                
+                
+                
+                
+                
+                
+                 # ✅ STEP 4: Set permanent environment variables on Vercel project (WORKING VERSION)
+                if project_id and formatted_env_vars:
+                    print("🌍 STEP 4: Setting permanent environment variables on Vercel project...")
+                    print("-" * 40)
+                    
+                    for env_var in formatted_env_vars:
+                        print(f"  📦 Setting {env_var['key']}...")
+                        
+                        # ✅ USE THE WORKING ENDPOINT (same as your successful script)
+                        env_response = await client.post(
+                            f"https://api.vercel.com/v1/projects/{project_id}/env",
+                            headers={
+                                "Authorization": f"Bearer {vercel_token}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "key": env_var["key"],
+                                "value": env_var["value"],
+                                "type": "encrypted",
+                                "target": ["production", "preview", "development"]
+                            }
+                        )
+                        
+                        if env_response.status_code in [200, 201]:
+                            print(f"  ✅ Set {env_var['key']} environment variable permanently")
+                        elif env_response.status_code == 409:
+                            print(f"  ✅ {env_var['key']} already exists on Vercel (skipping - already configured)")
+                        else:
+                            env_error = env_response.json()
+                            print(f"  ⚠️ Failed to set {env_var['key']}: {env_error}")
+                    
+                    print(f"\n✅ Environment variables configured permanently on Vercel")
+                 
                 return {
-                    "success": True,
-                    "message": "Deployed to Vercel successfully!",
-                    "deployment_url": f"https://{deployment_url}",
-                    "deployment_id": deploy_data.get("id"),
-                    "project_id": project_id,
-                    "project_name": project_name,
-                    "images_uploaded": image_count,
-                    "env_vars_set": len(env_vars) if env_vars else 0
-                }
+                     "success": True,
+                     "message": "Deployed to Vercel successfully!",
+                     "deployment_url": f"https://{deployment_url}",
+                     "deployment_id": deploy_data.get("id"),
+                     "project_id": project_id,
+                     "project_name": project_name,
+                     "images_uploaded": image_count,
+                     "env_vars_set": len(formatted_env_vars) if formatted_env_vars else 0
+                 }
                  
     except Exception as e:
         print(f"❌ Deploy error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 
@@ -12592,6 +11019,8 @@ async def cron_reset_daily_credits():
 
 
 
+
+
 @app.post("/api/auth/login")
 async def login(request: Request):
     """User login endpoint"""
@@ -12599,38 +11028,39 @@ async def login(request: Request):
         data = await request.json()
         email = data.get("email")
         password = data.get("password")
-        db_connection_string = data.get("db_connection_string", "")  # Direct connection string
+        db_connection_string = data.get("db_connection_string", "")
         
         if not email or not password:
-            return {"success": False, "error": "Email and password required"}
+            raise HTTPException(status_code=400, detail="Email and password required")
         
         if not db_connection_string:
-            return {"success": False, "error": "Database connection required", "requires_db": True}
+            db_connection_string = request.session.get("db_connection_string", "")
+        
+        if not db_connection_string:
+            raise HTTPException(status_code=400, detail="Database connection required")
         
         import asyncpg
         import hashlib
-        import secrets
         
-        conn = await asyncpg.connect(db_connection_string)  # Use directly
+        conn = await asyncpg.connect(db_connection_string)
         
         try:
             user = await conn.fetchrow("""
-                SELECT id, email, name, password_hash
+                SELECT id, email, name, password_hash, salt
                 FROM users
                 WHERE email = $1
             """, email)
             
             if not user:
-                await conn.close()
-                return {"success": False, "error": "Invalid credentials"}
+                raise HTTPException(status_code=401, detail="Invalid credentials")
             
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            password_hash = hashlib.sha256(f"{password}{user['salt']}".encode()).hexdigest()
             
             if password_hash != user['password_hash']:
-                await conn.close()
-                return {"success": False, "error": "Invalid credentials"}
+                raise HTTPException(status_code=401, detail="Invalid credentials")
             
-            # Create session token
+            # Update or create session
+            import secrets
             token = secrets.token_urlsafe(32)
             expires_at = datetime.now() + timedelta(days=30)
             
@@ -12657,29 +11087,65 @@ async def login(request: Request):
             await conn.close()
             raise e
             
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Login error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Add this at the top of your main.py after imports
+# Temporary storage for DB connections (in production, use a database)
+db_connections = {}
+
+@app.post("/api/store-db-connection")
+async def store_db_connection(request: Request):
+    """Store database connection string in session and global storage"""
+    try:
+        data = await request.json()
+        db_connection_string = data.get("db_connection_string", "")
+        
+        if not db_connection_string:
+            return {"success": False, "error": "Connection string required"}
+        
+        # Generate a unique ID for this connection
+        import uuid
+        connection_id = str(uuid.uuid4())
+        
+        # Store in global dict
+        db_connections[connection_id] = db_connection_string
+        
+        # Also try to store in session
+        try:
+            request.session["db_connection_string"] = db_connection_string
+            request.session["connection_id"] = connection_id
+        except Exception as e:
+            print(f"⚠️ Session storage failed: {e}")
+        
+        print(f"✅ Database connection stored with ID: {connection_id[:8]}...")
+        
+        return {
+            "success": True, 
+            "message": "Database connection stored",
+            "connection_id": connection_id  # Return the ID to the client
+        }
+        
+    except Exception as e:
+        print(f"❌ Store DB error: {e}")
         return {"success": False, "error": str(e)}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @app.get("/api/check-db-config")
@@ -12700,17 +11166,6 @@ async def check_db_config(request: Request):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 @app.post("/api/auth/signup")
 async def signup(request: Request):
     """User registration endpoint"""
@@ -12719,12 +11174,16 @@ async def signup(request: Request):
         email = data.get("email")
         password = data.get("password")
         name = data.get("name", "")
-        db_connection_string = data.get("db_connection_string", "")  # Only this now
+        connection_id = data.get("connection_id", "")
         
         if not email or not password:
             return {"success": False, "error": "Email and password required"}
         
-        # Use direct connection string
+        # Get connection string
+        db_connection_string = ""
+        if connection_id and connection_id in db_connections:
+            db_connection_string = db_connections[connection_id]
+        
         if not db_connection_string:
             return {"success": False, "error": "Database connection required", "requires_db": True}
         
@@ -12733,9 +11192,9 @@ async def signup(request: Request):
         import secrets
         
         try:
-            conn = await asyncpg.connect(db_connection_string)  # Use directly
+            conn = await asyncpg.connect(db_connection_string)
             
-            # Create tables if not exist
+            # Create tables if not exist - UPDATED SCHEMA without salt column
             await conn.execute("""
                 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
                 
@@ -12773,7 +11232,7 @@ async def signup(request: Request):
                 await conn.close()
                 return {"success": False, "error": "User already exists"}
             
-            # Hash password
+            # Hash password (using bcrypt style without salt column)
             password_hash = hashlib.sha256(password.encode()).hexdigest()
             
             # Insert user
@@ -12819,17 +11278,6 @@ async def signup(request: Request):
     except Exception as e:
         print(f"❌ Signup error: {e}")
         return {"success": False, "error": str(e)}
-
-
-
-
-
-
-
-
-
-
-
 
 
 
