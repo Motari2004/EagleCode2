@@ -3363,6 +3363,55 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: BRAND ICON REQUIREMENT - MUST INCLUDE LUCIDE ICON
+================================================================================
+
+STATEMENT: The brand/logo link in the navigation MUST include a Lucide icon next to the brand name.
+
+REQUIREMENT: Every brand link MUST have this structure:
+- Use <a> tag (NOT <div>)
+- Include flex classes: class="flex items-center gap-2"
+- Add Lucide icon: <i data-lucide="icon-name" class="w-6 h-6 text-purple-400"></i>
+- Add brand name text
+
+✅ CORRECT HTML:
+<a href="/" class="flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" onclick="handleBrandClick(event)">
+    <i data-lucide="hotel" class="w-6 h-6 text-purple-400"></i>
+    Lodge Hub
+</a>
+
+❌ WRONG HTML (missing icon):
+<div class="brand" onclick="handleBrandClick(event)">Lodge Hub</div>
+
+❌ WRONG HTML (missing flex classes):
+<a href="/" class="brand" onclick="handleBrandClick(event)">
+    <i data-lucide="hotel"></i> Lodge Hub
+</a>
+
+CONSEQUENCE: Without the proper icon structure, the brand will have no visual icon and will not align correctly.
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 🚨 CRITICAL: BRAND/LOGO CLICK HANDLER - MUST INCLUDE
 ================================================================================
