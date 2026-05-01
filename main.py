@@ -2332,7 +2332,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 
 
 
-
         def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
             """Convert Next.js Navigation component to HTML with Lucide icons"""
             
@@ -2446,7 +2445,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
             
             return f'''
             <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
-                <a href="/" class="flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                <a href="/" class="flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" onclick="handleBrandClick(event)">
                     <i data-lucide="{lucide_icon}" class="w-6 h-6 text-purple-400"></i>
                     {brand_name}
                 </a>
@@ -2467,9 +2466,9 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     const menu = document.getElementById('mobile-menu');
                     if (menu) menu.classList.toggle('hidden');
                 }});
+                lucide.createIcons();
             </script>
             '''
-
 
 
 
