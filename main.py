@@ -2486,15 +2486,23 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 
 
 
-
-
-        # ========== ADD THIS FUNCTION RIGHT HERE ==========
         def clean_onError_handlers(html: str) -> str:
             """Convert string onError handlers to actual JavaScript"""
             import re
             
             # Count how many fixes were made
             fixes_count = 0
+            
+            # ⭐ NEW: Fix broken onError that appears as text with double braces
+            # Pattern: onError="{{ (e) => { ... } }}" 
+            pattern0 = r'onError="\{\{\s*\(e\)\s*=>\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}\s*\}\}"'
+            html, count = re.subn(pattern0, r'onError={(e) => { \1 }}', html)
+            fixes_count += count
+            
+            # Fix pattern with optional chaining and double braces
+            pattern0b = r'onError="\{\{\s*\(e\)\s*=>\s*\{([^}]+?\.parentElement\?\.classList[^}]+)\}\s*\}\}"'
+            html, count = re.subn(pattern0b, r'onError={(e) => { \1 }}', html)
+            fixes_count += count
             
             # Fix pattern: onError="{(e) => { ... }}"
             pattern = r'onError="\{\(e\)\s*=>\s*\{([^}]+)\}\}"'
@@ -2522,15 +2530,17 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
             html, count = re.subn(r'onError=\{\{(.+?)\}\}', r'onError={\1}', html)
             fixes_count += count
             
+            # ⭐ NEW: Remove any remaining broken onError that might render as text
+            html = re.sub(
+                r'onError="[^"]*parentElement\?\.classList[^"]*"\s*/>',
+                'onError={(e) => { e.currentTarget.style.display = "none"; }} />',
+                html
+            )
+            
             if fixes_count > 0:
                 print(f"🔧 Fixed {fixes_count} onError handler(s) in preview HTML")
             
             return html
-        # ========== END OF FUNCTION ==========
-
-
-
-
 
 
 
@@ -3359,6 +3369,11 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
 Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
+
+
+
+
+
 
 
 
