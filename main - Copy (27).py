@@ -6,6 +6,7 @@ import jwt  # noqa
 import asyncio
 from html2image import Html2Image
 from pathlib import Path
+import json as json_module
 
 from fastapi.staticfiles import StaticFiles
 
@@ -577,6 +578,55 @@ print(f"📁 Temp dir: {TEMP_DIR}")
 
 
 
+
+
+
+# ====================== SAVE REGENERATED PREVIEW (Option A) ======================
+async def save_regenerated_preview(
+    preview_html: str,
+    project_name: str = "untitled",
+    project_id: Optional[str] = None
+) -> Optional[str]:
+    """
+    Saves the regenerated preview after edit to the PREVIEWS_DIR
+    (same location as normal previews).
+    """
+    try:
+        if not preview_html:
+            return None
+
+        # Create safe filename
+        if project_id:
+            filename = f"{project_id}_preview.html"
+        else:
+            # Fallback: sanitize project name
+            safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', project_name.lower().strip())
+            if not safe_name:
+                safe_name = "preview"
+            filename = f"{safe_name}_preview.html"
+
+        preview_path = PREVIEWS_DIR / filename
+
+        with open(preview_path, "w", encoding="utf-8") as f:
+            f.write(preview_html)
+
+        print(f"💾 Regenerated preview saved → {preview_path}")
+        return str(preview_path)
+
+    except Exception as e:
+        print(f"⚠️ Failed to save regenerated preview: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+
+
+
+
+
+
+
 load_dotenv()
 
 
@@ -957,6 +1007,237 @@ def create_deployment_files(original_files: Dict[str, Any], image_urls: Dict[str
     
     print(f"📦 Created {len(deployment_files)} deployment files (original files unchanged)")
     return deployment_files
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async def manage_package_json(current_content: str, edit_description: str) -> tuple[Optional[str], List[str]]:
+    """
+    Intelligently add or remove dependencies from package.json
+    
+    Returns:
+        tuple: (updated_content, list_of_changes_made)
+    """
+    try:
+        # Parse current package.json
+        package_data = json_module.loads(current_content)
+        
+        # Ensure dependencies object exists
+        if "dependencies" not in package_data:
+            package_data["dependencies"] = {}
+        if "devDependencies" not in package_data:
+            package_data["devDependencies"] = {}
+        
+        changes_made = []
+        edit_lower = edit_description.lower()
+        
+        # ========== BLACKLIST: Words that are NOT npm packages ==========
+        blacklist = {
+            'signup', 'login', 'auth', 'sign up', 'log in',
+            'page', 'pages', 'route', 'routes', 'api', 'component',
+            'create', 'delete', 'remove', 'add', 'install', 'update',
+            'implement', 'implementation', 'implementatino',  # ← typo from your logs
+            'neon', 'database', 'postgres', 'postgresql',  # These are aliases, not real packages
+            'frontend', 'backend', 'fullstack', 'app', 'application',
+            'user', 'users', 'profile', 'dashboard', 'home',
+            'build', 'deploy', 'start', 'dev', 'production'
+        }
+        
+        # ========== SPECIAL CASE: Signup/Login Creation ==========
+        # Auto-add auth dependencies when signup or login is being created
+        is_auth_creation = any(phrase in edit_lower for phrase in [
+            'create signup', 'create login', 'create auth', 'add signup', 'add login',
+            'create sign up', 'signup page', 'login page', 'authentication',
+            'add authentication', 'add auth', 'implement signup'
+        ])
+        
+        if is_auth_creation:
+            print(f"🔐 Auth creation detected - auto-adding auth dependencies")
+            
+            # Remove any invalid package entries that might exist
+            for invalid in blacklist:
+                if invalid in package_data["dependencies"]:
+                    del package_data["dependencies"][invalid]
+                    changes_made.append(f"Removed invalid entry: {invalid}")
+                    print(f"  🗑️ Removed invalid entry: {invalid}")
+            
+            # Required auth dependencies
+            auth_deps = {
+                "bcryptjs": "^2.4.3",
+                "jsonwebtoken": "^9.0.2",
+                "@neondatabase/serverless": "^0.10.4"
+            }
+            
+            for pkg, version in auth_deps.items():
+                if pkg not in package_data["dependencies"]:
+                    package_data["dependencies"][pkg] = version
+                    changes_made.append(f"Added {pkg}@{version} to dependencies (auth required)")
+                    print(f"  ✅ Added {pkg}@{version}")
+            
+            # Required dev dependencies
+            auth_dev_deps = {
+                "@types/bcryptjs": "^2.4.6",
+                "@types/jsonwebtoken": "^9.0.7"
+            }
+            
+            for pkg, version in auth_dev_deps.items():
+                if pkg not in package_data["devDependencies"]:
+                    package_data["devDependencies"][pkg] = version
+                    changes_made.append(f"Added {pkg}@{version} to devDependencies (auth required)")
+                    print(f"  ✅ Added {pkg}@{version}")
+            
+            if changes_made:
+                updated_content = json_module.dumps(package_data, indent=2)
+                return updated_content, changes_made
+        
+        # ========== DETECT OPERATION TYPE ==========
+        is_removal = any(keyword in edit_lower for keyword in [
+            'remove', 'delete', 'uninstall', 'drop', 'get rid of', 'eliminate'
+        ])
+        
+        is_addition = any(keyword in edit_lower for keyword in [
+            'add', 'install', 'include', 'append', 'insert'
+        ]) or not is_removal
+        
+        # ========== EXTRACT PACKAGE NAMES FROM DESCRIPTION ==========
+        package_patterns = [
+            r'["\']([^"\']+)["\']',
+            r'`([^`]+)`',
+            r'@([a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_]+)',
+            r'([a-zA-Z0-9\-_@/]+)(?:\s*@\s*[\d\.\^~]+)?'
+        ]
+        
+        detected_packages = set()
+        for pattern in package_patterns:
+            matches = re.findall(pattern, edit_lower)
+            for match in matches:
+                pkg = match.strip().strip("'\"`")
+                # Skip blacklisted words
+                if pkg.lower() in blacklist:
+                    continue
+                if pkg and len(pkg) > 2 and pkg not in ['add', 'remove', 'delete', 'install', 'package', 'json']:
+                    if not pkg.startswith(('http://', 'https://', 'file:')):
+                        detected_packages.add(pkg)
+        
+        # Also clean up any existing invalid entries from package.json
+        for invalid in blacklist:
+            if invalid in package_data["dependencies"]:
+                del package_data["dependencies"][invalid]
+                changes_made.append(f"Removed invalid entry: {invalid}")
+                print(f"  🗑️ Removed invalid entry: {invalid}")
+        
+        # Package name mapping for common references
+        package_mapping = {
+            'neon': '@neondatabase/serverless',
+            'neondatabase': '@neondatabase/serverless',
+            'neon database': '@neondatabase/serverless',
+            'postgres': 'pg',
+            'postgresql': 'pg',
+            'jwt': 'jsonwebtoken',
+            'json web token': 'jsonwebtoken',
+            'bcrypt': 'bcryptjs',
+            '@types/jwt': '@types/jsonwebtoken',
+            '@types/bcrypt': '@types/bcryptjs',
+        }
+        
+        # Apply mapping
+        expanded_packages = set()
+        for pkg in detected_packages:
+            pkg_lower = pkg.lower()
+            if pkg_lower in package_mapping:
+                expanded_packages.add(package_mapping[pkg_lower])
+            else:
+                expanded_packages.add(pkg)
+        
+        detected_packages = expanded_packages
+        
+        # Package versions database
+        package_versions = {
+            "@neondatabase/serverless": "^0.10.4",
+            "jsonwebtoken": "^9.0.2",
+            "bcryptjs": "^2.4.3",
+            "@types/jsonwebtoken": "^9.0.7",
+            "@types/bcryptjs": "^2.4.6",
+            "pg": "^8.11.3",
+            "dotenv": "^16.3.1",
+            "axios": "^1.6.0",
+            "lodash": "^4.17.21",
+        }
+        
+        # Execute additions or removals
+        if is_removal:
+            print(f"🗑️ Removing packages: {detected_packages}")
+            for pkg in detected_packages:
+                if pkg in package_data["dependencies"]:
+                    del package_data["dependencies"][pkg]
+                    changes_made.append(f"Removed {pkg} from dependencies")
+                    print(f"  ✅ Removed {pkg}")
+                
+                if pkg in package_data["devDependencies"]:
+                    del package_data["devDependencies"][pkg]
+                    changes_made.append(f"Removed {pkg} from devDependencies")
+                    print(f"  ✅ Removed {pkg} from devDependencies")
+        else:
+            print(f"📦 Adding packages: {detected_packages}")
+            for pkg in detected_packages:
+                is_dev = pkg.startswith('@types/') or 'types' in pkg.lower()
+                version = package_versions.get(pkg, "^1.0.0")
+                
+                if is_dev:
+                    if pkg not in package_data["devDependencies"]:
+                        package_data["devDependencies"][pkg] = version
+                        changes_made.append(f"Added {pkg}@{version} to devDependencies")
+                        print(f"  ✅ Added {pkg} to devDependencies")
+                else:
+                    if pkg not in package_data["dependencies"]:
+                        package_data["dependencies"][pkg] = version
+                        changes_made.append(f"Added {pkg}@{version} to dependencies")
+                        print(f"  ✅ Added {pkg} to dependencies")
+        
+        # Handle special requests
+        if any(phrase in edit_lower for phrase in ['remove database', 'remove neon', 'remove @neondatabase']):
+            for db_pkg in ['@neondatabase/serverless', 'pg']:
+                if db_pkg in package_data["dependencies"]:
+                    del package_data["dependencies"][db_pkg]
+                    changes_made.append(f"Removed {db_pkg}")
+                    print(f"  ✅ Removed {db_pkg}")
+        
+        if any(phrase in edit_lower for phrase in ['add database', 'add neon']):
+            if '@neondatabase/serverless' not in package_data["dependencies"]:
+                package_data["dependencies"]['@neondatabase/serverless'] = '^0.10.4'
+                changes_made.append("Added @neondatabase/serverless")
+                print(f"  ✅ Added @neondatabase/serverless")
+        
+        if changes_made:
+            updated_content = json_module.dumps(package_data, indent=2)
+            return updated_content, changes_made
+        else:
+            return None, []
+            
+    except Exception as e:
+        print(f"❌ Package.json management error: {e}")
+        return None, []
+
+
+
+
+
+
 
 
 
@@ -1361,6 +1642,10 @@ app.add_middleware(
         "https://eaglecode2-2.onrender.com",          # Your backend itself
         
         "https://*.vercel.app",
+        
+        "null",  # ← ADD THIS - for local HTML files
+        "blob:",  # ← ADD THIS - for preview iframes        
+        
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -1821,11 +2106,75 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
-
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
-    """Generate fully interactive HTML preview using AI - DARK THEME VERSION"""
+    import re  # ⭐ ADD THIS LINE - MUST BE FIRST
+    """Generate beautiful HTML preview - extracts ALL pages and footer content"""
     try:
-        print(f"🤖 AI generating full equivalent HTML preview for: {project_name}")
+        print(f"🤖 AI generating beautiful HTML preview for: {project_name}")
+
+
+
+
+
+
+
+
+
+
+        # ========== ADD THIS FUNCTION RIGHT HERE ==========
+        def clean_onError_handlers(html: str) -> str:
+            """Convert string onError handlers to actual JavaScript"""
+            import re
+            
+            # Count how many fixes were made
+            fixes_count = 0
+            
+            # Fix pattern: onError="{(e) => { ... }}"
+            pattern = r'onError="\{\(e\)\s*=>\s*\{([^}]+)\}\}"'
+            html, count = re.subn(pattern, r'onError={(e) => { \1 }}', html)
+            fixes_count += count
+            
+            # Fix any onError with quotes
+            pattern2 = r'onError="([^"]+)"'
+            def fix_handler(match):
+                handler = match.group(1)
+                handler = handler.strip()
+                if handler.startswith('{') and handler.endswith('}'):
+                    handler = handler[1:-1]
+                return f'onError={{{handler}}}'
+            html, count = re.subn(pattern2, fix_handler, html)
+            fixes_count += count
+            
+            # Fix escaped characters
+            html = html.replace('&quot;', '"')
+            html = html.replace('&#39;', "'")
+            html = html.replace('&#123;', '{')
+            html = html.replace('&#125;', '}')
+            
+            # Fix double braces
+            html, count = re.subn(r'onError=\{\{(.+?)\}\}', r'onError={\1}', html)
+            fixes_count += count
+            
+            if fixes_count > 0:
+                print(f"🔧 Fixed {fixes_count} onError handler(s) in preview HTML")
+            
+            return html
+        # ========== END OF FUNCTION ==========
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # ========== COLLECT NAVIGATION ==========
         nav_content = ""
@@ -1849,16 +2198,14 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     nav_content = content
                     break
 
-        # Extract brand and navigation links from Next.js structure
+        # Extract brand and navigation links
         brand_name = project_name
         nav_links = []
         
         if nav_content:
-            # Try to find brand name from various patterns
             brand_patterns = [
                 r'<Link\s+href="/"[^>]*>(.*?)</Link>',
                 r'<div\s+className="[^"]*brand[^"]*"[^>]*>(.*?)</div>',
-                r'const\s+\w+\s*=\s*["\']([^"\']+)["\']',
             ]
             for pattern in brand_patterns:
                 match = re.search(pattern, nav_content, re.DOTALL)
@@ -1867,11 +2214,9 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     if brand_name:
                         break
             
-            # Extract navigation links from Next.js Link components
             link_patterns = [
                 r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
                 r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
-                r'href="/([^"]+)".*?>(.*?)</Link>',
             ]
             
             for pattern in link_patterns:
@@ -1883,17 +2228,46 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 if nav_links:
                     break
         
+        if not nav_links:
+            nav_links = [("courses", "Courses"), ("about", "About"), ("contact", "Contact")]
+
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
-        # ========== COLLECT FOOTER CONTENT ==========
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== EXTRACT FOOTER CONTENT ==========
         footer_html = ""
-        footer_paths = ["components/Footer.tsx", "components/Footer.jsx", "app/components/Footer.tsx"]
+        footer_paths = [
+            "components/Footer.tsx",
+            "components/Footer.jsx",
+            "app/components/Footer.tsx",
+            "components/Footer/index.tsx",
+            "components/Layout/Footer.tsx"
+        ]
         
         for fp in footer_paths:
             if fp in files:
                 content = files[fp]
+                # Remove 'use client' and imports first
+                clean_footer = re.sub(r'^["\']use client["\'];\s*$', '', content, flags=re.MULTILINE)
+                clean_footer = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', clean_footer, flags=re.MULTILINE)
+                
                 # Extract JSX return content
-                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', content, re.DOTALL)
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean_footer, re.DOTALL)
                 if match:
                     footer_html = match.group(1)
                 else:
@@ -1902,176 +2276,593 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                         footer_html = match.group(0)
                 
                 if footer_html:
+                    # Clean up footer HTML (preserve content)
                     footer_html = re.sub(r'className=', 'class=', footer_html)
                     footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
                     footer_html = re.sub(r'</Link>', '</a>', footer_html)
-                    footer_html = re.sub(r'\{[^}]+\}', '', footer_html)
                     footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
+                    # Don't remove curly braces in footer
+                    # footer_html = re.sub(r'\{[^}]+\}', '', footer_html)  # COMMENTED OUT
+                    print(f"✅ Footer extracted: {len(footer_html)} chars")
                     break
-
-        # ========== HELPER FUNCTION FOR .TSX EXTRACTION ==========
-        def extract_tsx_content(content: str, route_name: str) -> str:
-            """Extract JSX content from .tsx files properly"""
-            
-            if not content:
-                return ""
-            
-            print(f"  🔍 Extracting from .tsx: {route_name}")
-            
-            # Remove TypeScript specific syntax for cleaner matching
-            clean_content = content
-            
-            # Remove interface and type declarations
-            clean_content = re.sub(r'interface\s+\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', '', clean_content, re.DOTALL)
-            clean_content = re.sub(r'type\s+\w+\s*=\s*[^;]+;', '', clean_content, re.DOTALL)
-            
-            # Try multiple extraction strategies for .tsx
-            
-            # Strategy 1: export default function ComponentName(): JSX.Element { return ( ... ) }
-            pattern1 = r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*:\s*\w+(?:\.\w+)?\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern1, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 1 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 2: export default function ComponentName() { return ( ... ) }
-            pattern2 = r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern2, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 2 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 3: export default const ComponentName = (): JSX.Element => { return ( ... ) }
-            pattern3 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*:\s*\w+(?:\.\w+)?\s*=>\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern3, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 3 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 4: export default const ComponentName = () => { return ( ... ) }
-            pattern4 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{[\s]*return\s*\(\s*([\s\S]*?)\s*\)\s*;?\s*\}'
-            match = re.search(pattern4, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 4 matched")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 5: export default const ComponentName = () => ( ... ) (implicit return)
-            pattern5 = r'export\s+default\s+const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*;?'
-            match = re.search(pattern5, clean_content, re.DOTALL)
-            if match:
-                jsx = match.group(1)
-                print(f"  ✅ Strategy 5 matched (arrow function implicit return)")
-                return clean_jsx_output(jsx, route_name)
-            
-            # Strategy 6: Look for any return with JSX
-            pattern6 = r'return\s*\(\s*([\s\S]*?)\s*\)\s*;'
-            matches = re.finditer(pattern6, clean_content, re.DOTALL)
-            for match in matches:
-                jsx = match.group(1)
-                if re.search(r'<[a-zA-Z][^>]*>', jsx):
-                    print(f"  ✅ Strategy 6 matched (generic return)")
-                    return clean_jsx_output(jsx, route_name)
-            
-            print(f"  ❌ No extraction strategy matched for {route_name}")
-            return ""
         
-        def clean_jsx_output(jsx: str, route_name: str) -> str:
-            """Clean JSX and convert to HTML"""
-            
-            # Remove JavaScript expressions
-            jsx = re.sub(r'\{[^}]+\}', '', jsx)
-            
-            # Convert className to class
-            jsx = re.sub(r'className=', 'class=', jsx)
-            
-            # Remove React-specific attributes
-            jsx = re.sub(r'\s+key=["\'][^"\']*["\']', '', jsx)
-            jsx = re.sub(r'\s+key=\{[\s\S]*?\}', '', jsx)
-            jsx = re.sub(r'suppressHydrationWarning', '', jsx)
-            
-            # Convert Next.js Link to a tags
-            jsx = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', jsx)
-            jsx = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', jsx)
-            jsx = re.sub(r'</Link>', '</a>', jsx)
-            
-            # Convert Next.js Image to img
-            jsx = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="">', jsx)
-            jsx = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="">', jsx)
-            
-            # CRITICAL: Remove ANY img tags from non-home pages
-            if route_name != "home":
-                jsx = re.sub(r'<img[^>]*>', '', jsx, flags=re.IGNORECASE)
-            
-            # Clean up whitespace
-            jsx = re.sub(r'\s+', ' ', jsx)
-            jsx = re.sub(r'>\s+<', '><', jsx)
-            
-            return jsx.strip()
-
-        # ========== PROCESS PAGES WITH .TSX SUPPORT ==========
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== EXTRACT ALL PAGE CONTENTS ==========
         page_contents = {}
         
+        
+        
+        
+
+              # Helper function to extract content from TSX/JSX files
+        def extract_page_content(content: str, route_name: str) -> str:
+            """Extract meaningful content from page component - captures ALL sections including arrays and maps"""
+            print(f"\n{'='*60}")
+            print(f"🔍 EXTRACTING: {route_name}")
+            print(f"{'='*60}")
+            print(f"📦 Original content length: {len(content)} chars")
+            
+            if not content:
+                  print(f"❌ Content is empty!")
+                  return ""
+            
+            # Remove imports and exports (but keep the JSX structure)
+            print(f"\n📌 STEP 1: Removing imports and exports...")
+            clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)
+            clean = re.sub(r'^export\s+default\s+\w+;?\s*$', '', clean, flags=re.MULTILINE)
+            clean = re.sub(r'^export\s+const\s+\w+\s*=\s*', '', clean, flags=re.MULTILINE)
+            clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
+            print(f"   ✅ Length after import removal: {len(clean)} chars")
+            
+            # Remove 'use client' directive
+            print(f"\n📌 STEP 2: Removing 'use client' directive...")
+            clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
+            print(f"   ✅ Length after 'use client' removal: {len(clean)} chars")
+            
+            # ⭐ NEW: Check for image in cleaned content
+            if 'image_1.jpg' in clean or 'image_' in clean:
+                  print(f"   ✅ Image found in cleaned content")
+            
+            # Check for key sections in cleaned content
+            print(f"\n📌 STEP 3: Checking for key sections in cleaned content...")
+            if 'Our Core Pillars' in clean or 'Core Features' in clean:
+                  print(f"   ✅ Features/Pillars section FOUND")
+                  features_pos = clean.find('Our Core Pillars') if 'Our Core Pillars' in clean else clean.find('Core Features')
+                  print(f"   📍 Section at position: {features_pos}")
+                  print(f"   📄 Preview around section:")
+                  print(f"      {clean[features_pos-50:features_pos+100]}...")
+            else:
+                  print(f"   ❌ Features/Pillars section NOT FOUND")
+            
+            # Check for inline array
+            print(f"\n📌 STEP 4: Checking for inline array (.map())...")
+            if '.map(' in clean:
+                  print(f"   ✅ .map() found in cleaned content")
+            else:
+                  print(f"   ❌ .map() NOT found in cleaned content")
+            
+            # Extract return JSX using bracket counting
+            print(f"\n📌 STEP 5: Extracting return JSX...")
+            start_match = re.search(r'return\s*\(', clean)
+            if not start_match:
+                  start_match = re.search(r'return\s+', clean)
+                  if not start_match:
+                        print(f"   ❌ No return statement found!")
+                        return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1></div>'
+            
+            print(f"   ✅ Return statement found at position {start_match.start()}")
+            start_pos = start_match.end()
+            print(f"   📍 Start position: {start_pos}")
+            
+            # Count brackets to find the matching closing parenthesis
+            open_count = 1
+            i = start_pos
+            extracted = ""
+            bracket_count = 0
+            
+            print(f"   🔄 Counting brackets to find matching closing parenthesis...")
+            while i < len(clean) and open_count > 0:
+                  char = clean[i]
+                  extracted += char
+                  if char == '(':
+                        open_count += 1
+                        bracket_count += 1
+                  elif char == ')':
+                        open_count -= 1
+                        bracket_count += 1
+                  i += 1
+            
+            print(f"   ✅ Extraction complete. Processed {bracket_count} brackets")
+            print(f"   📏 Extracted length: {len(extracted)} chars")
+            
+            # ⭐ CRITICAL FIX: DO NOT truncate at semicolons!
+            print(f"   📏 Keeping full extracted content (no semicolon truncation): {len(extracted)} chars")
+            
+            extracted = extracted.strip()
+            print(f"   📏 Final extracted length: {len(extracted)} chars")
+            
+            # ⭐ Check if image was preserved in extracted content
+            if 'image_1.jpg' in extracted:
+                  print(f"   ✅ Image preserved in extracted content")
+            else:
+                  print(f"   ⚠️ Image NOT found in extracted content")
+            
+            # Show preview of extracted content
+            print(f"\n📌 STEP 6: Preview of extracted content (first 500 chars):")
+            print(f"{'-'*60}")
+            print(extracted[:500])
+            print(f"{'-'*60}")
+            
+            if extracted:
+                  # Process inline arrays inside JSX
+                  print(f"\n📌 STEP 7: Processing inline arrays...")
+                  
+                  # Find and render the pillars/features array
+                  array_pattern = r'\{\s*\[([\s\S]*?)\]\s*\.map\(\(([^,]+),\s*([^)]+)\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*\)\s*\}'
+                  
+                  def render_array(match):
+                        array_items_str = match.group(1)
+                        item_var = match.group(2).strip()
+                        index_var = match.group(3).strip()
+                        template = match.group(4).strip()
+                        
+                        print(f"      📦 Found array with {array_items_str.count('title:')} items")
+                        print(f"      🏷️ Item variable: {item_var}, Index variable: {index_var}")
+                        
+                        items = []
+                        object_pattern = r'\{\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']\s*\}'
+                        object_matches = re.findall(object_pattern, array_items_str)
+                        
+                        for title, desc in object_matches:
+                              items.append({"title": title, "desc": desc})
+                              print(f"         📌 Item: '{title}' -> '{desc[:40]}...'")
+                        
+                        if items:
+                              rendered_items = []
+                              for idx, item in enumerate(items):
+                                    rendered_html = template
+                                    rendered_html = rendered_html.replace(f'{{{item_var}.title}}', item['title'])
+                                    rendered_html = rendered_html.replace(f'{{{item_var}.desc}}', item['desc'])
+                                    rendered_html = rendered_html.replace(f'{{{index_var}}}', str(idx))
+                                    rendered_items.append(rendered_html)
+                              
+                              print(f"      ✅ Rendered {len(rendered_items)} items")
+                              return '\n'.join(rendered_items)
+                        
+                        return match.group(0)
+                  
+                  extracted = re.sub(array_pattern, render_array, extracted, flags=re.DOTALL)
+                  
+                  if '.map(' in extracted:
+                        print(f"   ⚠️ Some .map() patterns may not have been processed")
+                  
+                  # Convert JSX to HTML
+                  print(f"\n📌 STEP 8: Converting JSX to HTML...")
+                  extracted = re.sub(r'className=', 'class=', extracted)
+                  extracted = re.sub(r'htmlFor=', 'for=', extracted)
+                  extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
+                  extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
+                  extracted = re.sub(r'</Link>', '</a>', extracted)
+                  extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
+                  extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
+                  extracted = re.sub(r'<>', '<div>', extracted)
+                  extracted = re.sub(r'</>', '</div>', extracted)
+                  extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
+                  extracted = re.sub(r'\s+priority\s*', '', extracted)
+                  extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
+                  extracted = re.sub(r'<Fragment>', '', extracted)
+                  extracted = re.sub(r'</Fragment>', '', extracted)
+                  extracted = re.sub(r'>\s+<', '><', extracted)
+                  extracted = re.sub(r'\n{3,}', '\n\n', extracted)
+                  
+                  # ⭐ FINAL CHECK: If image was lost, manually inject it
+                  if 'image_1.jpg' not in extracted and 'image_' in str(files.keys()):
+                        print(f"\n   🔧 Image lost during conversion - manually injecting...")
+                        # Find the hero section and add the image
+                        if '<section class="relative h-screen' in extracted:
+                              # Inject image right after section opening
+                              image_tag = '<img src="/images/image_1.jpg" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />'
+                              extracted = extracted.replace(
+                                    '<section class="relative h-screen',
+                                    f'<section class="relative h-screen">{image_tag}'
+                              )
+                              # Also add the dark overlay
+                              overlay = '<div class="absolute inset-0 bg-black/50"></div>'
+                              extracted = extracted.replace(image_tag, f'{image_tag}\n    {overlay}')
+                              print(f"   ✅ Image injected into hero section")
+                  
+                  # Final verification
+                  print(f"\n📌 STEP 9: Final verification...")
+                  if 'Core Features' in extracted or 'Our Core Pillars' in extracted:
+                        print(f"   ✅ Features/Pillars section present in final extracted content")
+                        card_count = extracted.count('rounded-xl')
+                        print(f"   📊 Cards found: {card_count}")
+                        
+                        if card_count >= 3:
+                              print(f"   ✅ All features successfully extracted!")
+                  else:
+                        print(f"   ❌ Features section MISSING from final extracted content!")
+                  
+                  # ⭐ Final image check
+                  if 'image_1.jpg' in extracted:
+                        print(f"   ✅ Image present in final output!")
+                  else:
+                        print(f"   ⚠️ Image missing from final output!")
+                  
+                  print(f"\n✅ Extraction complete for {route_name}")
+                  print(f"{'='*60}\n")
+                  return extracted.strip()
+            
+            print(f"❌ No JSX extracted, using fallback")
+            return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # Scan all files for page components
         for file_path, content in files.items():
-            # Match Next.js page patterns: app/page.tsx, app/about/page.tsx, app/solutions/page.tsx, etc.
+            # Match Next.js page patterns
             if file_path.endswith((".tsx", ".jsx", ".js")) and ("/app/" in file_path or file_path.startswith("app/")):
-                # Extract route from path
-                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").replace("/page.js", "").replace(".tsx", "").replace(".jsx", "").replace(".js", "")
+                # Skip non-page files
+                if "layout" in file_path.lower() or "error" in file_path.lower() or "loading" in file_path.lower():
+                    continue
+                
+                # Extract route name
+                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").replace("/page.js", "")
+                route = route.replace(".tsx", "").replace(".jsx", "").replace(".js", "")
                 route_name = route if route else "home"
                 route_name = route_name.replace("/", "_")
                 
-                print(f"\n📄 Found Next.js page: {file_path} -> {route_name}")
+                print(f"\n📄 Found page: {file_path} -> {route_name}")
                 
-                # Use the improved .tsx extractor
-                extracted_content = extract_tsx_content(content, route_name)
-                
-                if extracted_content and len(extracted_content) > 50:
-                    page_contents[route_name] = extracted_content[:8000]
-                    print(f"  ✅ Extracted {len(extracted_content)} chars")
-                    # Debug: print first 100 chars
-                    preview = extracted_content[:150].replace('\n', ' ')
-                    print(f"  📝 Preview: {preview}...")
-                else:
-                    print(f"  ⚠️ Could not extract from {route_name}")
-                    # Store original content as reference for AI
-                    page_contents[route_name] = f"<!-- Original .tsx component content -->\n{content[:3000]}"
 
-        # Add navigation pages that weren't found in files
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                extracted_content = extract_page_content(content, route_name)
+                
+                
+                
+                
+                
+                
+                
+                
+                # ========== DEBUG: Log extracted content for home page ==========
+                if route_name == 'page' or route_name == 'home':
+                    print(f"\n{'='*60}")
+                    print(f"🔍 DEBUGGING EXTRACTED CONTENT FOR HOME PAGE")
+                    print(f"{'='*60}")
+                    print(f"📏 Extracted content length: {len(extracted_content)} chars")
+                    print(f"\n📄 FIRST 500 CHARACTERS:")
+                    print("-" * 40)
+                    print(extracted_content[:500])
+                    print("-" * 40)
+                    
+                    print(f"\n🔎 SEARCHING FOR KEY SECTIONS:")
+                    print("-" * 40)
+                    
+                    # Check for hero section
+                    if 'relative h-screen' in extracted_content or 'hero' in extracted_content.lower():
+                        print("✅ Hero section found")
+                    else:
+                        print("❌ Hero section MISSING")
+                    
+                    # Check for features section
+                    if 'Our Features' in extracted_content:
+                        print("✅ 'Our Features' heading found")
+                    else:
+                        print("❌ 'Our Features' heading MISSING")
+                    
+                    # Check for grid
+                    if 'grid md:grid-cols-3' in extracted_content:
+                        print("✅ Grid container found")
+                    else:
+                        print("❌ Grid container MISSING")
+                    
+                    # Check for individual feature cards
+                    card_count = extracted_content.count('rounded-xl bg-white/5')
+                    print(f"📊 Feature cards found: {card_count}")
+                    
+                    # Check for specific feature titles
+                    if 'Cloud Analytics' in extracted_content:
+                        print("✅ 'Cloud Analytics' found")
+                    else:
+                        print("❌ 'Cloud Analytics' MISSING")
+                    
+                    if 'Team Sync' in extracted_content:
+                        print("✅ 'Team Sync' found")
+                    else:
+                        print("❌ 'Team Sync' MISSING")
+                    
+                    if 'Security First' in extracted_content:
+                        print("✅ 'Security First' found")
+                    else:
+                        print("❌ 'Security First' MISSING")
+                    
+                    # Check if the inline array pattern exists
+                    if 'map((f, i)' in extracted_content or '.map(' in extracted_content:
+                        print("⚠️ Raw .map() still present (not rendered)")
+                        # Find and show the map pattern
+                        import re
+                        map_match = re.search(r'\{[^}]*\.map\([^)]*\)[^}]*\}', extracted_content)
+                        if map_match:
+                            print(f"   Map pattern found: {map_match.group(0)[:150]}...")
+                    else:
+                        print("✅ No raw .map() found (should be rendered)")
+                    
+                    # Check for any JavaScript expressions left
+                    if '{' in extracted_content and '}' in extracted_content:
+                        # Count remaining JS expressions
+                        js_exprs = re.findall(r'\{[^{}]*\}', extracted_content)
+                        if js_exprs:
+                            print(f"⚠️ Remaining JS expressions: {len(js_exprs)}")
+                            for expr in js_exprs[:3]:
+                                print(f"   - {expr[:80]}")
+                    
+                    print(f"\n📄 LAST 500 CHARACTERS:")
+                    print("-" * 40)
+                    print(extracted_content[-500:])
+                    print("-" * 40)
+                    print(f"{'='*60}\n")
+                               
+                
+                
+                
+                
+                
+                
+                
+                # ========== ADD THIS AUTH OVERRIDE RIGHT HERE ==========
+                # Override signup/login pages with backend HTML forms
+                if route_name in ['signup', 'login', 'auth']:
+                    if route_name == 'signup':
+                        page_contents[route_name] = '''
+                        <div class="min-h-screen flex items-center justify-center py-12 px-4">
+                            <div class="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+                                <div>
+                                    <h2 class="text-center text-3xl font-extrabold text-white">Create your account</h2>
+                                    <p class="mt-2 text-center text-sm text-gray-400">
+                                        Already have an account? <a href="#" onclick="showPage('login'); return false;" class="font-medium text-purple-400 hover:text-purple-300">Sign in</a>
+                                    </p>
+                                </div>
+                                <form id="signup-form" class="mt-8 space-y-6" onsubmit="handleSignup(event); return false;">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <input type="text" name="name" required placeholder="Full name" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="email" name="email" required placeholder="Email address" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="password" name="password" required placeholder="Password (min. 6 characters)" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="password" name="confirmPassword" required placeholder="Confirm password" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full flex justify-center py-3 px-4 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">Sign up</button>
+                                </form>
+                            </div>
+                        </div>
+                        '''
+                        print(f"  ✅ Using backend HTML form for signup")
+                    elif route_name == 'login':
+                        page_contents[route_name] = '''
+                        <div class="min-h-screen flex items-center justify-center py-12 px-4">
+                            <div class="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+                                <div>
+                                    <h2 class="text-center text-3xl font-extrabold text-white">Sign in to your account</h2>
+                                    <p class="mt-2 text-center text-sm text-gray-400">
+                                        Or <a href="#" onclick="showPage('signup'); return false;" class="font-medium text-purple-400 hover:text-purple-300">create a new account</a>
+                                    </p>
+                                </div>
+                                <form id="login-form" class="mt-8 space-y-6" onsubmit="handleLogin(event); return false;">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <input type="email" name="email" required placeholder="Email address" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="password" name="password" required placeholder="Password" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full flex justify-center py-3 px-4 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">Sign in</button>
+                                </form>
+                            </div>
+                        </div>
+                        '''
+                        print(f"  ✅ Using backend HTML form for login")
+                # ========== END OF AUTH OVERRIDE ==========
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                # ========== CHANGE THIS PART - USE ELIF ==========
+                elif extracted_content and len(extracted_content) > 50:
+                    page_contents[route_name] = extracted_content[:1000000]  # Limit size
+                    print(f"  ✅ Extracted {len(extracted_content)} chars")
+                else:
+                    # Create meaningful fallback content based on route name
+                    display_name = route_name.replace("_", " ").title()
+                    page_contents[route_name] = f'''
+                    <div class="container">
+                        <div class="hero" style="min-height: 40vh; margin: 2rem;">
+                            <div class="hero-content">
+                                <h1 class="gradient-text">{display_name}</h1>
+                                <p>Welcome to our {display_name.lower()} page. Explore what we have to offer.</p>
+                                <button class="btn" onclick="showPage('home')">Back to Home</button>
+                            </div>
+                        </div>
+                        <div class="grid">
+                            <div class="card">
+                                <h3>About {display_name}</h3>
+                                <p>Learn more about our {display_name.lower()} offerings and how we can help you.</p>
+                                <button class="btn" style="margin-top: 1rem;">Learn More</button>
+                            </div>
+                            <div class="card">
+                                <h3>Our {display_name} Services</h3>
+                                <p>Discover the range of services we provide in {display_name.lower()}.</p>
+                                <button class="btn" style="margin-top: 1rem;">View Services</button>
+                            </div>
+                            <div class="card">
+                                <h3>Contact Us About {display_name}</h3>
+                                <p>Have questions? Reach out to our team for more information.</p>
+                                <button class="btn" style="margin-top: 1rem;">Get in Touch</button>
+                            </div>
+                        </div>
+                    </div>
+                    '''
+                    print(f"  ⚠️ Using fallback content for {route_name}")
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+        # Print summary
+        print(f"\n📊 EXTRACTION SUMMARY:")
+        print(f"  - Brand: {brand_name}")
+        print(f"  - Navigation links: {len(nav_links)}")
+        print(f"  - Pages extracted: {len(page_contents)}")
+        for route, content in page_contents.items():
+            print(f"    • {route}: {len(content)} chars")
+        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
+
+        # ========== DEBUG: CHECK WHAT WAS EXTRACTED ==========
+        print(f"\n🔍 DEBUG - page_contents keys: {list(page_contents.keys())}")
+        for key in page_contents.keys():
+            preview = page_contents[key][:100] if page_contents[key] else "(empty)"
+            print(f"  Key: '{key}' - Content preview: {preview}...")
+        # ====================================================
+
+        # ========== COLLECT AVAILABLE IMAGES ==========
+        first_image = None        
+                           
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+
+        # Ensure all navigation pages have content
         for href, label in nav_links:
             route_key = href.replace("/", "_")
-            if route_key not in page_contents and href not in page_contents:
+            if route_key not in page_contents:
                 page_contents[route_key] = f'''
-                <div class="container mx-auto px-4 py-16">
-                    <h1 class="text-4xl md:text-5xl font-bold mb-6 gradient-text">{label}</h1>
-                    <div class="card p-8">
-                        <p class="text-gray-300">Welcome to our {label.lower()} page.</p>
+                <div class="container">
+                    <div class="hero" style="min-height: 40vh; margin: 2rem;">
+                        <div class="hero-content">
+                            <h1 class="gradient-text">{label}</h1>
+                            <p>Welcome to our {label.lower()} page. Explore our offerings and find what suits you best.</p>
+                            <button class="btn" onclick="showPage('home')">Back to Home</button>
+                        </div>
+                    </div>
+                    <div class="grid">
+                        <div class="card">
+                            <h3>Featured {label}</h3>
+                            <p>Discover amazing opportunities in our {label.lower()} section.</p>
+                            <button class="btn" style="margin-top: 1rem;">Learn More</button>
+                        </div>
+                        <div class="card">
+                            <h3>Upcoming {label}</h3>
+                            <p>Stay updated with the latest news and events in {label.lower()}.</p>
+                            <button class="btn" style="margin-top: 1rem;">View Details</button>
+                        </div>
+                        <div class="card">
+                            <h3>Contact Us About {label}</h3>
+                            <p>Have questions? Reach out to our team for more information.</p>
+                            <button class="btn" style="margin-top: 1rem;">Get in Touch</button>
+                        </div>
                     </div>
                 </div>
                 '''
 
-        # Print summary of extracted pages
+        # Print summary
         print(f"\n📊 EXTRACTION SUMMARY:")
+        print(f"  - Brand: {brand_name}")
+        print(f"  - Navigation links: {len(nav_links)}")
+        print(f"  - Pages extracted: {len(page_contents)}")
         for route, content in page_contents.items():
-            print(f"  - {route}: {len(content)} chars")
+            print(f"    • {route}: {len(content)} chars")
+        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
 
         # ========== COLLECT AVAILABLE IMAGES ==========
-        image_paths = []
         first_image = None
-        
         for file_path in files.keys():
-            if file_path.startswith("public/images/") and file_path.endswith((".jpg", ".png", ".jpeg", ".webp")):
-                img_path = "/" + file_path.replace("public/", "")
-                image_paths.append(img_path)
-                if not first_image:
-                    first_image = img_path
-        
-        print(f"\n🖼️ Found {len(image_paths)} images, first: {first_image}")
+            if file_path.startswith("public/images/") and file_path.endswith((".jpg", ".png", ".jpeg")):
+                first_image = "/" + file_path.replace("public/", "")
+                break
 
-        # ========== STRICT IMAGE INSTRUCTION FOR AI ==========
-        image_instruction = f"""    
+        print(f"\n🖼️ First image: {first_image}")
+
+        # ========== PREPARE DATA FOR PROMPT ==========
+        nav_links_json = json.dumps(nav_links)
+        page_contents_json = json.dumps(page_contents, indent=2)[:15000]
+        
+        # Get home page content
+        home_content = page_contents.get('page', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
+        
+        # Get backend URL
+        BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
         
         
         
@@ -2079,381 +2870,371 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
         
-                                                                                                                                                                                                                                                                                                                                                                                                                                
+        
+        prompt = f"""CRITICAL: You MUST include Tailwind CSS CDN in the <head> tag:
+<script src="https://cdn.tailwindcss.com"></script>
+
+Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
+
+USE Tailwind CSS classes for ALL positioning, layout, spacing, colors, and responsive design.
+ONLY use custom CSS for things Tailwind doesn't provide (like custom gradients, animations, or complex hover effects).
+
 ================================================================================
-                    CRITICAL - HERO IMAGE RULES (STRICT)
+REQUIRED STRUCTURE FOR HOME PAGE HERO:
+================================================================================
+<section class="relative h-screen w-full overflow-hidden">
+  <img src="[image-url]" class="absolute inset-0 w-full h-full object-cover" />
+  <div class="absolute inset-0 bg-black/50"></div>
+  <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+    <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">[Brand Name]</h1>
+    <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[Tagline]</p>
+    <button class="btn">[CTA Text]</button>
+  </div>
+</section>
+        
+        
+        
+        
+
+================================================================================
+EXTRACTED CONTENT - USE EXACTLY
 ================================================================================
 
-AVAILABLE IMAGE: {first_image if first_image else 'No images available - use gradient background only'}
+BRAND NAME: {brand_name}
 
-RULE 1 - HOME PAGE ONLY:
+NAVIGATION LINKS: {nav_links_json}
 
-- The hero image MUST appear ONLY on the home page
-- Use {first_image if first_image else 'gradient background'} as full screen background on home page
-- NO dark overlays on the image (no bg-black, no overlay divs)
-- Use text-shadow for text readability instead of overlays
+HOME PAGE CONTENT:
+{home_content}
 
-RULE 2 - NO IMAGES ON OTHER PAGES:
-- ABSOLUTELY NO img tags on any page except home
-- DO NOT create hero banners with images on other pages
-- Faculty page: use emoji icons (👨‍🏫 👩‍🔬 💻 📚) instead of photos
-- Use ONLY gradient backgrounds on non-home pages
+ALL PAGE CONTENTS (use these for their respective pages):
+{page_contents_json}
 
-RULE 3 - CORRECT NON-HOME PAGE STRUCTURE:
-Use this exact pattern for pages except home:
+FOOTER HTML (USE THIS EXACTLY IF PROVIDED, OTHERWISE CREATE DEFAULT):
+{footer_html if footer_html else "Create a beautiful footer with copyright, social links, and navigation"}
 
-<div class="page-header" style="padding: 4rem 0; text-align: center; background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);">
-    <div class="container">
-        <h1 style="color: white; font-size: 3rem;">Page Title</h1>
-        <p style="color: #9ca3af;">Page description goes here</p>
-    </div>
-</div>
+AVAILABLE IMAGE: {first_image if first_image else 'None - use gradient background'}
 
-VIOLATION = INVALID RESPONSE
-"""
+================================================================================
+DESIGN REQUIREMENTS
+================================================================================
 
-        # ========== DARK GRADIENT STYLES ==========
-        light_styles = """
+1. Modern dark theme with purple/pink gradients (#c084fc, #f472b6)
+2. Glass morphism effects (backdrop-blur, semi-transparent backgrounds)
+3. Smooth animations and hover effects
+4. Fully responsive (mobile hamburger menu at 768px)
+5. NO Tailwind CDN - use ONLY custom CSS below
+6. ONLY ONE <style> tag and ONE <script> tag
+7. Use the EXTRACTED page content above - NO generic placeholders
+
+
+
+
+================================================================================
+SPECIFIC INSTRUCTION FOR HOME PAGE (page_home)
+================================================================================
+
+The home page content above (from app/page.tsx) contains:
+
+- A hero section with an image
+- An h1 heading with your actual brand name (like "Amber College Prep")
+- A paragraph with your actual description
+- A button with your actual button text (like "Explore Programs")
+
+YOU MUST use these EXACT values. For example:
+
+✅ CORRECT: <h1>Amber College Prep</h1>
+❌ WRONG: <h1>Welcome to our website</h1>
+
+✅ CORRECT: <p>Empowering the next generation of scholars...</p>
+❌ WRONG: <p>Welcome to our website</p>
+
+✅ CORRECT: <button>Explore Programs</button>
+❌ WRONG: <button>Get Started</button>
+
+================================================================================
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: SIGNUP & LOGIN PAGE REQUIREMENTS 🚨🚨🚨
+================================================================================
+
+When generating the HTML preview, you MUST follow these rules for authentication pages:
+
+**SIGNUP PAGE (page_signup) - MUST have:**
+1. Form with id="signup-form"
+2. Form with onsubmit="handleSignup(event); return false;"
+3. Input with name="name" for full name
+4. Input with name="email" for email address
+5. Input with name="password" for password
+6. Input with name="confirmPassword" for password confirmation
+7. Submit button that says "Sign up"
+
+**LOGIN PAGE (page_login) - MUST have:**
+1. Form with id="login-form"
+2. Form with onsubmit="handleLogin(event); return false;"
+3. Input with name="email" for email address
+4. Input with name="password" for password
+5. Submit button that says "Sign in"
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL JAVASCRIPT RULES - NO FLICKER, NO DISAPPEARING BACKGROUND 🚨🚨🚨
+================================================================================
+
+The JavaScript code MUST follow these rules:
+
+1. NEVER call showPage() inside init() - causes unnecessary hiding/showing
+2. ALWAYS check if a page is already active before hiding all pages
+3. ALWAYS return early in showPage() if already on the target page
+4. NEVER use inline styles that override CSS classes
+5. ALWAYS use CSS for display control, not JavaScript inline styles
+6. ALWAYS add a flag to prevent double initialization
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: USE THE EXTRACTED CONTENT BELOW - NO PLACEHOLDERS! 🚨🚨🚨
+================================================================================
+
+The content below is EXTRACTED DIRECTLY from your Next.js pages. 
+YOU MUST use this EXACT content for each page's HTML.
+
+DO NOT generate placeholder text like "Welcome to our page" or "Explore our offerings".
+USE THE EXACT CONTENT PROVIDED BELOW.
+
+================================================================================
+EXTRACTED PAGE CONTENTS - USE THESE EXACTLY:
+================================================================================
+
+
+For EACH page, copy the EXACT content from the extracted JSON above into the page div.
+If the content contains arrays/maps, render them as HTML cards/items.
+
+For example, if Programs page has program data, render the actual programs with their titles, descriptions, icons, etc.
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+COMPLETE CSS - USE THIS EXACTLY
+================================================================================
+
+
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        min-height: 100vh;
-        position: relative;
-    }
-    
-    /* Fixed gradient background - no movement */
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 50%, #0f0f12 100%);
-        z-index: -2;
-    }
-    
-    /* Navbar */
-    nav {
-        background: rgba(26, 26, 30, 0.95);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 100;
-        height: 72px;
-    }
-    
-    .nav-container {
-        max-width: 1280px;
-        margin: 0 auto;
-        height: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 1.5rem;
-    }
-    
-    .brand-link {
-        font-weight: 800;
-        font-size: 1.5rem;
-        text-decoration: none;
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-        cursor: pointer;
-    }
-    
-    .nav-link {
-        color: #9ca3af;
-        text-decoration: none;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        transition: all 0.2s ease;
-    }
-    
-    .nav-link:hover { color: #c084fc; background: rgba(192, 132, 252, 0.1); }
-    .nav-link.active { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
-    
-    /* Pages - ALL pages start hidden */
-    .page {
-        display: none;
-        animation: fadeIn 0.3s ease;
-        min-height: calc(100vh - 72px);
-        width: 100%;
-        position: relative;
-    }
-    
-    .page.active { 
-        display: block; 
-    }
-    
-    /* HOME PAGE specific styles - ONLY applies to home page */
-    #page_home {
-        padding-top: 0px;
-        position: relative;
-    }
-    
-    /* Hero section - ONLY inside home page */
-    #page_home .hero-section {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 100vh;
-        overflow: hidden;
-        z-index: 1;
-    }
-    
-    #page_home .hero-image {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    #page_home .home-content {
-        position: relative;
-        z-index: 10;
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-    }
-    
-    /* NON-HOME PAGES - Clean gradient headers, NO absolute positioning */
-    #page_catalogue, #page_solutions, #page_about, #page_contact, #page_services,
-    #page_products, #page_pricing, #page_blog, #page_faq, [id^="page_"]:not(#page_home) {
-        padding-top: 88px;
-        background: transparent;
-    }
-    
-    /* Page header for non-home pages */
-    .page-header {
-        padding: 3rem 0;
-        text-align: center;
-        background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
-        margin-bottom: 2rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    
-    .page-header h1 {
-        color: white;
-        font-size: 2.5rem;
-        margin-bottom: 0.75rem;
-    }
-    
-    .page-header p {
-        color: #9ca3af;
-        font-size: 1.1rem;
-        max-width: 600px;
-        margin: 0 auto;
-    }
-    
-    /* Safety - Hide any hero elements outside home page */
-    .page:not(#page_home) .hero-section,
-    .page:not(#page_home) .hero-image,
-    .page:not(#page_home) .home-content,
-    .page:not(#page_home) [class*="hero"],
-    .page:not(#page_home) [class*="Hero"] {
-        display: none !important;
-    }
-    
-    /* Cards */
-    .card {
-        background: linear-gradient(135deg, #1a1a1e 0%, #121216 100%);
-        border-radius: 1rem;
-        padding: 1.5rem;
-        transition: all 0.3s ease;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    
-    .card:hover { transform: translateY(-4px); border-color: #c084fc; }
-    
-    /* Buttons */
-    .btn-primary {
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 2rem;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .btn-primary:hover { transform: translateY(-2px); }
-    
-    /* Container */
-    .container { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }
-    
-    /* Utilities */
-    .gradient-text {
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-    }
-    
-    .hero-text-shadow { text-shadow: 0 2px 15px rgba(0, 0, 0, 0.6); }
-    
-    /* Mobile Menu */
-    .hamburger {
-        display: none;
-        flex-direction: column;
-        gap: 4px;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        z-index: 101;
-    }
-    
-    .hamburger span {
-        width: 25px;
-        height: 3px;
-        background: #9ca3af;
-        border-radius: 2px;
-    }
-    
-    .mobile-menu {
-        position: fixed;
-        top: 0;
-        right: -100%;
-        width: 280px;
-        height: 100vh;
-        background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
-        z-index: 100;
-        transition: 0.3s;
-        padding: 80px 24px;
-    }
-    
-    .mobile-menu.active { right: 0; }
-    
-    .mobile-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.5);
-        z-index: 99;
-        display: none;
-    }
-    
-    .mobile-overlay.active { display: block; }
-    
-    .mobile-nav-link {
-        display: block;
-        padding: 12px 16px;
-        color: #9ca3af;
-        text-decoration: none;
-        border-radius: 0.5rem;
-        margin-bottom: 8px;
-    }
-    
-    .mobile-nav-link.active { color: #c084fc; background: rgba(192, 132, 252, 0.15); }
-    
-    /* Grid utilities */
-    .grid { display: grid; }
-    .grid-cols-1 { grid-template-columns: repeat(1, 1fr); }
-    .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-    .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-    .gap-4 { gap: 1rem; }
-    .gap-6 { gap: 1.5rem; }
-    .gap-8 { gap: 2rem; }
-    
-    @media (max-width: 768px) {
-        .nav-links { display: none !important; }
-        .hamburger { display: flex !important; }
-        .grid-cols-2, .grid-cols-3 { grid-template-columns: repeat(1, 1fr); }
-        .page-header h1 { font-size: 2rem; }
-    }
-</style>
-"""
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
 
+body {{
+    font-family: 'Inter', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+}}
 
+header {{
+    background: rgba(26, 26, 30, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    height: 72px;
+}}
 
+.nav-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+}}
 
+.brand {{
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-decoration: none;
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
 
+.nav-links {{
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}}
 
+.nav-link {{
+    color: #9ca3af;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+}}
 
+.nav-link:hover, .nav-link.active {{
+    color: #c084fc;
+    background: rgba(192,132,252,0.1);
+}}
 
+.page {{
+    display: none;
+    min-height: calc(100vh - 72px);
+    padding-top: 88px;
+}}
 
+.page.active {{ display: block; }}
 
+.container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}}
 
+.card {{
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.3s;
+}}
 
+.card:hover {{
+    transform: translateY(-4px);
+    border-color: #c084fc;
+}}
 
+.gradient-text {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
 
+.btn {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}}
 
+.btn:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(192,132,252,0.3);
+}}
 
+.hero {{
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+    border-radius: 1rem;
+    margin: 1rem;
+    overflow: hidden;
+}}
 
+.hero-bg {{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.35;
+}}
 
+.hero-content {{
+    position: relative;
+    z-index: 10;
+    padding: 3rem;
+}}
 
+.hero-content h1 {{
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+}}
 
+.hero-content p {{
+    font-size: 1.2rem;
+    color: #9ca3af;
+    margin-bottom: 2rem;
+}}
 
+.grid {{
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}}
 
+/* Footer */
+footer {{
+    background: linear-gradient(180deg, rgba(15,15,18,0.8) 0%, #1a1a2e 100%);
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin-top: 4rem;
+    padding: 3rem 0 2rem;
+}}
 
+.footer-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}}
 
+.footer-section h4 {{
+    color: #c084fc;
+    margin-bottom: 1rem;
+}}
 
+.footer-section a {{
+    color: #9ca3af;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.5rem;
+    transition: color 0.2s;
+}}
 
+.footer-section a:hover {{ color: #c084fc; }}
 
+.copyright {{
+    text-align: center;
+    padding-top: 2rem;
+    margin-top: 2rem;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: #6b7280;
+    font-size: 0.875rem;
+}}
 
-
-
-        # ========== AI PROMPT ==========
-        prompt = f"""You are an expert frontend developer. Create a COMPLETE, STANDALONE HTML preview with MODERN DARK THEME.
-
-
-
-================================================================================
-CRITICAL: DO NOT DUPLICATE SCRIPTS OR STYLES
-================================================================================
-
-- Include ONLY ONE <style> tag with ALL CSS
-- Include ONLY ONE <script> tag with ALL JavaScript
-- DO NOT add multiple style blocks or script blocks
-- DO NOT add Tailwind CDN and custom CSS - use ONLY the custom CSS provided
-
-
-PROJECT: {brand_name}
-NAVIGATION LINKS: {json.dumps(nav_links)}
-
-PAGE CONTENTS FROM NEXT.JS FILES (USE THESE EXACTLY FOR EACH PAGE):
-{json.dumps(page_contents, indent=2)[:15000]}
-
-FOOTER HTML (USE THIS EXACTLY IF PROVIDED):
-{footer_html if footer_html else "Create a simple footer with copyright and navigation links"}
-
-{image_instruction}
-
-
-
-
-
-================================================================================
-REQUIREMENTS
-================================================================================
-
-1. Each page div: id="page_XXX" class="page"
-2. Home page: id="page_home" class="page active"
-3. Home page ONLY gets hero image - NO overlays on hero image
-4. Non-home pages: NO images, ONLY gradient backgrounds
-5. Brand name clickable to home page
-6. Use purple/pink gradients (#c084fc, #f472b6) for accents
-7. Hero section MUST be INSIDE #page_home div
-8. Should use the extracted data from pages to make html instead of placeholder
-9. The content from frontend is used in html pages
-
-================================================================================
-MOBILE NAVIGATION - MANDATORY
-================================================================================
-
-Add these CSS rules in your ONE style tag:
-
+/* Mobile Menu */
 .hamburger {{
     display: none;
     flex-direction: column;
@@ -2461,8 +3242,8 @@ Add these CSS rules in your ONE style tag:
     background: transparent;
     border: none;
     cursor: pointer;
-    z-index: 101;
 }}
+
 .hamburger span {{
     width: 25px;
     height: 3px;
@@ -2476,22 +3257,22 @@ Add these CSS rules in your ONE style tag:
     right: -100%;
     width: 280px;
     height: 100vh;
-    background: linear-gradient(135deg, #1a1a1e 0%, #0f0f12 100%);
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-    z-index: 100;
-    transition: right 0.3s ease;
+    background: #1a1a1e;
+    z-index: 200;
+    transition: right 0.3s;
     padding: 80px 24px;
 }}
+
 .mobile-menu.active {{ right: 0; }}
 
 .mobile-overlay {{
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 99;
+    background: rgba(0,0,0,0.5);
+    z-index: 199;
     display: none;
 }}
+
 .mobile-overlay.active {{ display: block; }}
 
 .mobile-nav-link {{
@@ -2501,43 +3282,93 @@ Add these CSS rules in your ONE style tag:
     text-decoration: none;
     border-radius: 0.5rem;
     margin-bottom: 8px;
-    transition: all 0.2s ease;
-}}
-.mobile-nav-link:hover,
-.mobile-nav-link.active {{
-    color: #c084fc;
-    background: rgba(192, 132, 252, 0.15);
 }}
 
 @media (max-width: 768px) {{
-    .nav-links {{ display: none !important; }}
-    .hamburger {{ display: flex !important; }}
-    .page {{ display: none !important; }}
-    .page.active {{ display: block !important; }}
+    .nav-links {{ display: none; }}
+    .hamburger {{ display: flex; }}
+    .hero-content h1 {{ font-size: 2rem; }}
+    .footer-container {{ grid-template-columns: 1fr; text-align: center; }}
 }}
 
-================================================================================
-JAVASCRIPT - INCLUDE EXACTLY ONCE
-================================================================================
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
 
+.page {{ animation: fadeIn 0.3s ease; }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</style>
+
+
+
+
+
+
+
+================================================================================
+JAVASCRIPT - WORKING NAVIGATION WITH BRAND CLICK HANDLER (FIXED)
+================================================================================
 <script>
 function showPage(pageId) {{
+    console.log('🔄 showPage called with:', pageId);
+    
+    // Hide ALL pages
     document.querySelectorAll('.page').forEach(page => {{
         page.classList.remove('active');
         page.style.display = 'none';
     }});
+    
+    // Show the target page
     const targetPage = document.getElementById('page_' + pageId);
     if (targetPage) {{
         targetPage.classList.add('active');
         targetPage.style.display = 'block';
+        console.log('✅ Showing page:', pageId);
+    }} else {{
+        console.log('❌ Page not found:', 'page_' + pageId);
+        // Fallback - show home
+        const homePage = document.getElementById('page_home');
+        if (homePage) {{
+            homePage.classList.add('active');
+            homePage.style.display = 'block';
+        }}
     }}
+    
+    // Update navigation active states
     document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
         link.classList.remove('active');
+        if (link.getAttribute('data-page') === pageId) {{
+            link.classList.add('active');
+        }}
     }});
-    document.querySelectorAll(`[data-page="${{pageId}}"]`).forEach(link => {{
-        link.classList.add('active');
-    }});
-    window.history.pushState({{}}, '', '/' + pageId);
+    
+    // Update URL
+    if (pageId !== 'home') {{
+        window.history.pushState({{}}, '', '/' + pageId);
+    }} else {{
+        window.history.pushState({{}}, '', '/');
+    }}
     window.scrollTo(0, 0);
 }}
 
@@ -2548,75 +3379,350 @@ function toggleMenu() {{
     if (overlay) overlay.classList.toggle('active');
 }}
 
-window.addEventListener('popstate', function() {{
+// Handle brand/logo click - ALWAYS go to home page
+function handleBrandClick(e) {{
+    e.preventDefault();
+    e.stopPropagation();
+    showPage('home');
+    if (window.innerWidth <= 768) toggleMenu();
+}}
+
+// Handle navigation link clicks
+function handleNavClick(e) {{
+    e.preventDefault();
+    const pageId = this.getAttribute('data-page');
+    if (pageId) {{
+        showPage(pageId);
+        if (window.innerWidth <= 768) toggleMenu();
+    }}
+}}
+
+// ========== INITIALIZATION - CRITICAL FOR HOME PAGE ==========
+if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', init);
+}} else {{
+    init();
+}}
+
+function init() {{
+    console.log('🎯 Initializing navigation...');
+    
+    // Get current path or default to home
+    let currentPath = window.location.pathname.slice(1);
+    if (!currentPath || currentPath === '') {{
+        currentPath = 'home';
+    }}
+    console.log('📍 Current path:', currentPath);
+    
+    // Ensure ALL pages are hidden first
+    document.querySelectorAll('.page').forEach(page => {{
+        page.classList.remove('active');
+        page.style.display = 'none';
+    }});
+    
+    // Show the home page (or current path)
+    const targetPageId = currentPath === 'home' ? 'page_home' : 'page_' + currentPath;
+    const targetPage = document.getElementById(targetPageId);
+    
+    if (targetPage) {{
+        targetPage.classList.add('active');
+        targetPage.style.display = 'block';
+        console.log('✅ Activated page:', targetPageId);
+    }} else {{
+        // Fallback - show home
+        const homePage = document.getElementById('page_home');
+        if (homePage) {{
+            homePage.classList.add('active');
+            homePage.style.display = 'block';
+            console.log('✅ Fallback: Activated home page');
+        }}
+    }}
+    
+    // Update navigation active states
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.classList.remove('active');
+        if (link.getAttribute('data-page') === currentPath) {{
+            link.classList.add('active');
+        }}
+    }});
+    
+    // Add event listeners
+    const brandLink = document.querySelector('.brand');
+    if (brandLink) {{
+        brandLink.addEventListener('click', handleBrandClick);
+        console.log('✅ Brand click handler attached');
+    }}
+    
+    const hamburger = document.querySelector('.hamburger');
+    const overlay = document.getElementById('mobileOverlay');
+    if (hamburger) hamburger.addEventListener('click', toggleMenu);
+    if (overlay) overlay.addEventListener('click', toggleMenu);
+    
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.removeEventListener('click', handleNavClick);
+        link.addEventListener('click', handleNavClick);
+    }});
+    
+    console.log('✅ Navigation initialized successfully');
+}}
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {{
     const path = window.location.pathname.slice(1) || 'home';
     showPage(path);
 }});
 </script>
 
 
-================================================================================
-FINAL CHECKLIST - VERIFY BEFORE OUTPUT
-================================================================================
 
-[ ] Hamburger button is on the RIGHT side of navbar
-[ ] Mobile menu slides in from RIGHT (right: -100% to right: 0)
-[ ] Brand name is on the LEFT side
-[ ] ONLY ONE <style> tag
-[ ] ONLY ONE <script> tag
-[ ] Home page has hero image inside #page_home
-[ ] Non-home pages have NO images
-[ ] Mobile menu works at 768px breakpoint
 
-Return ONLY complete HTML. NO explanations.
+
+
+
+
+================================================================================
+RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
+================================================================================
 """
+
+
+
+
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.1, "max_output_tokens": 48000}
-)
-        
-        
-        
-        
+            config={"temperature": 0.1, "max_output_tokens": 4000000}
+        )
 
         preview_html = clean_html_response(response_text)
 
-        # Inject styles
-        if '<style>' in preview_html:
-            preview_html = preview_html.replace('<style>', light_styles + '<style>')
-        elif '</head>' in preview_html:
-            preview_html = preview_html.replace('</head>', light_styles + '</head>')
-        else:
-            preview_html = preview_html.replace('<!DOCTYPE html>', f'<!DOCTYPE html>\n<head>{light_styles}</head>')
+        # ========== CLEAN ONERROR HANDLERS ==========
+        preview_html = clean_onError_handlers(preview_html)  # ← ADD THIS LINE
+        # ============================================
 
+        # Ensure doctype
         if not preview_html.lower().startswith("<!doctype"):
             preview_html = "<!DOCTYPE html>\n" + preview_html
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
 
         # Inject base64 images
-        print("🖼️ Injecting images...")
         for file_key, content in files.items():
-            if not file_key.startswith("public/images/") or not isinstance(content, str):
-                continue
-            if not content.startswith("__binary_base64__"):
-                continue
-            
-            public_path = "/" + file_key[len("public/"):]
-            raw_b64 = content[len("__binary_base64__"):]
-            data_uri = f"data:image/jpeg;base64,{raw_b64}"
-            
-            preview_html = re.sub(f'src="{public_path}"', f'src="{data_uri}"', preview_html)
-            preview_html = re.sub(f"src='{public_path}'", f'src="{data_uri}"', preview_html)
+            if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
+                public_path = "/" + file_key[len("public/"):]
+                raw_b64 = content[len("__binary_base64__"):]
+                data_uri = f"data:image/jpeg;base64,{raw_b64}"
+                preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
+                preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
 
-        print(f"✅ Preview generated! Length: {len(preview_html):,} chars")
+
+
+
+
+
+
+
+
+
+        # ========== AUTH HANDLER SCRIPT ==========
+        auth_script = f"""
+<script>
+const BACKEND_URL = "{BACKEND_URL}";
+
+// Get connection string directly from localStorage
+function getDbConnection() {{
+    let conn = localStorage.getItem("neon_db_connection");
+    if (!conn) {{
+        conn = sessionStorage.getItem("neon_db_connection");
+    }}
+    return conn;
+}}
+
+async function handleSignup(event) {{
+    event.preventDefault();
+    const form = event.target;
+    const name = form.querySelector('[name="name"], [name="fullName"]')?.value || '';
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    console.log("🔑 DB Connection found:", dbConnection ? "Yes ✅" : "No ❌");
+    
+    if (!dbConnection) {{
+        alert('❌ Database not connected. Please add your Neon DB connection string first.\\n\\nOpen console and run:\\nlocalStorage.setItem("neon_db_connection", "your-connection-string")');
+        return;
+    }}
+    
+    if (password !== confirmPassword) {{
+        alert('❌ Passwords do not match');
+        return;
+    }}
+    if (password.length < 6) {{
+        alert('❌ Password must be at least 6 characters');
+        return;
+    }}
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Sign Up';
+    if (submitBtn) submitBtn.innerText = 'Creating account...';
+    
+    try {{
+        const response = await fetch(`${{BACKEND_URL}}/api/auth/signup`, {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ 
+                name, 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            }})
+        }});
+        const data = await response.json();
+        console.log("📡 Signup response:", data);
+        
+        if (data.success) {{
+            alert('✅ Account created successfully! You can now log in.');
+            form.reset();
+            setTimeout(() => {{
+                const loginLink = document.querySelector('a[href="/login"]');
+                if (loginLink && typeof showPage === 'function') {{
+                    showPage('login');
+                }}
+            }}, 1500);
+        }} else if (data.requires_db) {{
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        }} else {{
+            alert('❌ ' + (data.error || 'Signup failed'));
+        }}
+    }} catch (error) {{
+        console.error('Signup error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    }} finally {{
+        if (submitBtn) submitBtn.innerText = originalText;
+    }}
+}}
+
+async function handleLogin(event) {{
+    event.preventDefault();
+    const form = event.target;
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    if (!dbConnection) {{
+        alert('❌ Database not connected. Please add your Neon DB connection string first.');
+        return;
+    }}
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Login';
+    if (submitBtn) submitBtn.innerText = 'Logging in...';
+    
+    try {{
+        const response = await fetch(`${{BACKEND_URL}}/api/auth/login`, {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            }})
+        }});
+        const data = await response.json();
+        
+        if (data.success) {{
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            alert('✅ Login successful! Welcome ' + (data.user.name || data.user.email));
+            setTimeout(() => {{
+                if (typeof showPage === 'function') showPage('home');
+            }}, 1000);
+        }} else if (data.requires_db) {{
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        }} else {{
+            alert('❌ ' + (data.error || 'Login failed'));
+        }}
+    }} catch (error) {{
+        console.error('Login error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    }} finally {{
+        if (submitBtn) submitBtn.innerText = originalText;
+    }}
+}}
+
+// Listen for database connection from parent window (for iframe preview)
+window.addEventListener('message', function(event) {{
+    if (event.data && event.data.type === 'SET_DB_CONNECTION') {{
+        localStorage.setItem('neon_db_connection', event.data.db_connection);
+        console.log('✅ DB Connection received from parent');
+    }}
+}});
+
+document.addEventListener('DOMContentLoaded', function() {{
+    // Request connection string from parent if not present
+    if (!getDbConnection() && window.parent !== window) {{
+        window.parent.postMessage({{ type: 'GET_DB_CONNECTION' }}, '*');
+    }}
+    
+    document.querySelectorAll('form').forEach(form => {{
+        const hasPassword = form.querySelector('[type="password"]');
+        const hasEmail = form.querySelector('[type="email"]');
+        const submitText = form.querySelector('[type="submit"]')?.innerText?.toLowerCase() || '';
+        const formId = form.id?.toLowerCase() || '';
+        
+        const isSignupForm = formId.includes('signup') || submitText.includes('sign') || submitText.includes('up') || (form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        const isLoginForm = formId.includes('login') || submitText.includes('log') || submitText.includes('in') || (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        
+        if ((isSignupForm || isLoginForm) && !form.onsubmit) {{
+            if (isSignupForm) form.onsubmit = handleSignup;
+            else if (isLoginForm) form.onsubmit = handleLogin;
+        }}
+    }});
+}});
+</script>
+"""
+
+
+
+
+
+
+
+
+
+
+
+        # Inject auth script
+        if '</body>' in preview_html:
+            preview_html = preview_html.replace('</body>', f'{auth_script}\n</body>')
+        else:
+            preview_html = preview_html + auth_script
+
+        print(f"✅ Beautiful preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
+    
+    
+    
+    
+    
 
     except Exception as e:
         print(f"❌ AI Preview Error: {e}")
         import traceback
         traceback.print_exc()
-        raise
-    
+        return {"success": False, "error": str(e)}
     
     
     
@@ -2813,9 +3919,6 @@ def clean_json_response(text: str) -> str:
 
 
 
-
-
-
 def fix_json_errors(text: str) -> str:
     """Aggressive fix for Gemini's common JSON escaping problems"""
     if not text:
@@ -2826,18 +3929,50 @@ def fix_json_errors(text: str) -> str:
     # 1. Clean markdown again (in case it survived)
     text = clean_json_response(text)
     
-    # 2. Fix invalid backslashes - the #1 cause of "Invalid \escape"
+    # 2. ⭐⭐⭐ CRITICAL: Fix escaped apostrophes FIRST (most common issue)
+    # Replace \' with ' (apostrophes don't need escaping in JSON)
+    text = text.replace("\\'", "'")
+    
+    # 3. ⭐ NEW: Fix common contractions with escaped apostrophes
+    # Pattern: it\'s -> it's, won\'t -> won't, don\'t -> don't, etc.
+    text = re.sub(r"it\\'s", "it's", text)
+    text = re.sub(r"won\\'t", "won't", text)
+    text = re.sub(r"don\\'t", "don't", text)
+    text = re.sub(r"can\\'t", "can't", text)
+    text = re.sub(r"that\\'s", "that's", text)
+    text = re.sub(r"what\\'s", "what's", text)
+    text = re.sub(r"there\\'s", "there's", text)
+    text = re.sub(r"we\\'ll", "we'll", text)
+    text = re.sub(r"they\\'re", "they're", text)
+    text = re.sub(r"you\\'re", "you're", text)
+    text = re.sub(r"([a-zA-Z])\\'([a-zA-Z])", r"\1'\2", text)
+    text = re.sub(r"n\\'t", r"n't", text)
+    
+    # 4. ⭐ Fix escaped quotes next
+    text = text.replace('\\"', '"')
+    
+    # 5. Fix template literals and backticks
+    text = text.replace('`', '"')
+    # Fix ${...} template expressions like `${testimonial.quote}`
+    text = re.sub(r'\$\{([^}]+)\}', r'\\"\1\\"', text)
+    # Fix patterns like {`"text"`} or {`text`}
+    text = re.sub(r'\{\s*"[^"]*"\s*\}', r'""', text)
+    text = re.sub(r'\{\s*`[^`]*`\s*\}', r'""', text)
+    
+    # 6. Fix invalid backslashes - the #1 cause of "Invalid \escape"
     # Replace any \ that is not followed by a valid JSON escape character
     valid_escapes = r'["\\/bfnrtu]'
     text = re.sub(r'\\(?!' + valid_escapes + r')', r'\\\\', text)
     
-    # 3. Fix common invalid escapes like \'
-    text = text.replace("\\'", "'")
+    # 7. Fix double backslashes
+    text = text.replace("\\\\", "\\")
     
-    # 4. Fix unescaped double quotes inside string values (very common with Gemini)
+    # 8. Fix unescaped double quotes inside string values (very common with Gemini)
     def safe_escape_quotes(match):
         # match.group(1) = content inside the quotes
         content = match.group(1)
+        # First, restore any properly escaped quotes we might have broken
+        content = content.replace('\\"', '"')
         # Escape any " that isn't already escaped
         content = re.sub(r'(?<!\\)"', r'\\"', content)
         return '"' + content + '"'
@@ -2845,26 +3980,63 @@ def fix_json_errors(text: str) -> str:
     # Apply to all "..." strings
     text = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', safe_escape_quotes, text)
     
-    # 5. Remove trailing commas (very frequent)
+    # 9. Remove trailing commas (very frequent)
     text = re.sub(r',\s*}', '}', text)
     text = re.sub(r',\s*]', ']', text)
     
-    # 6. Fix missing quotes around property names
+    # 10. Fix missing quotes around property names
     text = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', text)
     
-    # 7. Remove BOM and invisible characters
+    # 11. Remove BOM and invisible characters
     text = text.encode('utf-8').decode('utf-8-sig')
     
-    # 8. Final cleanup - remove any stray control characters
+    # 12. Final cleanup - remove any stray control characters
     text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
     
-    # 9. If the JSON looks broken at the start, try to extract the object
+    # 13. If the JSON looks broken at the start, try to extract the object
     if text and not text.startswith('{'):
         json_match = re.search(r'(\{[\s\S]*\})', text)
         if json_match:
             text = json_match.group(1)
     
+    # 14. Fix any remaining unescaped backslashes before quotes
+    text = re.sub(r"([a-zA-Z])\\'([a-zA-Z])", r"\1'\2", text)
+    
+    # 15. Fix line breaks in strings (replace actual newlines with \n)
+    def fix_newlines_in_strings(match):
+        content = match.group(1)
+        # Replace actual newlines with \n escape
+        content = content.replace('\n', '\\n').replace('\r', '\\r')
+        return '"' + content + '"'
+    
+    # Apply to strings that might contain unescaped newlines
+    text = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', fix_newlines_in_strings, text)
+    
+    # 16. Remove any leftover control characters in strings
+    text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
+    
+    # 17. Fix common HTML entities in strings
+    text = text.replace('&quot;', '"')
+    text = text.replace('&apos;', "'")
+    text = text.replace('&amp;', '&')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    
+    # 18. Fix any remaining escaped backticks or template strings
+    text = re.sub(r'\\`', '"', text)
+    text = re.sub(r'\\\$', '$', text)
+    
+    # 19. Remove any remaining JSON-invalid control characters
+    text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+    
+    # 20. ⭐ FINAL PASS: Fix any missed escaped apostrophes
+    # This catches edge cases like 'it\'s' that might have survived
+    text = re.sub(r"'\\'([^']+)'", r"'\1'", text)
+    text = re.sub(r'"\\\'([^"]+)"', r'"\1"', text)
+    
     return text.strip()
+
+
 
 
 
@@ -3007,6 +4179,353 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 ================================================================================
+SPECIFIC RULE FOR app/page.tsx - MUST HAVE 'use client'
+================================================================================
+
+STATEMENT: app/page.tsx MUST have 'use client' as the FIRST line because it contains 
+images with onError handlers and buttons with onClick handlers.
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 THREE MANDATORY RULES FOR ALL GENERATED CODE 🚨🚨🚨
+================================================================================
+
+These rules MUST be followed for EVERY file generated. Violations will cause Vercel build failures.
+
+================================================================================
+RULE 1: IMAGE ERROR HANDLERS - MUST USE OPTIONAL CHAINING
+================================================================================
+
+STATEMENT: When generating any image with an onError handler, you MUST use 
+optional chaining (?.) when accessing parentElement.
+
+REQUIREMENT: Replace `parentElement.classList` with `parentElement?.classList`
+
+EXAMPLE - CORRECT:
+```tsx
+onError={(e) => {
+  e.currentTarget.style.display = 'none';
+  e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-950', 'via-zinc-950', 'to-pink-950');
+}}
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL RULES FOR ALL GENERATED CODE 🚨🚨🚨
+================================================================================
+
+RULE 1: IMAGE ERROR HANDLERS - ALWAYS use optional chaining
+================================================================================
+
+When generating any image with an onError handler, ALWAYS use this pattern:
+
+✅ CORRECT:
+```tsx
+onError={(e) => {
+  e.currentTarget.style.display = 'none';
+  e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-950', 'via-zinc-950', 'to-pink-950');
+}}
+❌ WRONG (causes build error):
+onError={(e) => {
+  e.currentTarget.style.display = 'none';
+  e.currentTarget.parentElement.classList.add(...);  // Missing ?.
+}}
+
+
+
+
+
+
+================================================================================
+RULE 2: ALL PAGES WITH EVENT HANDLERS MUST HAVE 'use client'
+================================================================================
+
+Any file that contains ANY of the following MUST have 'use client' as the FIRST line:
+
+Event Handlers:
+- onError
+- onClick
+- onSubmit
+- onChange
+- onMouseEnter
+- onMouseLeave
+- onFocus
+- onBlur
+- onKeyDown
+- onKeyUp
+- onScroll
+
+React Hooks:
+- useState
+- useEffect
+- useCallback
+- useMemo
+- useRef
+- useContext
+- useReducer
+
+Next.js Hooks:
+- useRouter
+- usePathname
+- useSearchParams
+
+Browser APIs:
+- localStorage
+- sessionStorage
+- window
+- document
+
+✅ CORRECT (this will build successfully):
+```tsx
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function MyPage() {
+  const [count, setCount] = useState(0);
+  const router = useRouter();
+  
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      Click me
+    </button>
+  );
+}
+❌ WRONG (this will FAIL the Vercel build):
+import React, { useState } from 'react';  // Missing 'use client'
+
+export default function MyPage() {
+  const [count, setCount] = useState(0);  // ERROR: useState requires 'use client'
+  
+  return <button onClick={() => setCount(count + 1)}>Click</button>;
+}
+❌ WRONG (this will also FAIL):
+import React from 'react';
+
+export default function MyPage() {
+  return (
+    <img 
+      src="/image.jpg" 
+      onError={(e) => {  // ERROR: onError requires 'use client'
+        e.currentTarget.style.display = 'none';
+      }}
+    />
+  );
+}
+
+
+
+
+
+
+
+================================================================================
+WHICH FILES NEED 'use client'? - COMPLETE LIST
+================================================================================
+
+✅ MUST HAVE 'use client' - CLIENT COMPONENTS:
+
+app/page.tsx                    # If it has: onError, onClick, useState, useRouter
+app/signup/page.tsx             # Has forms, onSubmit, onChange, useState
+app/login/page.tsx              # Has forms, onSubmit, onChange, useState
+app/contact/page.tsx            # Has forms, onSubmit, onChange, useState
+app/about/page.tsx              # If it has images with onError
+app/dashboard/page.tsx          # Usually has client interactions
+app/profile/page.tsx            # Has forms, user interactions
+app/settings/page.tsx           # Has forms, toggles, switches
+app/cart/page.tsx               # Has add/remove buttons
+app/checkout/page.tsx           # Has forms, payment interactions
+app/search/page.tsx             # Has input, filters
+app/blog/[slug]/page.tsx        # If it has comments, likes, shares
+
+components/Navigation.tsx       # Always - has onClick, useState (mobile menu)
+components/Footer.tsx           # If it has newsletter form, social links
+components/Button.tsx           # Always - has onClick
+components/Modal.tsx            # Always - has open/close state
+components/Dropdown.tsx         # Always - has toggle state
+components/Tabs.tsx             # Always - has active tab state
+components/Carousel.tsx         # Always - has next/prev buttons
+components/ImageGallery.tsx     # Has onError for images
+components/VideoPlayer.tsx      # Has play/pause controls
+components/FormInput.tsx        # Has onChange, onBlur
+components/FileUploader.tsx     # Has file selection
+components/StarRating.tsx       # Has onClick for rating
+components/NewsletterSignup.tsx # Has form submission
+components/SearchBar.tsx        # Has input, search functionality
+components/CartIcon.tsx         # Has onClick for cart
+components/UserMenu.tsx         # Has onClick for dropdown
+components/MobileMenu.tsx       # Has toggle state
+components/DarkModeToggle.tsx   # Has toggle state
+
+hooks/useAuth.ts                # Always - uses useState, useEffect
+hooks/useLocalStorage.ts        # Always - uses localStorage
+hooks/useMediaQuery.ts          # Always - uses window.matchMedia
+hooks/useScrollPosition.ts      # Always - uses window.scroll
+hooks/useWindowSize.ts          # Always - uses window resize
+
+context/AuthContext.tsx         # Always - has useState, useEffect
+context/ThemeContext.tsx        # Always - has useState
+context/CartContext.tsx         # Always - has useState
+
+lib/api-client.ts               # If it uses fetch in browser
+lib/storage.ts                  # If it uses localStorage/sessionStorage
+
+================================================================================
+❌ DO NOT NEED 'use client' - SERVER COMPONENTS:
+================================================================================
+
+app/layout.tsx                  # Can stay Server Component
+app/loading.tsx                 # Server Component (loading UI)
+app/error.tsx                   # Server Component (error UI)
+app/not-found.tsx               # Server Component (404 page)
+app/api/*/route.ts              # API routes - run on server only
+
+components/ServerComponent.tsx  # No client interactions
+components/MarkdownRenderer.tsx # Pure rendering
+
+lib/db.ts                       # Database utilities - server only
+lib/auth-server.ts              # Server-side auth only
+lib/email-service.ts            # Email sending - server only
+
+types/index.ts                  # TypeScript types - no runtime code
+utils/constants.ts              # Constants - no hooks
+utils/helpers.ts                # Pure functions - no hooks
+
+middleware.ts                   # Runs on server
+next.config.js                  # Configuration file
+tailwind.config.ts              # Configuration file
+postcss.config.js               # Configuration file
+
+================================================================================
+QUICK CHECKLIST FOR AI:
+================================================================================
+
+Ask yourself these questions:
+
+1. Does the file have any event handlers? (onClick, onSubmit, onError, onChange)
+   → YES: Add 'use client'
+
+2. Does the file use any React Hooks? (useState, useEffect, useCallback)
+   → YES: Add 'use client'
+
+3. Does the file use Next.js client hooks? (useRouter, usePathname, useSearchParams)
+   → YES: Add 'use client'
+
+4. Does the file use browser APIs? (localStorage, sessionStorage, window, document)
+   → YES: Add 'use client'
+
+5. Is the file a page with forms or user interaction?
+   → YES: Add 'use client'
+
+6. Is the file a component that will be interactive?
+   → YES: Add 'use client'
+
+If you answered YES to ANY question → ADD 'use client' at the top
+
+================================================================================
+EXAMPLES OF CORRECT 'use client' PLACEMENT:
+================================================================================
+
+✅ app/signup/page.tsx (needs it - has form):
+```tsx
+'use client';
+
+import React, { useState } from 'react';
+import Link from 'next/link';
+
+export default function SignupPage() {
+  const [email, setEmail] = useState('');
+  
+  return (
+    <form onSubmit={...}>
+      <input onChange={(e) => setEmail(e.target.value)} />
+    </form>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+FOOTER GENERATION RULE - DYNAMIC IMPORTS
+================================================================================
+
+When generating components/Footer.tsx, the AI MUST:
+
+1. First, write the Footer JSX with all the icons it wants to use
+2. Then, look at EVERY icon used in the JSX
+3. Finally, add ALL those icons to the import statement
+
+================================================================================
+STEP BY STEP PROCESS FOR AI:
+================================================================================
+
+STEP 1: Design the Footer JSX with icons
+Example:
+```tsx
+<div>
+  <GraduationCap className="w-8 h-8" />
+  <Mail className="w-4 h-4" />
+  <Phone className="w-4 h-4" />
+  <MapPin className="w-4 h-4" />
+  <Send className="w-4 h-4" />
+  <Facebook className="w-5 h-5" />
+  <Twitter className="w-5 h-5" />
+  <Instagram className="w-5 h-5" />
+  <Heart className="w-3 h-3" />
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
 🚨 CRITICAL: HOME PAGE HERO BACKGROUND - ALWAYS USE IMAGE 🚨
 ================================================================================
 
@@ -3064,6 +4583,7 @@ CRITICAL SITE STRUCTURE & NAVIGATION
        - It must contain the Brand Name, a brief description, and a copyright notice with the current year (2026).
        - Should be haivng the social media icons and links
        - Style the footer with a "glass" effect or a clean, dark aesthetic to match the senior designer requirements.
+       - ALL Lucide imports MUST be declared at the top
 
 ================================================================================
 TECHNICAL BUILD RULES — NO EXCEPTIONS
@@ -3389,6 +4909,7 @@ Create a premium, elegant Footer component for the Next.js website.
 File path: "components/Footer.tsx"
 
 Requirements:
+- All lucide imports should be at the top.
 - Make it a modern glassmorphism-style footer with subtle backdrop blur.
 - Use the project's purple-pink gradient theme: bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
 - Include a decorative top border with gradient: bg-gradient-to-r from-transparent via-purple-500 to-transparent
@@ -5109,7 +6630,7 @@ Return ONLY valid JSON like this:
                 prompt=theme_prompt,
                 config={
                     "temperature": 0.1,
-                    "max_output_tokens": 200,
+                    "max_output_tokens": 200000,
                     "response_mime_type": "application/json",
                 }
             )
@@ -5141,6 +6662,9 @@ Return ONLY valid JSON like this:
                 search_terms = ['modern architecture', 'professional office', 'abstract background']
         
         print(f"🔍 Final search terms: {search_terms}")
+
+
+
 
 
 
@@ -5218,6 +6742,11 @@ Return ONLY valid JSON like this:
             "type": "status",
             "message": "🚀 Starting project generation (images loading in background)..."
         })
+        
+        
+        
+        
+        
 
         # ========== RETRY LOOP ==========
         while retry_count < max_retries:
@@ -5258,6 +6787,24 @@ Return ONLY valid JSON like this:
 
             full_response = ""
             detected_files: set = set()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5711,8 +7258,6 @@ CRITICAL RULES:
 
 
 
-
-
             # ========== JSON PARSING ==========
             try:
                 clean_text = clean_json_response(full_response)
@@ -5722,13 +7267,11 @@ CRITICAL RULES:
                     print(f"✅ JSON parsed successfully on attempt {retry_count + 1}")
                     
                     # ========== INSERT IMAGE WAITING CODE HERE ==========
-                    # After AI generation completes successfully, WAIT for images
                     await websocket.send_json({
                         "type": "status",
                         "message": "⏳ Waiting for images to finish processing..."
                     })
                     
-                    # Wait for background images to complete (with timeout)
                     try:
                         await asyncio.wait_for(background_image_task, timeout=15)
                         print(f"✅ Images ready: {len([k for k in image_data if image_data[k]])}/2")
@@ -5749,44 +7292,50 @@ CRITICAL RULES:
                     break  # Exit retry loop
                     
                 except json.JSONDecodeError as e1:
-                    # ... rest of your error handling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                     print(f"⚠️ Initial parse failed: {e1}")
+                    
+                    # DEBUG: Show problem area
+                    if hasattr(e1, 'pos'):
+                        pos = e1.pos
+                        start = max(0, pos - 200)
+                        end = min(len(clean_text), pos + 200)
+                        print(f"\n📍 Problem area around position {pos}:")
+                        print(clean_text[start:end])
+                        print(f"{' ' * (min(200, pos - start))}^--- Error here\n")
+                    
                     try:
                         fixed_text = fix_json_errors(clean_text)
                         project_files = json.loads(fixed_text)
                         print(f"✅ JSON fixed and parsed successfully on attempt {retry_count + 1}")
                         break
+                        
                     except json.JSONDecodeError as e2:
                         print(f"⚠️ Fixed parse still failed: {e2}")
+                        
                         try:
                             print("🛠️ Attempting advanced string repair...")
-                            fixed_text2 = re.sub(r'"([^"]*?)(?=\s*[,}])', r'"\1"', clean_text)
-                            fixed_text2 = fix_json_errors(fixed_text2)
-                            project_files = json.loads(fixed_text2)
-                            print(f"✅ JSON recovered using string repair!")
-                            break
-
-
+                            first_brace = clean_text.find('{')
+                            last_brace = clean_text.rfind('}')
+                            
+                            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                                extracted_json = clean_text[first_brace:last_brace + 1]
+                                project_files = json.loads(extracted_json)
+                                print(f"✅ JSON extracted and parsed successfully!")
+                                break
+                            else:
+                                raise ValueError("No valid JSON object found")
+                                
                         except Exception as repair_error:
                             print(f"❌ Repair failed: {repair_error}")
+                            
+                            # Save to debug file
+                            try:
+                                with open(f"debug_failed_response_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", "w", encoding="utf-8") as f:
+                                    f.write(full_response[:20000])
+                                print(f"💾 Saved failed response to debug file")
+                            except:
+                                pass
+                            
                             if retry_count == max_retries - 1:
                                 print(f"❌ All {max_retries} attempts failed")
                                 await websocket.send_json({
@@ -5800,6 +7349,8 @@ CRITICAL RULES:
 
             except Exception as parse_error:
                 print(f"❌ Unexpected parsing error: {parse_error}")
+                import traceback
+                traceback.print_exc()
                 if retry_count == max_retries - 1:
                     await websocket.send_json({
                         "type": "error",
@@ -5809,6 +7360,30 @@ CRITICAL RULES:
                 retry_count += 1
                 await asyncio.sleep(2 ** retry_count)
                 continue
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # ========== REPLACE NAME PLACEHOLDERS ==========
         for file_path, content in project_files.items():
@@ -6154,49 +7729,53 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
 
 
 
-
-
 # ====================== INTELLIGENT AI-DRIVEN EDIT WITH DB INTEGRATION ======================
 @app.post("/api/edit-file")
 async def edit_file(request: Dict[str, Any]):
     try:
         edit_description: str = request.get("edit_description", "")
-        all_files: Dict[str, str] = request.get("all_files", {})
+        all_files: Dict[str, Any] = request.get("all_files", {})
         existing_preview: str = request.get("existing_preview", "")
         force_regenerate: bool = request.get("force_regenerate", True)
         user_db_connection_string: str = request.get("db_connection_string", "")
         
+        # Extract project identifiers for saving preview
+        project_id: Optional[str] = request.get("project_id")
+        project_name_from_request: str = request.get("project_name", "")
+
         print(f"\n{'='*70}")
         print(f"🔧 EDIT REQUEST RECEIVED")
         print(f"📝 Description: {edit_description}")
         print(f"📁 Available files: {len(all_files)} files")
-        
+        if project_id:
+            print(f"🆔 Project ID: {project_id}")
+      
         if user_db_connection_string:
             print(f"🗄️ User's Database provided: {user_db_connection_string[:50]}...")
-        
+      
         print(f"{'='*70}\n")
 
         if not edit_description:
             raise HTTPException(status_code=400, detail="Edit description is required")
-        
+
         # Initialize updated_files with all_files
         updated_files = {**all_files}
-        
+
+
+        # ✅ ADD THIS LINE HERE - edit_results initialization at the TOP
+        edit_results = []  # <--- ADD THIS RIGHT HERE
+
         # Helper function to create simple preview after deletion
         def create_simple_preview(files: Dict[str, Any], project_name: str) -> str:
             """Create a simple HTML preview when AI generation fails"""
-            
-            # Extract navigation links from Navigation.tsx
             nav_links_html = ""
             if "components/Navigation.tsx" in files:
                 nav_content = files["components/Navigation.tsx"]
-                # Extract links from Navigation component
                 link_matches = re.findall(r'href="/([^"]+)"[^>]*>([^<]+)</', nav_content)
                 for href, text in link_matches:
                     if href not in ['login', 'signup', 'auth']:
                         nav_links_html += f'<a href="#" onclick="showPage(\'{href}\'); return false;" class="nav-link">{text}</a>'
-            
-            # Build simple HTML
+          
             html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6286,7 +7865,7 @@ async def edit_file(request: Dict[str, Any]):
             </div>
         </div>
     </nav>
-    
+  
     <div id="page_home" class="page active">
         <div class="container hero-section">
             <h1 class="gradient-text">Welcome to {project_name}</h1>
@@ -6295,58 +7874,109 @@ async def edit_file(request: Dict[str, Any]):
     </div>
 </body>
 </html>'''
-            
             return html
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+
+
+
+
+
+
+
         # ========== STEP 1: CHECK FOR DELETION REQUESTS (HIGHEST PRIORITY) ==========
         deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
         is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
+      
+        # Also check for package.json specific deletions
+        is_package_json_deletion = 'package.json' in edit_description.lower() and any(keyword in edit_description.lower() for keyword in ['remove', 'delete'])
         
-        # If we detected a deletion request, use AI to analyze what to remove
-        if is_deletion_request:
+        if is_deletion_request or is_package_json_deletion:
             print(f"🤖 AI analyzing deletion request: {edit_description}")
             
+            
+            
+            
+        # SPECIAL HANDLE FOR PACKAGE.JSON DELETIONS
+        if is_package_json_deletion or '@neondatabase' in edit_description.lower() or 'package.json' in edit_description.lower():
+            print(f"📦 Detected package.json modification request")
+            
+            # Look for package.json file
+            package_json_path = "package.json"
+            if package_json_path in updated_files:
+                current_package_json = updated_files[package_json_path]
+                
+                # Use the manage_package_json function to remove the dependency
+                updated_content, changes = await manage_package_json(current_package_json, edit_description)
+                
+                if updated_content and changes:
+                    # Update the file in memory
+                    updated_files[package_json_path] = updated_content
+                    
+                    # CRITICAL: Add to edit_results so frontend knows file changed
+                    edit_results.append({
+                        "file_path": package_json_path,
+                        "original_content": current_package_json,
+                        "updated_content": updated_content,
+                        "success": True,
+                        "is_new_file": False,
+                        "changes": changes
+                    })
+                    
+                    print(f"✅ package.json updated: {changes}")
+                    
+                    # Regenerate preview
+                    new_preview_html = existing_preview
+                    try:
+                        preview_result = await generate_preview_internal(updated_files, project_name_from_request or "Scorpio Project")
+                        if preview_result.get("success"):
+                            new_preview_html = preview_result.get("preview_html")
+                            updated_files["preview_html"] = new_preview_html
+                            await save_regenerated_preview(
+                                preview_html=new_preview_html,
+                                project_name=project_name_from_request or "Scorpio Project",
+                                project_id=project_id
+                            )
+                    except Exception as preview_error:
+                        print(f"⚠️ Preview error: {preview_error}")
+                    
+                    # Return with the updated file so frontend can apply the change
+                    return {
+                        "success": True,
+                        "deleted_files": [],
+                        "removed_links": [],
+                        "edits": edit_results,  # ← ADD THIS
+                        "files_edited": [package_json_path],  # ← ADD THIS
+                        "updated_files": {
+                            package_json_path: updated_content
+                        },
+                        "preview_html": new_preview_html,
+                        "message": f"✅ Updated package.json: {', '.join(changes)}"
+                    }
+                else:
+                    print(f"⚠️ No changes made to package.json")
+                    return {
+                        "success": True,
+                        "message": "No matching dependencies found to remove",
+                        "preview_html": existing_preview
+                    }
+            else:
+                print(f"⚠️ package.json not found")
+                return {
+                    "success": False,
+                    "message": "package.json not found in project",
+                    "preview_html": existing_preview
+                }
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
             # Create summary of existing pages for AI
             existing_pages = []
             for file_path in updated_files.keys():
@@ -6361,10 +7991,10 @@ async def edit_file(request: Dict[str, Any]):
                             page_name = parts[-2] if len(parts) > 1 else 'home'
                             if page_name not in ['layout', 'page', 'loading', 'error']:
                                 existing_pages.append(page_name)
-            
+          
             existing_pages = list(set(existing_pages))
             print(f"📄 Existing pages: {existing_pages}")
-            
+          
             # Also check navigation links
             navigation_links = []
             if "components/Navigation.tsx" in updated_files:
@@ -6373,21 +8003,16 @@ async def edit_file(request: Dict[str, Any]):
                 href_matches += re.findall(r"href='/([^']+)'", nav_content)
                 navigation_links = list(set(href_matches))
                 print(f"🔗 Navigation links: {navigation_links}")
-            
+          
             # Let AI decide what to delete
             deletion_prompt = f"""You are an AI code editor. Analyze this deletion request and decide what files/links to remove.
-
 DELETION REQUEST: {edit_description}
-
 EXISTING PAGES: {existing_pages}
-
 NAVIGATION LINKS: {navigation_links}
-
 Based on the request, determine:
 1. Which pages/files should be deleted
 2. Which navigation links should be removed
 3. Any related components or API routes that should be cleaned up
-
 Return ONLY a JSON object with:
 {{
   "pages_to_delete": ["page1", "page2"],
@@ -6395,7 +8020,6 @@ Return ONLY a JSON object with:
   "remove_auth_folder": true/false,
   "explanation": "brief explanation"
 }}"""
-
             try:
                 analysis_text = await model_router.generate_content(
                     prompt=deletion_prompt,
@@ -6415,17 +8039,16 @@ Return ONLY a JSON object with:
                     "remove_auth_folder": 'auth' in edit_description.lower() or 'login' in edit_description.lower() or 'signup' in edit_description.lower(),
                     "explanation": "Fallback analysis"
                 }
-            
+          
             pages_to_delete = deletion_analysis.get("pages_to_delete", [])
             links_to_remove = deletion_analysis.get("links_to_remove", [])
             remove_auth_folder = deletion_analysis.get("remove_auth_folder", False)
-            
+          
             all_deleted_files = []
-            
+          
             # Delete pages identified by AI
             for page_name in pages_to_delete:
                 print(f"🗑️ AI decided to delete page: '{page_name}'")
-                
                 page_patterns = [
                     rf"app/{page_name}/page\.tsx",
                     rf"app/{page_name}/page\.jsx",
@@ -6435,7 +8058,6 @@ Return ONLY a JSON object with:
                     rf"src/pages/{page_name}\.tsx",
                     rf"app/{page_name}/",
                 ]
-                
                 for file_path in list(updated_files.keys()):
                     file_lower = file_path.lower()
                     for pattern in page_patterns:
@@ -6444,20 +8066,15 @@ Return ONLY a JSON object with:
                             all_deleted_files.append(file_path)
                             print(f"   🗑️ Deleted: {file_path}")
                             break
-            
+          
             # Delete auth folder if AI suggests
             if remove_auth_folder:
                 print(f"🗑️ AI decided to delete auth folder")
                 auth_patterns = [
-                    r"app/auth/.*\.tsx",
-                    r"app/auth/.*\.jsx",
-                    r"app/auth/",
-                    r"app/api/auth/.*\.ts",
-                    r"app/api/auth/.*\.js",
-                    r"components/AuthProvider\.tsx",
-                    r"lib/auth\.ts",
-                    r"middleware\.ts",
-                    r"app/auth/page\.tsx",
+                    r"app/auth/.*\.tsx", r"app/auth/.*\.jsx", r"app/auth/",
+                    r"app/api/auth/.*\.ts", r"app/api/auth/.*\.js",
+                    r"components/AuthProvider\.tsx", r"lib/auth\.ts",
+                    r"middleware\.ts", r"app/auth/page\.tsx",
                 ]
                 for file_path in list(updated_files.keys()):
                     file_lower = file_path.lower()
@@ -6467,59 +8084,42 @@ Return ONLY a JSON object with:
                             all_deleted_files.append(file_path)
                             print(f"   🗑️ Deleted auth file: {file_path}")
                             break
-            
-            
-            
-            
-            
-            
-            
-            
+
             # Remove navigation links identified by AI
-            new_preview_html = existing_preview  # Initialize with existing preview
-            
+            new_preview_html = existing_preview
             if "components/Navigation.tsx" in updated_files and links_to_remove:
                 nav_content = updated_files["components/Navigation.tsx"]
                 print(f"🗑️ AI decided to remove navigation links: {links_to_remove}")
                 print(f"📝 Original navigation:\n{nav_content[:500]}")
-                
+              
                 for link in links_to_remove:
-                    # STRONGER prompt for removal
                     link_prompt = f"""Remove the navigation link for '{link}' from this Next.js Navigation component.
-
 Specifically find and remove the Link component that has href="/{link}" (including the opening tag, closing tag, and all content between them).
-
 IMPORTANT - PRESERVE EXACT INDENTATION:
 - Keep ALL existing spaces and indentation levels
 - Do NOT change the formatting of any other code
 - Maintain the exact same indentation pattern as the original
-
 CURRENT NAVIGATION CODE:
 {nav_content}
-
 Return ONLY the complete updated component code with the '{link}' link removed.
 CRITICAL: Keep ALL indentation exactly as in the original.
 The code should be valid TypeScript/JSX with preserved indentation.
-
 UPDATED CODE:"""
-                    
+                  
                     try:
                         link_response = await model_router.generate_content(
                             prompt=link_prompt,
-                            config={"temperature": 0.1, "max_output_tokens": 2000}
+                            config={"temperature": 0.1, "max_output_tokens": 200000}
                         )
                         new_content = link_response.strip()
-                        
-                        # Clean markdown
+                      
                         if new_content.startswith("```"):
                             lines = new_content.split('\n')
-                            if lines[0].startswith('```'):
-                                lines = lines[1:]
+                            if lines[0].startswith('```'): lines = lines[1:]
                             if lines and lines[-1].strip() == '```':
                                 lines = lines[:-1]
                             new_content = '\n'.join(lines)
-                        
-                        # Verify removal
+                      
                         if f'href="/{link}"' not in new_content and f"href='/{link}'" not in new_content:
                             nav_content = new_content
                             print(f"   ✅ AI successfully removed '{link}' link")
@@ -6533,7 +8133,7 @@ UPDATED CODE:"""
                             for pattern in regex_patterns:
                                 nav_content = re.sub(pattern, '', nav_content, flags=re.DOTALL | re.IGNORECASE)
                             print(f"   🔧 Regex removed '{link}'")
-                            
+                          
                     except Exception as e:
                         print(f"   ⚠️ AI failed: {e}, using regex")
                         regex_patterns = [
@@ -6544,44 +8144,46 @@ UPDATED CODE:"""
                         for pattern in regex_patterns:
                             nav_content = re.sub(pattern, '', nav_content, flags=re.DOTALL | re.IGNORECASE)
                         print(f"   🔧 Regex removed '{link}'")
-                
-                # Final cleanup of navigation component
+              
+                # Final cleanup
                 nav_content = re.sub(r'<div\s+className="flex\s+space-x-6">\s*</div>', '', nav_content)
                 nav_content = re.sub(r'<div\s+className="flex\s+space-x-6">\s*$', '', nav_content)
                 nav_content = re.sub(r'\n\s*\n', '\n', nav_content)
                 nav_content = re.sub(r',\s*,', ',', nav_content)
                 nav_content = re.sub(r'\s+', ' ', nav_content)
                 nav_content = re.sub(r'>\s+<', '><', nav_content)
-                
-                # Store the updated navigation content
+              
                 updated_files["components/Navigation.tsx"] = nav_content
                 print(f"📝 Final navigation:\n{nav_content[:500]}")
-            
+
             # ✅ ALWAYS REGENERATE PREVIEW - EVEN IF NO LINKS WERE REMOVED
-            print(f"\n🔄 Regenerating preview after edit request...")
+            print(f"\n🔄 Regenerating preview after deletion...")
             try:
-                # Get project name from navigation
-                project_name = "Scorpio Project"
+                project_name = project_name_from_request or "Scorpio Project"
                 nav_file = updated_files.get("components/Navigation.tsx", "")
                 if nav_file:
                     brand_match = re.search(r'<Link[^>]*href="/"[^>]*>([^<]+)</Link>', nav_file)
                     if brand_match:
                         project_name = brand_match.group(1).strip()
-                
-                # Regenerate preview
+              
                 preview_result = await generate_preview_internal(updated_files, project_name)
                 if preview_result.get("success"):
                     new_preview_html = preview_result.get("preview_html")
                     updated_files["preview_html"] = new_preview_html
                     print(f"✅ Preview regenerated! Length: {len(new_preview_html):,} chars")
+                    
+                    # SAVE REGENERATED PREVIEW TO DISK (Option A)
+                    await save_regenerated_preview(
+                        preview_html=new_preview_html,
+                        project_name=project_name,
+                        project_id=project_id
+                    )
                 else:
-                    print(f"⚠️ Preview generation failed, using existing preview")
                     new_preview_html = existing_preview
             except Exception as preview_error:
                 print(f"⚠️ Preview error: {preview_error}")
                 new_preview_html = existing_preview
-            
-            # Return response with regenerated preview
+          
             return {
                 "success": True,
                 "deleted_files": all_deleted_files,
@@ -6593,41 +8195,65 @@ UPDATED CODE:"""
                 "message": f"✅ Processed: {edit_description}",
                 "files_edited": all_deleted_files
             }
+
+
+
+
+
+
+
+
+
+
+        # ========== INSERT THIS RIGHT HERE (BEFORE STEP 2) ==========
+        # Check if this is a package.json edit (skip database modal)
+        is_package_json_edit = False
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        # Check edit description for dependency-related keywords
+        if ('dependencies' in edit_description.lower() or 
+            'package.json' in edit_description.lower() or 
+            '@neondatabase' in edit_description.lower() or
+            'jsonwebtoken' in edit_description.lower()):
+            is_package_json_edit = True
+            print(f"📦 Detected package.json/dependency edit - will skip database modal")
+        # ================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         # ========== STEP 2: CHECK FOR DATABASE REQUESTS ==========
         is_db_request = any(keyword in edit_description.lower() for keyword in [
-            'database', 'db', 'postgres', 'neon', 'login', 'signup', 'register', 
+            'database', 'db', 'postgres', 'neon', 'login', 'signup', 'register',
             'authentication', 'auth', 'user table', 'create table', 'schema',
             'integrating', 'connect to database', 'neon database'
         ])
-        
-        # Handle database connection request
+      
+      
+      
+        # ✅ ADD THIS RIGHT HERE - Override for package.json edits
+        if is_package_json_edit:
+            is_db_request = False
+            print(f"📦 Package.json edit detected - overriding is_db_request to False")
+      
+      
+      
+      
+        # ✅ NOW check the condition (after override)
         if is_db_request and not user_db_connection_string:
             print(f"🗄️ Database request detected, asking for connection string...")
             return {
@@ -6638,12 +8264,19 @@ UPDATED CODE:"""
                 "example": "postgresql://username:password@ep-example.neon.tech/dbname?sslmode=require",
                 "note": "This database will be used for YOUR project's authentication."
             }
-        
-        # If database is provided, set up schema
+            
+            
+            
+            
+            
+            
+      
+      
+      
+      
         db_schema_created = False
         if is_db_request and user_db_connection_string:
             print(f"🗄️ Setting up schema on USER's Neon database...")
-            
             async def execute_user_db_schema(conn_string: str, schema_sql: str):
                 import asyncpg
                 try:
@@ -6655,10 +8288,9 @@ UPDATED CODE:"""
                         await conn.close()
                 except Exception as e:
                     return False, str(e)
-            
+          
             schema_sql = """
             CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-            
             CREATE TABLE IF NOT EXISTS users (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 email VARCHAR(255) UNIQUE NOT NULL,
@@ -6667,7 +8299,6 @@ UPDATED CODE:"""
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
-            
             CREATE TABLE IF NOT EXISTS sessions (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -6675,18 +8306,16 @@ UPDATED CODE:"""
                 expires_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP DEFAULT NOW()
             );
-            
             CREATE TABLE IF NOT EXISTS user_credits (
                 id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
                 credits INTEGER DEFAULT 10,
                 last_reset DATE DEFAULT CURRENT_DATE
             );
-            
             CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
             """
-            
+          
             try:
                 success, error = await execute_user_db_schema(user_db_connection_string, schema_sql)
                 if success:
@@ -6706,12 +8335,51 @@ UPDATED CODE:"""
                     "error": f"Database error: {str(e)}",
                     "requires_db_connection": True
                 }
-        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         # ========== STEP 3: CONTINUE WITH NORMAL EDITING ==========
         source_files = {k: v for k, v in all_files.items() if k != "preview_html"}
-        
+      
         print(f"📂 Processing normal edit request...")
         
+        # ========== NEW: Check if this is a signup/login request ==========
+        is_signup_request = any(phrase in edit_description.lower() for phrase in [
+            'signup', 'login', 'implement signup', 'implement login', 
+            'create signup', 'create login', 'add signup', 'add login',
+            'authentication', 'auth', 'sign up', 'log in'
+        ])
+        
+        if is_signup_request:
+            print(f"🔐 Signup/Login request detected - layout.tsx will NOT be edited")
+      
         # Create summary for AI
         file_summary = []
         for file_path, content in list(source_files.items())[:15]:
@@ -6721,25 +8389,41 @@ UPDATED CODE:"""
             else:
                 snippet = str(content)[:500]
             file_summary.append(f"File: {file_path}\nFirst lines:\n{snippet}\n")
-        
+      
         file_summary_text = "\n---\n".join(file_summary)
         
-        analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
+        # ========== UPDATED PROMPT with instruction for signup ==========
+        if is_signup_request:
+            analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
+
+⚠️ CRITICAL: This is a SIGNUP/LOGIN implementation request.
+- DO NOT edit app/layout.tsx - it should remain unchanged
+- ONLY edit files directly related to signup/login functionality
 
 EDIT REQUEST: {edit_description}
-
 AVAILABLE SOURCE FILES:
 {file_summary_text}
 
+Return ONLY a JSON object with:
+{{
+  "files_to_edit": ["app/signup/page.tsx", "app/api/auth/signup/route.ts"],
+  "explanation": "brief explanation",
+  "what_to_change": "specific elements to modify"
+}}"""
+        else:
+            analysis_prompt = f"""You are an AI code editor. Analyze this edit request.
+EDIT REQUEST: {edit_description}
+AVAILABLE SOURCE FILES:
+{file_summary_text}
 Return ONLY a JSON object with:
 {{
   "files_to_edit": ["file1.tsx", "file2.tsx"],
   "explanation": "brief explanation",
   "what_to_change": "specific elements to modify"
 }}"""
-
-        print("🤖 Asking AI to analyze...")
         
+        print("🤖 Asking AI to analyze...")
+      
         try:
             analysis_text = await model_router.generate_content(
                 prompt=analysis_prompt,
@@ -6747,35 +8431,85 @@ Return ONLY a JSON object with:
             )
             analysis_text = analysis_text.strip()
             analysis_text = clean_json_response(analysis_text)
-            analysis = json.loads(analysis_text)
+            # Use json_module instead of json
+            analysis = json_module.loads(analysis_text)
+            print(f"✅ AI analysis: {analysis.get('files_to_edit', [])}")
+            
+            # ========== FILTER OUT layout.tsx for signup requests ==========
+            if is_signup_request:
+                original_files = analysis.get("files_to_edit", [])
+                filtered_files = [f for f in original_files if 'layout.tsx' not in f and 'layout' not in f]
+                if len(filtered_files) != len(original_files):
+                    print(f"   🚫 Removed layout.tsx from edit list (signup request)")
+                    analysis["files_to_edit"] = filtered_files
+                    
         except Exception as e:
             print(f"⚠️ AI analysis failed: {e}")
+            # Fallback: intelligently determine which file to edit
             analysis = {
                 "files_to_edit": [],
                 "explanation": "Edit request",
                 "what_to_change": edit_description
             }
-        
+            
+            # Intelligent fallback based on edit description
+            edit_lower = edit_description.lower()
+            
+            # ========== UPDATED FALLBACK - NEVER include layout.tsx for signup ==========
+            if 'signup' in edit_lower or 'sign up' in edit_lower:
+                analysis["files_to_edit"] = ["app/signup/page.tsx"]
+                print(f"📂 Signup detected - only editing app/signup/page.tsx (layout.tsx protected)")
+            elif 'login' in edit_lower or 'log in' in edit_lower:
+                analysis["files_to_edit"] = ["app/login/page.tsx"]
+                print(f"📂 Login detected - only editing app/login/page.tsx (layout.tsx protected)")
+            elif 'auth' in edit_lower or 'authentication' in edit_lower:
+                analysis["files_to_edit"] = ["app/signup/page.tsx", "app/login/page.tsx"]
+                print(f"📂 Auth detected - only editing auth pages (layout.tsx protected)")
+            elif 'page' in edit_lower or 'home' in edit_lower or 'hero' in edit_lower:
+                analysis["files_to_edit"] = ["app/page.tsx"]
+            elif 'layout' in edit_lower or 'navigation' in edit_lower or 'nav' in edit_lower:
+                analysis["files_to_edit"] = ["app/layout.tsx", "components/Navigation.tsx"]
+            elif 'footer' in edit_lower:
+                analysis["files_to_edit"] = ["components/Footer.tsx"]
+            elif 'contact' in edit_lower:
+                analysis["files_to_edit"] = ["app/contact/page.tsx"]
+            elif 'about' in edit_lower:
+                analysis["files_to_edit"] = ["app/about/page.tsx"]
+            else:
+                # Default to page.tsx, NOT layout.tsx
+                if "app/page.tsx" in source_files:
+                    analysis["files_to_edit"] = ["app/page.tsx"]
+                elif source_files:
+                    analysis["files_to_edit"] = [list(source_files.keys())[0]]
+            
+            print(f"📂 Fallback files to edit: {analysis['files_to_edit']}")
+      
         files_to_edit = analysis.get("files_to_edit", [])
         
-        # For auth requests, ensure auth files are created
-        if any(x in edit_description.lower() for x in ['login', 'signup', 'auth']):
-            required_files = ["app/login/page.tsx", "app/signup/page.tsx", "components/Navigation.tsx"]
-            for req_file in required_files:
-                if req_file not in files_to_edit:
-                    files_to_edit.append(req_file)
-            print(f"📌 Added auth files to edit list")
-        
-        if not files_to_edit:
-            for file_path in source_files.keys():
-                if any(x in file_path.lower() for x in ['page', 'layout', 'component', 'navigation']):
-                    files_to_edit.append(file_path)
-                    break
-        
-        if not files_to_edit:
-            files_to_edit = list(source_files.keys())[:1]
-        
-        print(f"📂 Source files to edit: {files_to_edit}")
+        # ========== FINAL SAFETY CHECK - Remove layout.tsx if signup request ==========
+        if is_signup_request:
+            if 'app/layout.tsx' in files_to_edit:
+                files_to_edit.remove('app/layout.tsx')
+                print(f"   🛡️ FINAL SAFETY: Removed layout.tsx from edit list")
+
+
+
+
+
+
+
+        # ========== EXCLUDE API ROUTES FROM MAIN EDIT LOOP ==========
+        # API routes will be created separately in the auth creation block
+        api_routes_removed = [f for f in files_to_edit if "api/" in f or "route.ts" in f]
+        if api_routes_removed:
+            files_to_edit = [f for f in files_to_edit if "api/" not in f and "route.ts" not in f]
+            print(f"   🛡️ REMOVED API routes from main edit loop: {api_routes_removed}")
+            print(f"   📂 API routes will be created by auth creation block")
+
+
+
+
+
         
         def extract_code_from_response(response: str) -> str:
             if "```" in response:
@@ -6792,6 +8526,19 @@ Return ONLY a JSON object with:
                     return '\n'.join(code_lines)
             return response.strip()
         
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         def generate_login_page() -> str:
             return '''"use client"
 
@@ -6800,123 +8547,534 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
+   const router = useRouter()
+   const [email, setEmail] = useState("")
+   const [password, setPassword] = useState("")
+   const [error, setError] = useState("")
+   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setLoading(true)
+   const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+      setError("")
+      setLoading(true)
 
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
+      try {
+         const response = await fetch(`/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+         })
 
-      const data = await response.json()
+         const data = await response.json()
 
-      if (data.success) {
-        localStorage.setItem("token", data.access_token)
-        localStorage.setItem("user", JSON.stringify(data.user))
-        router.push("/dashboard")
-      } else {
-        setError(data.detail || data.error || "Login failed")
+         if (data.success) {
+            localStorage.setItem("token", data.access_token)
+            localStorage.setItem("user", JSON.stringify(data.user))
+            router.push("/dashboard")
+         } else {
+            setError(data.detail || data.error || "Login failed")
+         }
+      } catch (err) {
+         setError("Network error. Please try again.")
+      } finally {
+         setLoading(false)
       }
-    } catch (err) {
-      setError("Network error. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }
+   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="text-center text-3xl font-extrabold text-white">Sign in to your account</h2>
-          <p className="mt-2 text-center text-sm text-gray-400">
-            Or <Link href="/signup" className="font-medium text-indigo-500 hover:text-indigo-400">create a new account</Link>
-          </p>
-        </div>
-        {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded">{error}</div>}
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Email address" /></div>
-            <div><input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Password" /></div>
-          </div>
-          <div><button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">{loading ? "Signing in..." : "Sign in"}</button></div>
-        </form>
+   return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 py-12 px-4">
+         <div className="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+            <div>
+               <h2 className="text-center text-3xl font-extrabold text-white">Sign in to your account</h2>
+               <p className="mt-2 text-center text-sm text-gray-400">
+                  Or <Link href="/signup" className="font-medium text-purple-400 hover:text-purple-300">create a new account</Link>
+               </p>
+            </div>
+            {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">{error}</div>}
+            <form id="login-form" className="mt-8 space-y-6" onSubmit={handleSubmit}>
+               <div className="space-y-4">
+                  <div>
+                     <input 
+                        type="email" 
+                        name="email"
+                        required 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                        placeholder="Email address" 
+                     />
+                  </div>
+                  <div>
+                     <input 
+                        type="password" 
+                        name="password"
+                        required 
+                        value={password} 
+                        onChange={(e) => setPassword(e.target.value)} 
+                        className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                        placeholder="Password" 
+                     />
+                  </div>
+               </div>
+               <button 
+                  type="submit" 
+                  disabled={loading} 
+                  className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                  {loading ? "Signing in..." : "Sign in"}
+               </button>
+            </form>
+         </div>
       </div>
-    </div>
-  )
+   )
 }'''
-        
+
+
+
+
+
+
+
+
+
+
+
+
         def generate_signup_page() -> str:
             return '''"use client"
 
 import React, { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 
 export default function SignupPage() {
-  const router = useRouter()
-  const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
+   const [name, setName] = useState("")
+   const [email, setEmail] = useState("")
+   const [password, setPassword] = useState("")
+   const [confirmPassword, setConfirmPassword] = useState("")
+   const [error, setError] = useState("")
+   const [loading, setLoading] = useState(false)
+   const [showSuccessModal, setShowSuccessModal] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    if (password !== confirmPassword) { setError("Passwords do not match"); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters"); return; }
-    setLoading(true)
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      })
-      const data = await response.json()
-      if (data.success) {
-        localStorage.setItem("token", data.access_token)
-        localStorage.setItem("user", JSON.stringify(data.user))
-        router.push("/dashboard")
-      } else { setError(data.detail || data.error || "Signup failed") }
-    } catch (err) { setError("Network error. Please try again.") }
-    finally { setLoading(false) }
-  }
+   const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+      setError("")
+      if (password !== confirmPassword) { 
+         setError("Passwords do not match"); 
+         return; 
+      }
+      if (password.length < 6) { 
+         setError("Password must be at least 6 characters"); 
+         return; 
+      }
+      setLoading(true)
+      try {
+         const response = await fetch(`/api/auth/signup`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, email, password }),
+         })
+         const data = await response.json()
+         if (data.success) {
+            setShowSuccessModal(true)
+            setName("")
+            setEmail("")
+            setPassword("")
+            setConfirmPassword("")
+         } else { 
+            setError(data.detail || data.error || "Signup failed") 
+         }
+      } catch (err) { 
+         setError("Network error. Please try again.") 
+      } finally { 
+         setLoading(false) 
+      }
+   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="text-center text-3xl font-extrabold text-white">Create your account</h2>
-          <p className="mt-2 text-center text-sm text-gray-400">Already have an account? <Link href="/login" className="font-medium text-indigo-500 hover:text-indigo-400">Sign in</Link></p>
-        </div>
-        {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded">{error}</div>}
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div><input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Full name" /></div>
-            <div><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Email address" /></div>
-            <div><input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Password" /></div>
-            <div><input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="appearance-none rounded-none relative block w-full px-3 py-2 border border-zinc-700 bg-zinc-900 text-white rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Confirm password" /></div>
-          </div>
-          <div><button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50">{loading ? "Creating account..." : "Sign up"}</button></div>
-        </form>
-      </div>
-    </div>
-  )
+   return (
+      <>
+         {/* Success Modal */}
+         {showSuccessModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+               <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowSuccessModal(false)} />
+               <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-white/10 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-4">
+                     <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                     </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-center text-white mb-2">Account Created!</h3>
+                  <p className="text-center text-gray-400 mb-6">
+                     Your account has been created successfully. You can now log in.
+                  </p>
+                  <button
+                     onClick={() => setShowSuccessModal(false)}
+                     className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold transition-all duration-300"
+                  >
+                     Close
+                  </button>
+               </div>
+            </div>
+         )}
+
+         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950 py-12 px-4">
+            <div className="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+               <div>
+                  <h2 className="text-center text-3xl font-extrabold text-white">Create your account</h2>
+                  <p className="mt-2 text-center text-sm text-gray-400">
+                     Already have an account? <Link href="/login" className="font-medium text-purple-400 hover:text-purple-300">Sign in</Link>
+                  </p>
+               </div>
+               {error && <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded-lg text-sm">{error}</div>}
+               <form id="signup-form" className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                  <div className="space-y-4">
+                     <div>
+                        <input 
+                           type="text" 
+                           name="name"
+                           required 
+                           value={name} 
+                           onChange={(e) => setName(e.target.value)} 
+                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                           placeholder="Full name" 
+                        />
+                     </div>
+                     <div>
+                        <input 
+                           type="email" 
+                           name="email"
+                           required 
+                           value={email} 
+                           onChange={(e) => setEmail(e.target.value)} 
+                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                           placeholder="Email address" 
+                        />
+                     </div>
+                     <div>
+                        <input 
+                           type="password" 
+                           name="password"
+                           required 
+                           value={password} 
+                           onChange={(e) => setPassword(e.target.value)} 
+                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                           placeholder="Password (min. 6 characters)" 
+                        />
+                     </div>
+                     <div>
+                        <input 
+                           type="password" 
+                           name="confirmPassword"
+                           required 
+                           value={confirmPassword} 
+                           onChange={(e) => setConfirmPassword(e.target.value)} 
+                           className="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" 
+                           placeholder="Confirm password" 
+                        />
+                     </div>
+                  </div>
+                  <button 
+                     type="submit" 
+                     disabled={loading} 
+                     className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                     {loading ? "Creating account..." : "Sign up"}
+                  </button>
+               </form>
+            </div>
+         </div>
+      </>
+   )
 }'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        def generate_signup_api_route() -> str:
+            return '''import { NextRequest, NextResponse } from "next/server";
+import { hash } from "bcryptjs";
+import { sign } from "jsonwebtoken";
+import { neon } from '@neondatabase/serverless';
+
+export async function POST(request: NextRequest) {
+    try {
+        const body = await request.json();
+        const { name, email, password } = body;
+
+        if (!email || !password) {
+            return NextResponse.json(
+                { success: false, error: "Email and password required" },
+                { status: 400 }
+            );
+        }
+
+        // Use DATABASE_URL from Vercel environment variables
+        const DATABASE_URL = process.env.DATABASE_URL;
         
+        if (!DATABASE_URL) {
+            console.error("DATABASE_URL not configured in environment");
+            return NextResponse.json(
+                { success: false, error: "Database not configured. Please add DATABASE_URL to your environment variables." },
+                { status: 500 }
+            );
+        }
+
+        const sql = neon(DATABASE_URL);
+
+        await sql`
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                name TEXT,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+        `;
+
+        await sql`
+            CREATE TABLE IF NOT EXISTS sessions (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                token TEXT UNIQUE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `;
+
+        await sql`
+            CREATE TABLE IF NOT EXISTS user_credits (
+                id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+                credits INTEGER DEFAULT 10,
+                daily_credits_used INTEGER DEFAULT 0,
+                daily_reset_date DATE DEFAULT CURRENT_DATE,
+                monthly_credits_used INTEGER DEFAULT 0,
+                monthly_reset_date DATE DEFAULT CURRENT_DATE
+            );
+        `;
+
+        const existingUser = await sql`
+            SELECT id FROM users WHERE email = ${email}
+        `;
+
+        if (existingUser.length > 0) {
+            return NextResponse.json(
+                { success: false, error: "User already exists" },
+                { status: 400 }
+            );
+        }
+
+        const hashedPassword = await hash(password, 10);
+
+        const newUser = await sql`
+            INSERT INTO users (email, name, password_hash)
+            VALUES (${email}, ${name || ""}, ${hashedPassword})
+            RETURNING id, email, name
+        `;
+
+        const user = newUser[0];
+        const token = sign(
+            { userId: user.id, email: user.email },
+            process.env.JWT_SECRET || "your-secret-key",
+            { expiresIn: "30d" }
+        );
+
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+
+        await sql`
+            INSERT INTO sessions (user_id, token, expires_at)
+            VALUES (${user.id}, ${token}, ${expiresAt.toISOString()})
+        `;
+
+        await sql`
+            INSERT INTO user_credits (user_id)
+            VALUES (${user.id})
+            ON CONFLICT (user_id) DO NOTHING
+        `;
+
+        return NextResponse.json({
+            success: true,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+            },
+            access_token: token,
+            token_type: "bearer",
+        });
+    } catch (error) {
+        console.error("Signup error:", error);
+        return NextResponse.json(
+            { success: false, error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}'''
+
+
+
+
+
+
+
+
+
+        def generate_login_api_route() -> str:
+            return '''import { NextRequest, NextResponse } from "next/server";
+import { compare } from "bcryptjs";
+import { sign } from "jsonwebtoken";
+import { neon } from '@neondatabase/serverless';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { email, password, db_connection_string } = body;
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, error: "Email and password required" },
+        { status: 400 }
+      );
+    }
+
+    if (!db_connection_string) {
+      return NextResponse.json(
+        { success: false, error: "Database connection required", requires_db: true },
+        { status: 400 }
+      );
+    }
+
+    const sql = neon(db_connection_string);
+
+    const users = await sql`
+      SELECT id, email, name, password_hash FROM users WHERE email = ${email}
+    `;
+
+    if (users.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "Invalid credentials" },
+        { status: 401 }
+      );
+    }
+
+    const user = users[0];
+    const isValid = await compare(password, user.password_hash);
+
+    if (!isValid) {
+      return NextResponse.json(
+        { success: false, error: "Invalid credentials" },
+        { status: 401 }
+      );
+    }
+
+    const token = sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "30d" }
+    );
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    await sql`
+      INSERT INTO sessions (user_id, token, expires_at)
+      VALUES (${user.id}, ${token}, ${expiresAt.toISOString()})
+      ON CONFLICT (user_id) DO UPDATE SET token = ${token}, expires_at = ${expiresAt.toISOString()}
+    `;
+
+    return NextResponse.json({
+      success: true,
+      user: { id: user.id, email: user.email, name: user.name },
+      access_token: token,
+      token_type: "bearer",
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         def generate_new_page_content(file_path: str) -> str:
+            """Generate content for new files based on file path"""
+            
+            # ========== API ROUTE - Return API route code ==========
+            if "api/" in file_path and ("signup" in file_path.lower() or "login" in file_path.lower()):
+                if "signup" in file_path.lower():
+                    print(f"   🔧 Generating API route code for: {file_path}")
+                    return generate_signup_api_route()
+                elif "login" in file_path.lower():
+                    print(f"   🔧 Generating API route code for: {file_path}")
+                    return generate_login_api_route()
+            
+            # ========== PAGE COMPONENT ==========
             page_name = file_path.split('/')[-1].replace('.tsx', '').replace('.jsx', '').replace('.ts', '').replace('.js', '')
             page_title = page_name.replace('-', ' ').title()
             
@@ -6928,17 +9086,40 @@ export default function SignupPage() {
                 return f'''import React from 'react'
 
 export default function {page_title.replace(' ', '')}Page() {{
-  return (
-    <div className="py-20 container mx-auto px-4">
-      <h1 className="text-4xl font-bold mb-8 text-white">{page_title}</h1>
-      <p className="text-gray-300">Welcome to our {page_title.lower()} page.</p>
-    </div>
-  )
+   return (
+      <div className="py-20 container mx-auto px-4">
+         <h1 className="text-4xl font-bold mb-8 text-white">{page_title}</h1>
+         <p className="text-gray-300">Welcome to our {page_title.lower()} page.</p>
+      </div>
+   )
 }}
 '''
+
+
+
+
+
+
+
+
+
+
         
         # Edit each file
         edit_results = []
+        
+        # Track if we created auth pages
+        auth_created = False
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         
         for file_path in files_to_edit:
             current_content = source_files.get(file_path, "")
@@ -6947,6 +9128,7 @@ export default function {page_title.replace(' ', '')}Page() {{
             if not current_content and any(x in file_path.lower() for x in ['login', 'signup', 'auth']):
                 print(f"📝 Creating new auth file: {file_path}")
                 current_content = generate_new_page_content(file_path)
+                auth_created = True  # ← ADD THIS LINE HERE
                 edit_results.append({
                     "file_path": file_path,
                     "original_content": "",
@@ -6972,7 +9154,7 @@ Make the requested change. Return ONLY the updated code, no markdown, no explana
             try:
                 response_text = await model_router.generate_content(
                     prompt=edit_prompt,
-                    config={"temperature": 0.01, "max_output_tokens": 10192}
+                    config={"temperature": 0.01, "max_output_tokens": 1019200}
                 )
                 updated_content = extract_code_from_response(response_text.strip())
                 
@@ -7010,15 +9192,24 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
         
         for result in edit_results:
             updated_files[result["file_path"]] = result["updated_content"]
+            
+            
+            
+            
+            
+            
         
-        # Regenerate preview
+        
+        
+        
+        
         preview_html = existing_preview
         should_regenerate = force_regenerate or len(edit_results) > 0 or db_schema_created
-        
+      
         if should_regenerate:
             print(f"🔄 Regenerating preview...")
             try:
-                project_name = "Scorpio Project"
+                project_name = project_name_from_request or "Scorpio Project"
                 for file_path, content in updated_files.items():
                     if "Navigation.tsx" in file_path and isinstance(content, str):
                         brand_match = re.search(r'<Link[^>]*>([^<]+)</Link>', content)
@@ -7029,19 +9220,108 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                 preview_result = await generate_preview_internal(updated_files, project_name)
                 if preview_result.get("success"):
                     preview_html = preview_result.get("preview_html")
+                    updated_files["preview_html"] = preview_html
                     print(f"✅ Preview regenerated!")
+                    
+                    # SAVE TO DISK - Option A
+                    await save_regenerated_preview(
+                        preview_html=preview_html,
+                        project_name=project_name,
+                        project_id=project_id
+                    )
             except Exception as e:
                 print(f"⚠️ Preview error: {e}")
-        
+      
         print(f"\n{'='*70}")
         print(f"✅ EDIT COMPLETE: {len(edit_results)} file(s) modified")
         for result in edit_results:
             new_flag = " (NEW)" if result.get("is_new_file") else ""
             print(f"   - {result['file_path']}{new_flag}")
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+               # After creating signup page, create ONLY the corresponding API route
+        if auth_created or db_schema_created:
+            print(f"\n📡 Creating API route for authentication...")
+            
+            # Check which auth page was requested and create only that API route
+            signup_requested = any("signup" in f for f in files_to_edit)
+            login_requested = any("login" in f for f in files_to_edit)
+            
+            if signup_requested:
+                signup_api_path = "app/api/auth/signup/route.ts"
+                if signup_api_path not in updated_files:
+                    updated_files[signup_api_path] = generate_signup_api_route()
+                    edit_results.append({
+                        "file_path": signup_api_path,
+                        "original_content": "",
+                        "updated_content": generate_signup_api_route(),
+                        "success": True,
+                        "is_new_file": True
+                    })
+                    print(f"✅ Created signup API route: {signup_api_path}")
+                
+                # ========== UPDATE package.json WITH REQUIRED DEPENDENCIES ==========
+                print(f"\n📦 Managing package.json...")
+                
+                package_json_path = "package.json"
+                current_package_json = updated_files.get(package_json_path, "")
+                
+                if current_package_json:
+                    try:
+                        # Use the manage_package_json function
+                        updated_content, changes = await manage_package_json(current_package_json, edit_description)
+                        
+                        if updated_content and changes:
+                            updated_files[package_json_path] = updated_content
+                            
+                            # Add to edit_results
+                            edit_results.append({
+                                "file_path": package_json_path,
+                                "original_content": current_package_json,
+                                "updated_content": updated_content,
+                                "success": True,
+                                "is_new_file": False,
+                                "changes": changes
+                            })
+                            print(f"✅ package.json updated with {len(changes)} change(s)")
+                            for change in changes:
+                                print(f"   • {change}")
+                        else:
+                            print(f"✅ No changes needed to package.json")
+                    except Exception as e:
+                        print(f"⚠️ Failed to update package.json: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"⚠️ package.json not found - cannot manage dependencies")
+            
+            if login_requested:
+                login_api_path = "app/api/auth/login/route.ts"
+                if login_api_path not in updated_files:
+                    updated_files[login_api_path] = generate_login_api_route()
+                    edit_results.append({
+                        "file_path": login_api_path,
+                        "original_content": "",
+                        "updated_content": generate_login_api_route(),
+                        "success": True,
+                        "is_new_file": True
+                    })
+                    print(f"✅ Created login API route: {login_api_path}")
+        
         if db_schema_created:
             print(f"   - Database schema created on user's Neon DB")
-        print(f"{'='*70}\n")
         
+        print(f"{'='*70}\n")
+      
         return {
             "success": True,
             "edits": edit_results,
@@ -7050,22 +9330,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
             "database_configured": db_schema_created,
             "message": f"Successfully applied: {edit_description}" + (f" + Neon database configured!" if db_schema_created else "")
         }
-    
+   
     except Exception as e:
         print(f"❌ Edit Error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -7232,7 +9502,7 @@ Updated HTML preview:"""
             prompt=prompt,
             config={
                 "temperature": 0.1,
-                "max_output_tokens": 8192,
+                "max_output_tokens": 819200,
             }
         )
 
@@ -7324,7 +9594,7 @@ Return ONLY the raw HTML code starting with <!DOCTYPE html>:"""
 
             response_text = await model_router.generate_content(
                 prompt=prompt,
-                config={"temperature": 0.2, "max_output_tokens": 8192}
+                config={"temperature": 0.2, "max_output_tokens": 819200}
             )
             updated_preview = clean_html_response(response_text.strip())  # ✅ Define updated_preview here
 
@@ -7408,7 +9678,7 @@ Files: {list(files.keys())[:15]}"""
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.3, "max_output_tokens": 8192}
+            config={"temperature": 0.3, "max_output_tokens": 819200}
         )
 
         preview_html = clean_html_response(response_text.strip())
@@ -7733,7 +10003,6 @@ Check the `.env.example` file for required variables.
 
 
 
-
 @app.post("/api/deploy-vercel")
 async def deploy_to_vercel(request: Dict[str, Any]):
     """Deploy to Vercel - Upload images first, then replace paths, then deploy"""
@@ -7761,33 +10030,36 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         print(f"📝 Original project name: {raw_project_name}")
         print(f"📝 Sanitized for Vercel: {project_name}")
         
+        # ========== DEBUG: CHECK IMAGE FORMATS ==========
+        print("\n" + "="*70)
+        print("🔍 IMAGE FORMAT DEBUG - Checking what format images are in:")
+        print("="*70)
         
-
-
-
-
-
-
-
-
-
-
-
-
-
-        # 👇 ADD DEBUG CODE RIGHT HERE 👇
-        print("\n📁 FILES IN PROJECT:")
+        image_files_found = False
         for file_path, content in files.items():
             if file_path.startswith("public/images/"):
-                print(f"  {file_path}: {type(content)}")
-                if isinstance(content, str):
-                    print(f"    Preview: {content[:100]}...")
-
-
-
-
-
+                image_files_found = True
+                print(f"\n📸 File: {file_path}")
+                print(f"   Type: {type(content).__name__}")
+                
+                if isinstance(content, dict):
+                    print(f"   Dict keys: {list(content.keys())}")
+                elif isinstance(content, str):
+                    print(f"   String length: {len(content)}")
+                    print(f"   First 200 chars: {content[:200]}")
+                    if content.startswith('{'):
+                        try:
+                            import json as json_module
+                            parsed = json_module.loads(content)
+                            print(f"   ✓ String is valid JSON")
+                            print(f"   JSON keys: {list(parsed.keys())}")
+                        except:
+                            print(f"   ✗ String looks like JSON but parse failed")
         
+        if not image_files_found:
+            print("\n⚠️ No image files found in the project!")
+        
+        print("="*70 + "\n")
         
         if not vercel_token:
             raise HTTPException(status_code=400, detail="Vercel token required")
@@ -7796,25 +10068,13 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         print(f"🚀 DEPLOYING TO VERCEL: {project_name}")
         print(f"{'='*70}\n")
         
-
-
-
-
-
-
-
-
-
-
-
-
-
         # ========== STEP 1: UPLOAD ALL IMAGES TO CLOUDINARY ==========
         print("📸 STEP 1: Uploading images to Cloudinary...")
         print("-" * 40)
         
         image_urls = {}
         image_count = 0
+        uploaded_image_paths = []
         
         for file_path, content in files.items():
             # Skip non-image files
@@ -7823,64 +10083,81 @@ async def deploy_to_vercel(request: Dict[str, Any]):
             
             is_binary_image = False
             base64_data = None
-            binary_bytes = None
             
-            # Case 1: String with __binary_base64__ prefix
-            if isinstance(content, str) and content.startswith("__binary_base64__"):
-                is_binary_image = True
-                base64_data = content.replace("__binary_base64__", "")
-                print(f"  📸 Found base64 string: {file_path}")
+            print(f"  📸 Processing: {file_path}")
             
-            # Case 2: Dict with binary image data (from your frontend)
-            elif isinstance(content, dict):
-                print(f"  📸 Found image dict: {file_path}")
-                print(f"     Keys: {list(content.keys())}")
-                
-                # Check for 'data' key containing Uint8Array or bytes
-                if 'data' in content:
-                    data = content['data']
+            # Case 1: String that is JSON with __type = "binary_image"
+            if isinstance(content, str) and content.startswith('{') and '"__type"' in content:
+                try:
+                    import json as json_module
+                    data_obj = json_module.loads(content)
                     
-                    # Handle Uint8Array (comes as dict with '0', '1', '2'... keys or actual bytes)
-                    if isinstance(data, dict):
-                        # Convert dict of numbered keys to bytes
-                        print(f"     Converting Uint8Array dict to bytes...")
-                        byte_list = []
-                        for i in range(len(data)):
-                            if str(i) in data:
-                                byte_list.append(data[str(i)])
-                        binary_bytes = bytes(byte_list)
-                        is_binary_image = True
-                        print(f"     Converted Uint8Array to {len(binary_bytes)} bytes")
-                    
-                    elif isinstance(data, (bytes, bytearray)):
-                        binary_bytes = bytes(data)
-                        is_binary_image = True
-                        print(f"     Found bytes data: {len(binary_bytes)} bytes")
-                    
-                    elif isinstance(data, str):
-                        # Check if it's base64
-                        if data.startswith('data:image'):
-                            base64_data = data.split(',')[1] if ',' in data else data
-                        else:
-                            base64_data = data
-                        is_binary_image = True
-                        print(f"     Found string data: {len(base64_data)} chars")
-                
-                # Alternative: check for 'base64' key
-                elif 'base64' in content:
-                    base64_data = content['base64']
-                    is_binary_image = True
-                    print(f"     Found base64 data: {len(base64_data)} chars")
-                
-                # Convert binary_bytes to base64 for Cloudinary upload
-                if binary_bytes and not base64_data:
+                    if data_obj.get("__type") == "binary_image":
+                        data_content = data_obj.get("data")
+                        
+                        if isinstance(data_content, dict):
+                            # Convert Uint8Array dict to bytes
+                            print(f"     Converting Uint8Array dict to bytes...")
+                            byte_list = []
+                            # Sort keys numerically to ensure correct order
+                            for key in sorted(data_content.keys(), key=lambda x: int(x) if x.isdigit() else 0):
+                                if key.isdigit():
+                                    byte_list.append(data_content[key])
+                            
+                            binary_bytes = bytes(byte_list)
+                            print(f"     Converted {len(binary_bytes)} bytes")
+                            
+                            # Convert to base64
+                            import base64 as b64
+                            base64_data = b64.b64encode(binary_bytes).decode('utf-8')
+                            is_binary_image = True
+                            print(f"     Converted to base64 (length: {len(base64_data)})")
+                            
+                        elif isinstance(data_content, str):
+                            base64_data = data_content
+                            is_binary_image = True
+                            print(f"     Found string data")
+                            
+                except Exception as e:
+                    print(f"     Error parsing JSON: {e}")
+            
+            # Case 2: Already a dict (fallback)
+            elif isinstance(content, dict) and content.get("__type") == "binary_image":
+                data_content = content.get("data")
+                if isinstance(data_content, dict):
+                    print(f"     Converting Uint8Array dict to bytes...")
+                    byte_list = []
+                    for key in sorted(data_content.keys(), key=lambda x: int(x) if x.isdigit() else 0):
+                        if key.isdigit():
+                            byte_list.append(data_content[key])
+                    binary_bytes = bytes(byte_list)
                     import base64 as b64
                     base64_data = b64.b64encode(binary_bytes).decode('utf-8')
-                    print(f"     Converted {len(binary_bytes)} bytes to base64")
+                    is_binary_image = True
+                    print(f"     Converted dict to base64 (length: {len(base64_data)})")
+            
+            # Case 3: Raw base64 string
+            elif isinstance(content, str) and len(content) > 1000 and not content.startswith('<'):
+                base64_data = content
+                is_binary_image = True
+                print(f"     Using as raw base64 (length: {len(base64_data)})")
+            
+            # Case 4: String with __binary_base64__ prefix
+            elif isinstance(content, str) and content.startswith("__binary_base64__"):
+                base64_data = content.replace("__binary_base64__", "")
+                is_binary_image = True
+                print(f"     Found __binary_base64__ prefix (length: {len(base64_data)})")
             
             if is_binary_image and base64_data:
                 try:
                     print(f"  ☁️ Uploading to Cloudinary: {file_path}")
+                    
+                    # Clean base64 data (remove any data:image prefix)
+                    if ',' in base64_data and base64_data.startswith('data:'):
+                        base64_data = base64_data.split(',')[1]
+                    
+                    # Also remove any whitespace or newlines
+                    base64_data = base64_data.strip().replace('\n', '').replace('\r', '')
                     
                     upload_result = cloudinary.uploader.upload(
                         f"data:image/jpeg;base64,{base64_data}",
@@ -7890,6 +10167,7 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                     )
                     
                     image_urls[file_path] = upload_result['secure_url']
+                    uploaded_image_paths.append(file_path)
                     print(f"  ✅ Uploaded successfully!")
                     print(f"     URL: {upload_result['secure_url'][:80]}...")
                     image_count += 1
@@ -7899,8 +10177,7 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                     import traceback
                     traceback.print_exc()
             else:
-                if file_path.startswith("public/images/"):
-                    print(f"  ⚠️ No valid image data for {file_path}")
+                print(f"  ⚠️ Could not extract image data from {file_path}")
         
         print(f"\n✅ STEP 1 COMPLETE: Uploaded {image_count} images to Cloudinary\n")
         
@@ -7912,8 +10189,35 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                 print(f"  {public_path} -> {url}")
         print()
         
+        # ========== STEP 1.5: REMOVE IMAGES FROM DEPLOYMENT FILES ==========
+        print("🗑️ STEP 1.5: Removing uploaded images from deployment package...")
+        print("-" * 40)
+        
+        # Create a new files dict WITHOUT the images that were uploaded
+        files_without_images = {}
+        removed_count = 0
+        
+        for file_path, content in files.items():
+            # Skip ALL image files that were uploaded
+            if file_path in uploaded_image_paths:
+                print(f"  🗑️ Removing {file_path} from deployment (using Cloudinary URL)")
+                removed_count += 1
+                continue
+            # Also skip any file in public/images/ that might have been missed
+            if file_path.startswith("public/images/"):
+                print(f"  🗑️ Removing {file_path} from deployment (using Cloudinary URL)")
+                removed_count += 1
+                continue
+            files_without_images[file_path] = content
+        
+        print(f"  ✅ Removed {removed_count} image files from deployment")
+        print(f"  📁 Remaining files: {len(files_without_images)}")
+        
+        # Use the filtered files for the rest of the deployment
+        files = files_without_images
+        
         # ========== STEP 2: REPLACE IMAGE PATHS IN ALL FILES ==========
-        print("🔄 STEP 2: Replacing image paths with Cloudinary URLs...")
+        print("\n🔄 STEP 2: Replacing image paths with Cloudinary URLs...")
         print("-" * 40)
         
         deployment_files = {}
@@ -7923,123 +10227,189 @@ async def deploy_to_vercel(request: Dict[str, Any]):
         for local_path, cloudinary_url in image_urls.items():
             public_path = "/" + local_path.replace("public/", "")
             path_to_url[public_path] = cloudinary_url
-            print(f"  📋 Mapping: {public_path}")
+            print(f"  📋 Mapping: {public_path} -> {cloudinary_url[:60]}...")
+        
+        replacements_count = 0
         
         for file_path, content in files.items():
             # Skip preview_html and metadata
             if file_path == "preview_html" or file_path == "__image_urls__":
                 continue
             
-            # Skip binary images (already uploaded, don't include in deployment)
-            if isinstance(content, dict) and content.get('__type') == 'binary_image':
-                continue
-            
-            if isinstance(content, str) and content.startswith("__binary_base64__"):
-                continue
-            
             # For text files, replace image paths
             if isinstance(content, str):
                 updated_content = content
-                replaced = False
+                file_replaced = False
                 
                 for old_path, new_url in path_to_url.items():
                     if old_path in updated_content:
                         updated_content = updated_content.replace(old_path, new_url)
-                        replaced = True
-                        print(f"  🔄 {file_path}: '{old_path}' -> replaced")
-                
-                # Also check for src pattern
-                for old_path, new_url in path_to_url.items():
-                    pattern = f'src="{old_path}"'
-                    if pattern in updated_content:
-                        updated_content = updated_content.replace(pattern, f'src="{new_url}"')
-                        replaced = True
+                        file_replaced = True
+                        replacements_count += 1
+                        print(f"  🔄 {file_path}: '{old_path}' -> Cloudinary URL")
                 
                 deployment_files[file_path] = updated_content
-                if replaced:
+                if file_replaced:
                     print(f"  ✅ {file_path} updated with Cloudinary URLs")
             else:
                 deployment_files[file_path] = content
         
-        print(f"\n✅ STEP 2 COMPLETE: Replaced paths in {len(deployment_files)} files\n")
+        print(f"\n✅ STEP 2 COMPLETE: Replaced {replacements_count} image references in {len(deployment_files)} files\n")
         
-        # ========== STEP 3: DEPLOY TO VERCEL ==========
-        print("🚀 STEP 3: Deploying to Vercel...")
+        # ========== STEP 3: CREATE/GET PROJECT AND SET ENV VARS ==========
+        print("🌍 STEP 3: Setting up Vercel project and environment variables...")
         print("-" * 40)
         
-        with tempfile.TemporaryDirectory() as tmpdir:
-            project_dir = os.path.join(tmpdir, project_name)
-            os.makedirs(project_dir)
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # First, get or create the project
+            project_id = None
             
-            # Write deployment files
-            file_count = 0
-            for file_path, content in deployment_files.items():
-                full_path = os.path.join(project_dir, file_path)
-                os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                
-                if isinstance(content, dict):
-                    content = json.dumps(content, indent=2)
-                elif not isinstance(content, str):
-                    content = str(content)
-                
-                with open(full_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                file_count += 1
+            # Check if project exists
+            projects_response = await client.get(
+                f"https://api.vercel.com/v9/projects/{project_name}",
+                headers={"Authorization": f"Bearer {vercel_token}"}
+            )
             
-            print(f"  📁 Wrote {file_count} files to temp directory")
+            if projects_response.status_code == 200:
+                project_data = projects_response.json()
+                project_id = project_data.get("id")
+                print(f"📁 Found existing project: {project_id}")
+            else:
+                # Create new project
+                create_response = await client.post(
+                    "https://api.vercel.com/v9/projects",
+                    headers={"Authorization": f"Bearer {vercel_token}"},
+                    json={
+                        "name": project_name,
+                        "framework": "nextjs"
+                    }
+                )
+                if create_response.status_code in [200, 201]:
+                    project_data = create_response.json()
+                    project_id = project_data.get("id")
+                    print(f"📁 Created new project: {project_id}")
+                else:
+                    print(f"⚠️ Failed to create project: {create_response.status_code}")
             
-            # Build file list for Vercel
-            file_list = []
-            total_size = 0
-            for root, dirs, files_in_dir in os.walk(project_dir):
-                for file in files_in_dir:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, project_dir).replace('\\', '/')
+            # ========== STEP 4: SET ENVIRONMENT VARIABLES ==========
+            if project_id and env_vars:
+                print(f"\n🌍 Setting environment variables BEFORE deployment...")
+                for key, value in env_vars.items():
+                    # First, delete existing variable if exists
+                    env_response = await client.get(
+                        f"https://api.vercel.com/v1/projects/{project_id}/env",
+                        headers={"Authorization": f"Bearer {vercel_token}"}
+                    )
+                    if env_response.status_code == 200:
+                        existing_vars = env_response.json()
+                        for var in existing_vars:
+                            if var.get("key") == key:
+                                await client.delete(
+                                    f"https://api.vercel.com/v1/projects/{project_id}/env/{var.get('id')}",
+                                    headers={"Authorization": f"Bearer {vercel_token}"}
+                                )
+                                print(f"  🗑️ Removed existing {key}")
                     
-                    with open(file_path, "rb") as f:
-                        file_content = f.read()
+                    # Set new environment variable
+                    set_response = await client.post(
+                        f"https://api.vercel.com/v1/projects/{project_id}/env",
+                        headers={
+                            "Authorization": f"Bearer {vercel_token}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "key": key,
+                            "value": value,
+                            "type": "encrypted",
+                            "target": ["production", "preview", "development"]
+                        }
+                    )
+                    if set_response.status_code in [200, 201]:
+                        print(f"  ✅ Set {key} environment variable")
+                    elif set_response.status_code == 409:
+                        print(f"  ✅ {key} already exists")
+                    else:
+                        print(f"  ⚠️ Failed to set {key}: {set_response.status_code}")
+                
+                print(f"\n✅ Environment variables configured on Vercel project")
+            
+            # ========== STEP 5: CREATE DEPLOYMENT ==========
+            print(f"\n🚀 STEP 5: Creating deployment...")
+            print("-" * 40)
+            
+            with tempfile.TemporaryDirectory() as tmpdir:
+                project_dir = os.path.join(tmpdir, project_name)
+                os.makedirs(project_dir)
+                
+                # Write deployment files
+                file_count = 0
+                for file_path, content in deployment_files.items():
+                    full_path = os.path.join(project_dir, file_path)
+                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
                     
-                    file_list.append({
-                        "file": arcname,
-                        "data": base64.b64encode(file_content).decode('utf-8'),
-                        "encoding": "base64"
-                    })
-                    total_size += len(file_content)
-            
-            print(f"  📦 Total size: {total_size / 1024 / 1024:.2f} MB")
-            
-            if total_size > 9 * 1024 * 1024:
-                return {
-                    "success": False,
-                    "message": f"Project too large ({total_size / 1024 / 1024:.2f} MB)",
-                    "manual_deploy": True
+                    if isinstance(content, dict):
+                        content = json.dumps(content, indent=2)
+                    elif not isinstance(content, str):
+                        content = str(content)
+                    
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    file_count += 1
+                
+                print(f"  📁 Wrote {file_count} files to temp directory")
+                
+                # Build file list for Vercel
+                file_list = []
+                total_size = 0
+                for root, dirs, files_in_dir in os.walk(project_dir):
+                    for file in files_in_dir:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, project_dir).replace('\\', '/')
+                        
+                        with open(file_path, "rb") as f:
+                            file_content = f.read()
+                        
+                        file_list.append({
+                            "file": arcname,
+                            "data": base64.b64encode(file_content).decode('utf-8'),
+                            "encoding": "base64"
+                        })
+                        total_size += len(file_content)
+                
+                print(f"  📦 Total size: {total_size / 1024 / 1024:.2f} MB")
+                
+                if total_size > 9 * 1024 * 1024:
+                    return {
+                        "success": False,
+                        "message": f"Project too large ({total_size / 1024 / 1024:.2f} MB)",
+                        "manual_deploy": True
+                    }
+                
+                # Create deployment
+                deploy_payload = {
+                    "name": project_name,
+                    "files": file_list,
+                    "projectSettings": {
+                        "framework": "nextjs",
+                        "buildCommand": "npm run build",
+                        "outputDirectory": ".next",
+                        "installCommand": "npm install"
+                    }
                 }
-            
-            # Deploy to Vercel
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                print("  📡 Sending to Vercel API...")
+                
                 deploy_response = await client.post(
                     "https://api.vercel.com/v13/deployments",
                     headers={
                         "Authorization": f"Bearer {vercel_token}",
                         "Content-Type": "application/json",
                     },
-                    json={
-                        "name": project_name,
-                        "files": file_list,
-                        "projectSettings": {
-                            "framework": "nextjs",
-                            "buildCommand": "npm run build",
-                            "outputDirectory": ".next",
-                            "installCommand": "npm install"
-                        },
-                        "env": env_vars
-                    }
+                    json=deploy_payload
                 )
                 
                 if deploy_response.status_code not in [200, 201]:
                     error_data = deploy_response.json()
                     error_msg = error_data.get('error', {}).get('message', 'Unknown error')
+                    print(f"  ❌ Vercel API error: {error_data}")
                     raise Exception(f"Vercel API error: {error_msg}")
                 
                 deploy_data = deploy_response.json()
@@ -8048,6 +10418,8 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                 print(f"\n{'='*70}")
                 print(f"✅ DEPLOYMENT SUCCESSFUL!")
                 print(f"🔗 URL: https://{deployment_url}")
+                print(f"📁 Project ID: {project_id}")
+                print(f"📸 Images uploaded to Cloudinary: {image_count}")
                 print(f"{'='*70}\n")
                 
                 return {
@@ -8055,20 +10427,17 @@ async def deploy_to_vercel(request: Dict[str, Any]):
                     "message": "Deployed to Vercel successfully!",
                     "deployment_url": f"https://{deployment_url}",
                     "deployment_id": deploy_data.get("id"),
+                    "project_id": project_id,
                     "project_name": project_name,
-                    "images_uploaded": image_count
+                    "images_uploaded": image_count,
+                    "env_vars_set": len(env_vars) if env_vars else 0
                 }
-                
+                 
     except Exception as e:
         print(f"❌ Deploy error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
 
 
 
@@ -8446,7 +10815,7 @@ Component:
                     prompt=ai_prompt,
                     config={
                         "temperature": 0.1,
-                        "max_output_tokens": 4000,
+                        "max_output_tokens": 400000,
                     }
                 )
                 
@@ -10577,6 +12946,254 @@ async def cron_reset_daily_credits():
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.post("/api/auth/login")
+async def login(request: Request):
+    """User login endpoint"""
+    try:
+        data = await request.json()
+        email = data.get("email")
+        password = data.get("password")
+        db_connection_string = data.get("db_connection_string", "")  # Direct connection string
+        
+        if not email or not password:
+            return {"success": False, "error": "Email and password required"}
+        
+        if not db_connection_string:
+            return {"success": False, "error": "Database connection required", "requires_db": True}
+        
+        import asyncpg
+        import hashlib
+        import secrets
+        
+        conn = await asyncpg.connect(db_connection_string)  # Use directly
+        
+        try:
+            user = await conn.fetchrow("""
+                SELECT id, email, name, password_hash
+                FROM users
+                WHERE email = $1
+            """, email)
+            
+            if not user:
+                await conn.close()
+                return {"success": False, "error": "Invalid credentials"}
+            
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            
+            if password_hash != user['password_hash']:
+                await conn.close()
+                return {"success": False, "error": "Invalid credentials"}
+            
+            # Create session token
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now() + timedelta(days=30)
+            
+            await conn.execute("""
+                INSERT INTO sessions (user_id, token, expires_at)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3
+            """, user['id'], token, expires_at)
+            
+            await conn.close()
+            
+            return {
+                "success": True,
+                "user": {
+                    "id": str(user['id']),
+                    "email": user['email'],
+                    "name": user['name']
+                },
+                "access_token": token,
+                "token_type": "bearer"
+            }
+            
+        except Exception as e:
+            await conn.close()
+            raise e
+            
+    except Exception as e:
+        print(f"❌ Login error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.get("/api/check-db-config")
+async def check_db_config(request: Request):
+    """Check if database is configured"""
+    # Check session first
+    db_connection = request.session.get("db_connection_string", "")
+    
+    # Also check for connection_id in headers
+    connection_id = request.headers.get("X-Connection-ID", "")
+    if not db_connection and connection_id and connection_id in db_connections:
+        db_connection = db_connections[connection_id]
+    
+    return {"configured": bool(db_connection)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.post("/api/auth/signup")
+async def signup(request: Request):
+    """User registration endpoint"""
+    try:
+        data = await request.json()
+        email = data.get("email")
+        password = data.get("password")
+        name = data.get("name", "")
+        db_connection_string = data.get("db_connection_string", "")  # Only this now
+        
+        if not email or not password:
+            return {"success": False, "error": "Email and password required"}
+        
+        # Use direct connection string
+        if not db_connection_string:
+            return {"success": False, "error": "Database connection required", "requires_db": True}
+        
+        import asyncpg
+        import hashlib
+        import secrets
+        
+        try:
+            conn = await asyncpg.connect(db_connection_string)  # Use directly
+            
+            # Create tables if not exist
+            await conn.execute("""
+                CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+                
+                CREATE TABLE IF NOT EXISTS users (
+                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    name VARCHAR(255),
+                    password_hash VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+                
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                    token VARCHAR(500) UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+                
+                CREATE TABLE IF NOT EXISTS user_credits (
+                    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                    user_id UUID REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+                    credits INTEGER DEFAULT 10,
+                    daily_credits_used INTEGER DEFAULT 0,
+                    daily_reset_date DATE DEFAULT CURRENT_DATE,
+                    monthly_credits_used INTEGER DEFAULT 0,
+                    monthly_reset_date DATE DEFAULT CURRENT_DATE
+                );
+            """)
+            
+            # Check if user exists
+            existing = await conn.fetchrow("SELECT id FROM users WHERE email = $1", email)
+            if existing:
+                await conn.close()
+                return {"success": False, "error": "User already exists"}
+            
+            # Hash password
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            
+            # Insert user
+            user_id = await conn.fetchval("""
+                INSERT INTO users (email, name, password_hash)
+                VALUES ($1, $2, $3)
+                RETURNING id
+            """, email, name, password_hash)
+            
+            # Create session token
+            token = secrets.token_urlsafe(32)
+            expires_at = datetime.now() + timedelta(days=30)
+            
+            await conn.execute("""
+                INSERT INTO sessions (user_id, token, expires_at)
+                VALUES ($1, $2, $3)
+            """, user_id, token, expires_at)
+            
+            # Create credits record
+            await conn.execute("""
+                INSERT INTO user_credits (user_id)
+                VALUES ($1)
+                ON CONFLICT (user_id) DO NOTHING
+            """, user_id)
+            
+            await conn.close()
+            
+            return {
+                "success": True,
+                "user": {
+                    "id": str(user_id),
+                    "email": email,
+                    "name": name
+                },
+                "access_token": token,
+                "token_type": "bearer"
+            }
+            
+        except Exception as e:
+            await conn.close()
+            raise e
+            
+    except Exception as e:
+        print(f"❌ Signup error: {e}")
+        return {"success": False, "error": str(e)}
+
+
 
 
 

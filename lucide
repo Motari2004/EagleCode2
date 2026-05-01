@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lucide Icons in HTML</title>
+
+  <!-- Lucide CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f0f12;
+      color: white;
+      padding: 40px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .icon {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 10px;
+      color: #c084fc;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Lucide Icons Example</h1>
+
+  <div class="grid">
+
+    <div class="card">
+      <i data-lucide="dumbbell" class="icon"></i>
+      <h3>State-of-the-Art Equipment</h3>
+      <p>Modern machines and free weights for all levels.</p>
+    </div>
+
+    <div class="card">
+      <i data-lucide="cpu" class="icon"></i>
+      <h3>Expert Trainers</h3>
+      <p>Certified professionals to guide your journey.</p>
+    </div>
+
+    <div class="card">
+      <i data-lucide="calendar" class="icon"></i>
+      <h3>Diverse Classes</h3>
+      <p>Yoga, HIIT, strength training and more.</p>
+    </div>
+
+    <div class="card">
+      <i data-lucide="award" class="icon"></i>
+      <h3>Achieve Excellence</h3>
+      <p>Push beyond your limits and grow stronger.</p>
+    </div>
+
+  </div>
+
+  <script>
+    lucide.createIcons();
+  </script>
+
+</body>
+</html>

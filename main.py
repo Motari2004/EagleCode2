@@ -1668,7 +1668,64 @@ IMAGE_CACHE = {}
 
 
 
+# ========== CLOUDINARY IMAGE CACHE FOR PREVIEWS ==========
+CLOUDINARY_CACHE_DIR = Path("cloudinary_cache")
+CLOUDINARY_CACHE_DIR.mkdir(exist_ok=True)
 
+async def get_cloudinary_url_for_preview(file_key: str, content: str) -> str:
+    """Upload image to Cloudinary and return URL (cached locally)"""
+    import hashlib
+    
+    if not content or not content.startswith("__binary_base64__"):
+        return None
+    
+    # Create a cache key based on the image content
+    raw_b64 = content[len("__binary_base64__"):]
+    cache_key = hashlib.md5(raw_b64.encode()).hexdigest()
+    cache_file = CLOUDINARY_CACHE_DIR / f"{cache_key}.txt"
+    
+    # Check if already uploaded and cached
+    if cache_file.exists():
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            cached_url = f.read().strip()
+            print(f"📸 Using cached Cloudinary URL for {file_key}")
+            return cached_url
+    
+    try:
+        print(f"☁️ Uploading {file_key} to Cloudinary...")
+        
+        # Clean base64 data
+        if ',' in raw_b64 and raw_b64.startswith('data:'):
+            raw_b64 = raw_b64.split(',')[1]
+        raw_b64 = raw_b64.strip().replace('\n', '').replace('\r', '')
+        
+        # Generate a unique public ID
+        public_id = f"preview_{cache_key[:16]}"
+        
+        upload_result = cloudinary.uploader.upload(
+            f"data:image/jpeg;base64,{raw_b64}",
+            folder="preview_images",
+            public_id=public_id,
+            overwrite=True,
+            transformation=[
+                {"quality": "auto:best"},
+                {"fetch_format": "auto"},
+                {"width": 1920, "height": 1080, "crop": "limit"}
+            ]
+        )
+        
+        cloudinary_url = upload_result['secure_url']
+        
+        # Cache the URL
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            f.write(cloudinary_url)
+        
+        print(f"✅ Uploaded and cached Cloudinary URL")
+        return cloudinary_url
+        
+    except Exception as e:
+        print(f"❌ Failed to upload {file_key} to Cloudinary: {e}")
+        return None
 
 
 
@@ -2107,9 +2164,321 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
+    import re  # ⭐ ADD THIS LINE - MUST BE FIRST
     """Generate beautiful HTML preview - extracts ALL pages and footer content"""
     try:
         print(f"🤖 AI generating beautiful HTML preview for: {project_name}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== ADD FONT AWESOME CDN TO HEAD ==========
+        font_awesome_cdn = '''
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+        '''
+        
+        
+        
+          # ========== FUNCTION TO CONVERT FOOTER TO FONT AWESOME ==========
+        def convert_footer_to_fontawesome(footer_html: str) -> str:
+            """Convert Lucide icons in footer to Font Awesome icons"""
+            if not footer_html:
+                return footer_html
+            
+            # Map React/Lucide icon names to Font Awesome classes
+            icon_map = {
+                'Instagram': 'fab fa-instagram',
+                'Facebook': 'fab fa-facebook',
+                'Twitter': 'fab fa-twitter',
+                'Mail': 'fas fa-envelope',
+                'Phone': 'fas fa-phone',
+                'MapPin': 'fas fa-map-marker-alt',
+                'Send': 'fas fa-paper-plane',
+                'Heart': 'fas fa-heart',
+                'Sparkles': 'fas fa-sparkles',
+            }
+            
+            # Replace <IconName /> with Font Awesome <i>
+            for react_icon, fa_class in icon_map.items():
+                # Handle <IconName /> pattern
+                footer_html = re.sub(
+                    rf'<{react_icon}\s*/>',
+                    f'<i class="{fa_class} text-purple-400"></i>',
+                    footer_html
+                )
+                # Handle <IconName></IconName> pattern
+                footer_html = re.sub(
+                    rf'<{react_icon}>\s*</{react_icon}>',
+                    f'<i class="{fa_class} text-purple-400"></i>',
+                    footer_html
+                )
+                # Handle <IconName className="..." />
+                footer_html = re.sub(
+                    rf'<{react_icon}\s+className="([^"]*)"\s*/>',
+                    lambda m: f'<i class="{fa_class} {m.group(1)} text-purple-400"></i>',
+                    footer_html
+                )
+            
+            return footer_html
+        
+        # ========== EXTRACT FOOTER CONTENT ==========
+        footer_html = ""
+        footer_paths = [
+            "components/Footer.tsx",
+            "components/Footer.jsx",
+            "app/components/Footer.tsx",
+        ]
+        
+        for fp in footer_paths:
+            if fp in files:
+                footer_content = files[fp]
+                # Extract the JSX return content
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', footer_content)
+                if match:
+                    footer_html = match.group(1)
+                else:
+                    footer_html = footer_content
+                
+                # Convert JSX to HTML
+                footer_html = re.sub(r'className=', 'class=', footer_html)
+                footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
+                footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                
+                # Convert icons to Font Awesome
+                footer_html = convert_footer_to_fontawesome(footer_html)
+                print(f"✅ Footer extracted and converted to Font Awesome")
+                break
+        
+        # If no footer found, use default
+        if not footer_html:
+            from datetime import datetime
+            footer_html = f'''
+            <footer class="bg-zinc-950 border-t border-zinc-800 py-12">
+                <div class="container mx-auto grid md:grid-cols-4 gap-8 px-4">
+                    <div>
+                        <h4 class="font-bold mb-4">{brand_name}</h4>
+                        <p class="text-sm text-gray-400">Premium lifestyle goods.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4">Links</h4>
+                        <p class="text-sm text-gray-400">Shop | Catalog | Cart</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4">Contact</h4>
+                        <p class="text-sm text-gray-400">info@{brand_name.lower().replace(' ', '')}.com</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <i class="fab fa-instagram text-gray-400 hover:text-purple-400"></i>
+                        <i class="fab fa-facebook text-gray-400 hover:text-purple-400"></i>
+                        <i class="fab fa-twitter text-gray-400 hover:text-purple-400"></i>
+                    </div>
+                </div>
+                <div class="text-center mt-8 text-sm text-gray-600">
+                    © {datetime.now().year} {brand_name}. Crafted with <i class="fas fa-heart text-red-400"></i> in Nairobi
+                </div>
+            </footer>
+            '''
+        
+        # ========== INCLUDE FONT AWESOME CDN IN PREVIEW ==========
+        # Make sure to add this to your final preview HTML <head> section
+        font_awesome_cdn = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
+        
+        # Continue with the rest of your preview generation...
+        # Make sure to add {font_awesome_cdn} to your <head> section
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
+            """Convert Next.js Navigation component to HTML with Lucide icons"""
+            
+            # Extract icon name from imports - IMPROVED PATTERN
+            icon_match = re.search(r'import\s+\{\s*(\w+)\s*\}\s+from\s+[\'"]lucide-react[\'"]', nav_content)
+            icon_name = icon_match.group(1) if icon_match else "Dumbbell"
+            
+            print(f"🎨 Extracted icon from navigation: {icon_name}")
+            
+            # Map icon names to Lucide data-lucide attributes - EXPANDED MAP
+            icon_map = {
+                # Fitness/Gym icons
+                "Dumbbell": "dumbbell",
+                "DumbbellIcon": "dumbbell",
+                "Barbell": "dumbbell",
+                "Weight": "dumbbell",
+                
+                # Tech icons
+                "Cpu": "cpu",
+                "CpuIcon": "cpu",
+                "Chip": "cpu",
+                "Microchip": "cpu",
+                
+                # People icons
+                "Users": "users",
+                "User": "user",
+                "UserCircle": "user-circle",
+                "UsersRound": "users",
+                
+                # Calendar/Schedule icons
+                "Calendar": "calendar",
+                "CalendarIcon": "calendar",
+                "Clock": "clock",
+                
+                # Achievement icons
+                "Award": "award",
+                "Trophy": "trophy",
+                "Medal": "medal",
+                "Star": "star",
+                
+                # Navigation/Menu icons
+                "Home": "home",
+                "Menu": "menu",
+                "MenuIcon": "menu",
+                "Hamburger": "menu",
+                
+                # Common UI icons
+                "Heart": "heart",
+                "Check": "check",
+                "CheckCircle": "check-circle",
+                "Mail": "mail",
+                "Envelope": "mail",
+                "Phone": "phone",
+                "Call": "phone",
+                "MapPin": "map-pin",
+                "Location": "map-pin",
+                
+                # Business icons
+                "ShoppingBag": "shopping-bag",
+                "ShoppingCart": "shopping-cart",
+                "Coffee": "coffee",
+                "GraduationCap": "graduation-cap",
+                "School": "school",
+                "Hotel": "hotel",
+                "Building": "building",
+                "Utensils": "utensils",
+                "Food": "utensils",
+                
+                # Media icons
+                "Film": "film",
+                "Movie": "film",
+                "Music": "music",
+                "Play": "play",
+                
+                # Creative icons
+                "Sparkles": "sparkles",
+                "Zap": "zap",
+                "Lightning": "zap",
+            }
+            
+            # Get the mapped icon, default to "dumbbell" for gym/fitness projects
+            lucide_icon = icon_map.get(icon_name, "dumbbell")
+            
+            # Also check the brand name for context (if icon not found, infer from project type)
+            if lucide_icon == "dumbbell" and icon_name != "Dumbbell":
+                # Check if this is likely a gym/fitness project
+                gym_keywords = ["fitness", "gym", "athletic", "training", "workout", "strength", "athletics"]
+                if any(keyword in brand_name.lower() for keyword in gym_keywords):
+                    lucide_icon = "dumbbell"
+                    print(f"   🔍 Inferred 'dumbbell' from brand name: {brand_name}")
+                # Check if this is a coffee/cafe project
+                elif any(keyword in brand_name.lower() for keyword in ["coffee", "cafe", "brew", "roast", "bean"]):
+                    lucide_icon = "coffee"
+                    print(f"   🔍 Inferred 'coffee' from brand name: {brand_name}")
+                # Check if this is a school/academy
+                elif any(keyword in brand_name.lower() for keyword in ["academy", "school", "college", "university", "campus"]):
+                    lucide_icon = "graduation-cap"
+                    print(f"   🔍 Inferred 'graduation-cap' from brand name: {brand_name}")
+                # Check if this is a hotel/resort
+                elif any(keyword in brand_name.lower() for keyword in ["hotel", "resort", "lodge", "inn", "suites"]):
+                    lucide_icon = "hotel"
+                    print(f"   🔍 Inferred 'hotel' from brand name: {brand_name}")
+            
+            print(f"🎨 Using Lucide icon: {lucide_icon} (from {icon_name})")
+            
+            # Build navigation HTML with Lucide icons
+            nav_buttons_html = ""
+            for href, label in nav_links:
+                nav_buttons_html += f'''
+                <a href="{href}" class="hover:text-purple-400 transition-colors">{label}</a>'''
+            
+            return f'''
+            <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
+                <a href="/" class="flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    <i data-lucide="{lucide_icon}" class="w-6 h-6 text-purple-400"></i>
+                    {brand_name}
+                </a>
+                <div class="hidden md:flex space-x-6">
+                    {nav_buttons_html}
+                </div>
+                <button id="mobile-menu-button" class="md:hidden">
+                    <i data-lucide="menu" class="w-6 h-6 text-white"></i>
+                </button>
+            </nav>
+            
+            <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+                {nav_buttons_html.replace('class="hover:text-purple-400 transition-colors"', 'class="block px-4 py-2 hover:bg-purple-500/20 rounded-lg transition-colors"')}
+            </div>
+            
+            <script>
+                document.getElementById('mobile-menu-button')?.addEventListener('click', function() {{
+                    const menu = document.getElementById('mobile-menu');
+                    if (menu) menu.classList.toggle('hidden');
+                }});
+            </script>
+            '''
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2176,6 +2545,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
 
 
         # ========== COLLECT NAVIGATION ==========
+        nav_links = []  # ⭐ ADD THIS LINE - initialize nav_links
         nav_content = ""
         nav_paths = [
             "components/Navigation.tsx",
@@ -2197,10 +2567,31 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                     nav_content = content
                     break
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         # Extract brand and navigation links
-        brand_name = project_name
-        nav_links = []
-        
+        brand_name = project_name        
         if nav_content:
             brand_patterns = [
                 r'<Link\s+href="/"[^>]*>(.*?)</Link>',
@@ -2233,6 +2624,22 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
 
+
+
+
+
+
+
+
+
+
+
+        # Convert navigation to HTML with Lucide icons
+        navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
+        # ⭐⭐⭐ END OF ADDED LINE ⭐⭐⭐
+        
+        
+        navigation_html_for_prompt = navigation_html 
 
 
 
@@ -2306,88 +2713,234 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
 
-        
-        
-        
-         # Helper function to extract content from TSX/JSX files
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              # Helper function to extract content from TSX/JSX files
         def extract_page_content(content: str, route_name: str) -> str:
-            """Extract meaningful content from page component - captures ALL sections including Why Choose Us"""
+            """Extract meaningful content from page component - captures ALL sections including arrays and maps"""
+            print(f"\n{'='*60}")
+            print(f"🔍 EXTRACTING: {route_name}")
+            print(f"{'='*60}")
+            print(f"📦 Original content length: {len(content)} chars")
+            
             if not content:
-                return ""
+                  print(f"❌ Content is empty!")
+                  return ""
             
             # Remove imports and exports (but keep the JSX structure)
+            print(f"\n📌 STEP 1: Removing imports and exports...")
             clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)
             clean = re.sub(r'^export\s+default\s+\w+;?\s*$', '', clean, flags=re.MULTILINE)
             clean = re.sub(r'^export\s+const\s+\w+\s*=\s*', '', clean, flags=re.MULTILINE)
             clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
+            print(f"   ✅ Length after import removal: {len(clean)} chars")
             
             # Remove 'use client' directive
+            print(f"\n📌 STEP 2: Removing 'use client' directive...")
             clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
+            print(f"   ✅ Length after 'use client' removal: {len(clean)} chars")
             
-            # Extract return JSX using bracket counting (handles nested parentheses properly)
+            # ⭐ NEW: Check for image in cleaned content
+            if 'image_1.jpg' in clean or 'image_' in clean:
+                  print(f"   ✅ Image found in cleaned content")
+            
+            # Check for key sections in cleaned content
+            print(f"\n📌 STEP 3: Checking for key sections in cleaned content...")
+            if 'Our Core Pillars' in clean or 'Core Features' in clean:
+                  print(f"   ✅ Features/Pillars section FOUND")
+                  features_pos = clean.find('Our Core Pillars') if 'Our Core Pillars' in clean else clean.find('Core Features')
+                  print(f"   📍 Section at position: {features_pos}")
+                  print(f"   📄 Preview around section:")
+                  print(f"      {clean[features_pos-50:features_pos+100]}...")
+            else:
+                  print(f"   ❌ Features/Pillars section NOT FOUND")
+            
+            # Check for inline array
+            print(f"\n📌 STEP 4: Checking for inline array (.map())...")
+            if '.map(' in clean:
+                  print(f"   ✅ .map() found in cleaned content")
+            else:
+                  print(f"   ❌ .map() NOT found in cleaned content")
+            
+            # Extract return JSX using bracket counting
+            print(f"\n📌 STEP 5: Extracting return JSX...")
             start_match = re.search(r'return\s*\(', clean)
             if not start_match:
-                # Try without parentheses
-                start_match = re.search(r'return\s+', clean)
-                if not start_match:
-                    return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1></div>'
+                  start_match = re.search(r'return\s+', clean)
+                  if not start_match:
+                        print(f"   ❌ No return statement found!")
+                        return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1></div>'
             
+            print(f"   ✅ Return statement found at position {start_match.start()}")
             start_pos = start_match.end()
+            print(f"   📍 Start position: {start_pos}")
             
             # Count brackets to find the matching closing parenthesis
             open_count = 1
             i = start_pos
             extracted = ""
+            bracket_count = 0
             
+            print(f"   🔄 Counting brackets to find matching closing parenthesis...")
             while i < len(clean) and open_count > 0:
-                char = clean[i]
-                extracted += char
-                if char == '(':
-                    open_count += 1
-                elif char == ')':
-                    open_count -= 1
-                i += 1
+                  char = clean[i]
+                  extracted += char
+                  if char == '(':
+                        open_count += 1
+                        bracket_count += 1
+                  elif char == ')':
+                        open_count -= 1
+                        bracket_count += 1
+                  i += 1
             
-            # Find the semicolon after the closing parenthesis
-            semicolon_match = re.search(r';', extracted)
-            if semicolon_match:
-                extracted = extracted[:semicolon_match.start()]
+            print(f"   ✅ Extraction complete. Processed {bracket_count} brackets")
+            print(f"   📏 Extracted length: {len(extracted)} chars")
+            
+            # ⭐ CRITICAL FIX: DO NOT truncate at semicolons!
+            print(f"   📏 Keeping full extracted content (no semicolon truncation): {len(extracted)} chars")
             
             extracted = extracted.strip()
+            print(f"   📏 Final extracted length: {len(extracted)} chars")
+            
+            # ⭐ Check if image was preserved in extracted content
+            if 'image_1.jpg' in extracted:
+                  print(f"   ✅ Image preserved in extracted content")
+            else:
+                  print(f"   ⚠️ Image NOT found in extracted content")
+            
+            # Show preview of extracted content
+            print(f"\n📌 STEP 6: Preview of extracted content (first 500 chars):")
+            print(f"{'-'*60}")
+            print(extracted[:500])
+            print(f"{'-'*60}")
             
             if extracted:
-                # Convert JSX to HTML (preserve all content)
-                extracted = re.sub(r'className=', 'class=', extracted)
-                extracted = re.sub(r'htmlFor=', 'for=', extracted)
-                
-                # Convert Next.js Link to a tags
-                extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
-                extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
-                extracted = re.sub(r'</Link>', '</a>', extracted)
-                
-                # Convert Next.js Image to img tags
-                extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
-                extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
-                
-                # Preserve Fragment syntax
-                extracted = re.sub(r'<>', '<div>', extracted)
-                extracted = re.sub(r'</>', '</div>', extracted)
-                
-                # Remove problematic Next.js attributes
-                extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
-                extracted = re.sub(r'\s+priority\s*', '', extracted)
-                extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
-                extracted = re.sub(r'<Fragment>', '', extracted)
-                extracted = re.sub(r'</Fragment>', '', extracted)
-                
-                # Clean up whitespace
-                extracted = re.sub(r'>\s+<', '><', extracted)
-                extracted = re.sub(r'\n{3,}', '\n\n', extracted)
-                
-                return extracted.strip()
+                  # Process inline arrays inside JSX
+                  print(f"\n📌 STEP 7: Processing inline arrays...")
+                  
+                  # Find and render the pillars/features array
+                  array_pattern = r'\{\s*\[([\s\S]*?)\]\s*\.map\(\(([^,]+),\s*([^)]+)\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*\)\s*\}'
+                  
+                  def render_array(match):
+                        array_items_str = match.group(1)
+                        item_var = match.group(2).strip()
+                        index_var = match.group(3).strip()
+                        template = match.group(4).strip()
+                        
+                        print(f"      📦 Found array with {array_items_str.count('title:')} items")
+                        print(f"      🏷️ Item variable: {item_var}, Index variable: {index_var}")
+                        
+                        items = []
+                        object_pattern = r'\{\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']\s*\}'
+                        object_matches = re.findall(object_pattern, array_items_str)
+                        
+                        for title, desc in object_matches:
+                              items.append({"title": title, "desc": desc})
+                              print(f"         📌 Item: '{title}' -> '{desc[:40]}...'")
+                        
+                        if items:
+                              rendered_items = []
+                              for idx, item in enumerate(items):
+                                    rendered_html = template
+                                    rendered_html = rendered_html.replace(f'{{{item_var}.title}}', item['title'])
+                                    rendered_html = rendered_html.replace(f'{{{item_var}.desc}}', item['desc'])
+                                    rendered_html = rendered_html.replace(f'{{{index_var}}}', str(idx))
+                                    rendered_items.append(rendered_html)
+                              
+                              print(f"      ✅ Rendered {len(rendered_items)} items")
+                              return '\n'.join(rendered_items)
+                        
+                        return match.group(0)
+                  
+                  extracted = re.sub(array_pattern, render_array, extracted, flags=re.DOTALL)
+                  
+                  if '.map(' in extracted:
+                        print(f"   ⚠️ Some .map() patterns may not have been processed")
+                  
+                  # Convert JSX to HTML
+                  print(f"\n📌 STEP 8: Converting JSX to HTML...")
+                  extracted = re.sub(r'className=', 'class=', extracted)
+                  extracted = re.sub(r'htmlFor=', 'for=', extracted)
+                  extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
+                  extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
+                  extracted = re.sub(r'</Link>', '</a>', extracted)
+                  extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
+                  extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
+                  extracted = re.sub(r'<>', '<div>', extracted)
+                  extracted = re.sub(r'</>', '</div>', extracted)
+                  extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
+                  extracted = re.sub(r'\s+priority\s*', '', extracted)
+                  extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
+                  extracted = re.sub(r'<Fragment>', '', extracted)
+                  extracted = re.sub(r'</Fragment>', '', extracted)
+                  extracted = re.sub(r'>\s+<', '><', extracted)
+                  extracted = re.sub(r'\n{3,}', '\n\n', extracted)
+                  
+                  # ⭐ FINAL CHECK: If image was lost, manually inject it
+                  if 'image_1.jpg' not in extracted and 'image_' in str(files.keys()):
+                        print(f"\n   🔧 Image lost during conversion - manually injecting...")
+                        # Find the hero section and add the image
+                        if '<section class="relative h-screen' in extracted:
+                              # Inject image right after section opening
+                              image_tag = '<img src="/images/image_1.jpg" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />'
+                              extracted = extracted.replace(
+                                    '<section class="relative h-screen',
+                                    f'<section class="relative h-screen">{image_tag}'
+                              )
+                              # Also add the dark overlay
+                              overlay = '<div class="absolute inset-0 bg-black/50"></div>'
+                              extracted = extracted.replace(image_tag, f'{image_tag}\n    {overlay}')
+                              print(f"   ✅ Image injected into hero section")
+                  
+                  # Final verification
+                  print(f"\n📌 STEP 9: Final verification...")
+                  if 'Core Features' in extracted or 'Our Core Pillars' in extracted:
+                        print(f"   ✅ Features/Pillars section present in final extracted content")
+                        card_count = extracted.count('rounded-xl')
+                        print(f"   📊 Cards found: {card_count}")
+                        
+                        if card_count >= 3:
+                              print(f"   ✅ All features successfully extracted!")
+                  else:
+                        print(f"   ❌ Features section MISSING from final extracted content!")
+                  
+                  # ⭐ Final image check
+                  if 'image_1.jpg' in extracted:
+                        print(f"   ✅ Image present in final output!")
+                  else:
+                        print(f"   ⚠️ Image missing from final output!")
+                  
+                  print(f"\n✅ Extraction complete for {route_name}")
+                  print(f"{'='*60}\n")
+                  return extracted.strip()
             
-            # Fallback
+            
+            
+            
+            
+            
+            
+            
+            
+            print(f"❌ No JSX extracted, using fallback")
             return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
+        
+        
+        
+        
         
         
         
@@ -2435,6 +2988,98 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 
                 
                 extracted_content = extract_page_content(content, route_name)
+                
+                
+                
+                
+                
+                
+                
+                
+                # ========== DEBUG: Log extracted content for home page ==========
+                if route_name == 'page' or route_name == 'home':
+                    print(f"\n{'='*60}")
+                    print(f"🔍 DEBUGGING EXTRACTED CONTENT FOR HOME PAGE")
+                    print(f"{'='*60}")
+                    print(f"📏 Extracted content length: {len(extracted_content)} chars")
+                    print(f"\n📄 FIRST 500 CHARACTERS:")
+                    print("-" * 40)
+                    print(extracted_content[:500])
+                    print("-" * 40)
+                    
+                    print(f"\n🔎 SEARCHING FOR KEY SECTIONS:")
+                    print("-" * 40)
+                    
+                    # Check for hero section
+                    if 'relative h-screen' in extracted_content or 'hero' in extracted_content.lower():
+                        print("✅ Hero section found")
+                    else:
+                        print("❌ Hero section MISSING")
+                    
+                    # Check for features section
+                    if 'Our Features' in extracted_content:
+                        print("✅ 'Our Features' heading found")
+                    else:
+                        print("❌ 'Our Features' heading MISSING")
+                    
+                    # Check for grid
+                    if 'grid md:grid-cols-3' in extracted_content:
+                        print("✅ Grid container found")
+                    else:
+                        print("❌ Grid container MISSING")
+                    
+                    # Check for individual feature cards
+                    card_count = extracted_content.count('rounded-xl bg-white/5')
+                    print(f"📊 Feature cards found: {card_count}")
+                    
+                    # Check for specific feature titles
+                    if 'Cloud Analytics' in extracted_content:
+                        print("✅ 'Cloud Analytics' found")
+                    else:
+                        print("❌ 'Cloud Analytics' MISSING")
+                    
+                    if 'Team Sync' in extracted_content:
+                        print("✅ 'Team Sync' found")
+                    else:
+                        print("❌ 'Team Sync' MISSING")
+                    
+                    if 'Security First' in extracted_content:
+                        print("✅ 'Security First' found")
+                    else:
+                        print("❌ 'Security First' MISSING")
+                    
+                    # Check if the inline array pattern exists
+                    if 'map((f, i)' in extracted_content or '.map(' in extracted_content:
+                        print("⚠️ Raw .map() still present (not rendered)")
+                        # Find and show the map pattern
+                        import re
+                        map_match = re.search(r'\{[^}]*\.map\([^)]*\)[^}]*\}', extracted_content)
+                        if map_match:
+                            print(f"   Map pattern found: {map_match.group(0)[:150]}...")
+                    else:
+                        print("✅ No raw .map() found (should be rendered)")
+                    
+                    # Check for any JavaScript expressions left
+                    if '{' in extracted_content and '}' in extracted_content:
+                        # Count remaining JS expressions
+                        js_exprs = re.findall(r'\{[^{}]*\}', extracted_content)
+                        if js_exprs:
+                            print(f"⚠️ Remaining JS expressions: {len(js_exprs)}")
+                            for expr in js_exprs[:3]:
+                                print(f"   - {expr[:80]}")
+                    
+                    print(f"\n📄 LAST 500 CHARACTERS:")
+                    print("-" * 40)
+                    print(extracted_content[-500:])
+                    print("-" * 40)
+                    print(f"{'='*60}\n")
+                               
+                
+                
+                
+                
+                
+                
                 
                 # ========== ADD THIS AUTH OVERRIDE RIGHT HERE ==========
                 # Override signup/login pages with backend HTML forms
@@ -2655,61 +3300,265 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
         
+        
+        
+        
+         # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
+        # Get the Cloudinary URL for the image
+        image_url = None
+        for file_key, content in files.items():
+            if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
+                # Upload to Cloudinary and get cached URL
+                image_url = await get_cloudinary_url_for_preview(file_key, content)
+                if image_url:
+                    print(f"📸 Using Cloudinary URL: {image_url[:80]}...")
+                else:
+                    # Fallback to placeholder if Cloudinary fails
+                    image_url = "https://placehold.co/1920x1080/1a1a2e/white?text=Image"
+                    print(f"⚠️ Cloudinary failed, using placeholder")
+                break
+        
+        # If we have an image URL, force it into the home content
+        if image_url:
+            # Replace any image path with the Cloudinary URL
+            home_content = home_content.replace('/images/image_1.jpg', image_url)
+            home_content = home_content.replace('/images/image_2.jpg', image_url)
+            
+            # Also ensure the hero section has the image tag
+            if '<img' not in home_content:
+                # Inject the image into the hero section
+                home_content = f'''
+                <section class="relative h-screen w-full overflow-hidden">
+                    <img src="{image_url}" class="absolute inset-0 w-full h-full object-cover" />
+                    <div class="absolute inset-0 bg-black/50"></div>
+                    <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+                        <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">{brand_name}</h1>
+                        <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Welcome to {brand_name}</p>
+                        <button class="btn">Get Started</button>
+                    </div>
+                </section>
+                '''
+                print(f"  ✅ Injected Cloudinary image into home content")
+        
+        # Update the first_image display for the prompt
+        first_image_display = image_url if image_url else (first_image if first_image else 'None - use gradient background')
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         prompt = f"""CRITICAL: You MUST include Tailwind CSS CDN in the <head> tag:
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
 Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
-USE Tailwind CSS classes for ALL positioning, layout, spacing, colors, and responsive design.
-ONLY use custom CSS for things Tailwind doesn't provide (like custom gradients, animations, or complex hover effects).
+
+
+
+
+
 
 ================================================================================
-REQUIRED STRUCTURE FOR HOME PAGE HERO:
-================================================================================
-<section class="relative h-screen w-full overflow-hidden">
-  <img src="[image-url]" class="absolute inset-0 w-full h-full object-cover" />
-  <div class="absolute inset-0 bg-black/50"></div>
-  <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
-    <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">[Brand Name]</h1>
-    <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[Tagline]</p>
-    <button class="btn">[CTA Text]</button>
-  </div>
-</section>
-        
-        
-        
-        
-
-================================================================================
-EXTRACTED CONTENT - USE EXACTLY
+🚨🚨🚨 CRITICAL: YOU ARE AN HTML CONVERTER, NOT A CONTENT GENERATOR 🚨🚨🚨
 ================================================================================
 
-BRAND NAME: {brand_name}
+Your ONLY job is to convert the EXACT React JSX content below into HTML.
+DO NOT write new content. DO NOT change wording. DO NOT add or remove sections.
 
-NAVIGATION LINKS: {nav_links_json}
+================================================================================
+ICON REQUIREMENTS:
+================================================================================
+- Navigation brand: Use Lucide icons with <i data-lucide="icon-name">
+- Footer social icons: Use Font Awesome with <i class="fab fa-icon-name">
+- Feature cards: Use regular HTML/SVG, NOT Lucide icons
+- Initialize Lucide with: lucide.createIcons()
 
-HOME PAGE CONTENT:
+================================================================================
+EXACT NAVIGATION HTML - USE THIS EXACTLY (DO NOT MODIFY):
+================================================================================
+{navigation_html_for_prompt}
+
+================================================================================
+EXACT HOME PAGE CONTENT - CONVERT THIS JSX TO HTML (PRESERVE EVERYTHING):
+================================================================================
 {home_content}
 
-ALL PAGE CONTENTS (use these for their respective pages):
+================================================================================
+EXACT OTHER PAGES CONTENT - CONVERT THESE TO HTML (PRESERVE EVERYTHING):
+================================================================================
 {page_contents_json}
 
-FOOTER HTML (USE THIS EXACTLY IF PROVIDED, OTHERWISE CREATE DEFAULT):
-{footer_html if footer_html else "Create a beautiful footer with copyright, social links, and navigation"}
-
-AVAILABLE IMAGE: {first_image if first_image else 'None - use gradient background'}
+================================================================================
+EXACT BRAND NAME (use this exactly):
+================================================================================
+{brand_name}
 
 ================================================================================
-DESIGN REQUIREMENTS
+EXACT NAVIGATION LINKS (use these exactly):
+================================================================================
+{nav_links_json}
+
+================================================================================
+EXACT FOOTER HTML - CONVERT THIS TO HTML (PRESERVE ALL TEXT, CONVERT ICONS TO FONT AWESOME):
+================================================================================
+{footer_html if footer_html else "Create a simple footer with copyright and navigation links"}
+
+IMPORTANT FOOTER ICON CONVERSION RULES:
+- Convert <Instagram /> to <i class="fab fa-instagram"></i>
+- Convert <Facebook /> to <i class="fab fa-facebook"></i>
+- Convert <Twitter /> to <i class="fab fa-twitter"></i>
+- Convert <Mail /> to <i class="fas fa-envelope"></i>
+- Convert <Phone /> to <i class="fas fa-phone"></i>
+- Convert <MapPin /> to <i class="fas fa-map-marker-alt"></i>
+- Keep ALL text content EXACTLY the same
+
+================================================================================
+EXACT HERO BACKGROUND IMAGE URL (use this exactly):
+================================================================================
+{first_image_display}
+
+================================================================================
+RULES FOR CONVERTING HOME PAGE CONTENT:
+================================================================================
+
+1. Extract the hero section with EXACT text from {home_content}
+2. Extract ALL feature cards with EXACT titles and descriptions
+3. Extract ALL stats with EXACT numbers and labels
+4. Extract ALL testimonials with EXACT quotes and names
+5. Extract ALL CTA sections with EXACT button text
+6. Preserve the EXACT number of items (don't add or remove cards)
+7. Keep ALL text EXACTLY as written in the original JSX
+
+================================================================================
+RULES FOR CONVERTING OTHER PAGES:
+================================================================================
+
+For each page in {page_contents_json}:
+1. Use the EXACT content provided
+2. Preserve ALL headings, paragraphs, and button text
+3. Keep the SAME number of cards, items, or sections
+4. DO NOT add placeholder text like "Coming soon" or "Lorem ipsum"
+
+================================================================================
+DESIGN REQUIREMENTS:
 ================================================================================
 
 1. Modern dark theme with purple/pink gradients (#c084fc, #f472b6)
 2. Glass morphism effects (backdrop-blur, semi-transparent backgrounds)
 3. Smooth animations and hover effects
 4. Fully responsive (mobile hamburger menu at 768px)
-5. NO Tailwind CDN - use ONLY custom CSS below
-6. ONLY ONE <style> tag and ONE <script> tag
-7. Use the EXTRACTED page content above - NO generic placeholders
+5. ONLY ONE <style> tag and ONE <script> tag
+6. Navigation brand uses Lucide icon - Footer uses Font Awesome - Features use HTML/SVG
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+COMPLETE JAVASCRIPT:
+================================================================================
+<script>
+    document.addEventListener('DOMContentLoaded', function() {{
+        if (typeof lucide !== 'undefined') {{
+            lucide.createIcons();
+        }}
+    }});
+    
+    // CRITICAL: Brand click handler - navigates to home page
+    function handleBrandClick(event) {{
+        event.preventDefault();
+        event.stopPropagation();
+        showPage('home');
+        return false;
+    }}
+    
+    const mobileMenuBtn = document.getElementById('mobile-menu-button');
+    if (mobileMenuBtn) {{
+        mobileMenuBtn.addEventListener('click', function() {{
+            const mobileMenu = document.getElementById('mobile-menu');
+            if (mobileMenu) {{
+                mobileMenu.classList.toggle('hidden');
+            }}
+        }});
+    }}
+    
+    function showPage(pageId) {{
+        document.querySelectorAll('.page').forEach(page => {{
+            page.classList.remove('active');
+            page.style.display = 'none';
+        }});
+        const targetPage = document.getElementById('page_' + pageId);
+        if (targetPage) {{
+            targetPage.classList.add('active');
+            targetPage.style.display = 'block';
+        }}
+        window.scrollTo(0, 0);
+    }}
+    
+    // Add click handlers to all navigation links
+    document.querySelectorAll('[data-page]').forEach(link => {{
+        link.addEventListener('click', (e) => {{
+            e.preventDefault();
+            const pageId = link.getAttribute('data-page');
+            if (pageId) showPage(pageId);
+        }});
+    }});
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+FINAL VERIFICATION:
+================================================================================
+
+Before outputting, verify:
+- [ ] Home page has EXACT same sections as extracted content
+- [ ] All text matches the original JSX word-for-word
+- [ ] Number of feature cards matches (should be 4 for gym website)
+- [ ] Number of stats matches (should be 4 for gym website)
+- [ ] Number of testimonials matches (should be 3 for gym website)
+- [ ] No placeholder or generic text was added
+- [ ] Navigation HTML was copied exactly
+- [ ] Footer HTML was copied exactly (if provided)
+- [ ] Footer icons use Font Awesome classes (fab fa-* or fas fa-*)
+- [ ] Font Awesome CDN is in the <head> tag
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3299,16 +4148,32 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
             
             
 
-        # Inject base64 images
+        # Inject base64 images - Use Cloudinary URLs instead of huge base64 strings
+        image_urls_cache = {}
+        
         for file_key, content in files.items():
             if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
                 public_path = "/" + file_key[len("public/"):]
-                raw_b64 = content[len("__binary_base64__"):]
-                data_uri = f"data:image/jpeg;base64,{raw_b64}"
-                preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
-                preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
-
-
+                
+                # Upload to Cloudinary and get URL (cached)
+                cloudinary_url = await get_cloudinary_url_for_preview(file_key, content)
+                
+                if cloudinary_url:
+                    image_urls_cache[public_path] = cloudinary_url
+                    preview_html = preview_html.replace(f'src="{public_path}"', f'src="{cloudinary_url}"')
+                    preview_html = preview_html.replace(f"src='{public_path}'", f'src="{cloudinary_url}"')
+                    print(f"  ✅ Replaced {public_path} with Cloudinary URL")
+                else:
+                    # Fallback to base64 if Cloudinary fails
+                    raw_b64 = content[len("__binary_base64__"):]
+                    data_uri = f"data:image/jpeg;base64,{raw_b64}"
+                    preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
+                    preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
+                    print(f"  ⚠️ Cloudinary failed, using base64 for {public_path}")
+        
+        # If no images were processed, use gradient background
+        if not image_urls_cache:
+            print("⚠️ No images available, using gradient background for hero")
 
 
 
@@ -3689,6 +4554,20 @@ def clean_json_response(text: str) -> str:
     return text.strip()
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def fix_json_errors(text: str) -> str:
     """Aggressive fix for Gemini's common JSON escaping problems"""
     if not text:
@@ -3699,18 +4578,91 @@ def fix_json_errors(text: str) -> str:
     # 1. Clean markdown again (in case it survived)
     text = clean_json_response(text)
     
-    # 2. Fix invalid backslashes - the #1 cause of "Invalid \escape"
+    
+    
+    
+    
+    
+    # ⭐⭐⭐ FIX THE TEMPLATE LITERAL PATTERN FROM TESTIMONIALS ⭐⭐⭐
+    # This pattern: {`"${testimonial.quote}"`}
+    # Should become: "testimonial quote text" (a valid JSON string)
+    text = re.sub(
+        r'\{`"\$\{([^}]+)\}"`\}',
+        r'"\1"',
+        text
+    )
+    # Also fix pattern with spaces: { `"${testimonial.quote}"` }
+    text = re.sub(
+        r'\{\s*`"\$\{([^}]+)\}"`\s*\}',
+        r'"\1"',
+        text
+    )
+    # Fix pattern: {`${testimonial.quote}`}
+    text = re.sub(
+        r'\{`\$\{([^}]+)\}`\}',
+        r'"\1"',
+        text
+    )
+    # Fix pattern with just backticks: {`text`}
+    text = re.sub(
+        r'\{`([^`]+)`\}',
+        r'"\1"',
+        text
+    )
+    # Remove any remaining backticks
+    text = text.replace('`', '"')
+    
+    
+    
+    
+    
+    
+    
+    
+    # 2. ⭐⭐⭐ CRITICAL: Fix escaped apostrophes FIRST (most common issue)
+    # Replace \' with ' (apostrophes don't need escaping in JSON)
+    text = text.replace("\\'", "'")
+    
+    # 3. ⭐ NEW: Fix common contractions with escaped apostrophes
+    # Pattern: it\'s -> it's, won\'t -> won't, don\'t -> don't, etc.
+    text = re.sub(r"it\\'s", "it's", text)
+    text = re.sub(r"won\\'t", "won't", text)
+    text = re.sub(r"don\\'t", "don't", text)
+    text = re.sub(r"can\\'t", "can't", text)
+    text = re.sub(r"that\\'s", "that's", text)
+    text = re.sub(r"what\\'s", "what's", text)
+    text = re.sub(r"there\\'s", "there's", text)
+    text = re.sub(r"we\\'ll", "we'll", text)
+    text = re.sub(r"they\\'re", "they're", text)
+    text = re.sub(r"you\\'re", "you're", text)
+    text = re.sub(r"([a-zA-Z])\\'([a-zA-Z])", r"\1'\2", text)
+    text = re.sub(r"n\\'t", r"n't", text)
+    
+    # 4. ⭐ Fix escaped quotes next
+    text = text.replace('\\"', '"')
+    
+    # 5. Fix template literals and backticks
+    text = text.replace('`', '"')
+    # Fix ${...} template expressions like `${testimonial.quote}`
+    text = re.sub(r'\$\{([^}]+)\}', r'\\"\1\\"', text)
+    # Fix patterns like {`"text"`} or {`text`}
+    text = re.sub(r'\{\s*"[^"]*"\s*\}', r'""', text)
+    text = re.sub(r'\{\s*`[^`]*`\s*\}', r'""', text)
+    
+    # 6. Fix invalid backslashes - the #1 cause of "Invalid \escape"
     # Replace any \ that is not followed by a valid JSON escape character
     valid_escapes = r'["\\/bfnrtu]'
     text = re.sub(r'\\(?!' + valid_escapes + r')', r'\\\\', text)
     
-    # 3. Fix common invalid escapes like \'
-    text = text.replace("\\'", "'")
+    # 7. Fix double backslashes
+    text = text.replace("\\\\", "\\")
     
-    # 4. Fix unescaped double quotes inside string values (very common with Gemini)
+    # 8. Fix unescaped double quotes inside string values (very common with Gemini)
     def safe_escape_quotes(match):
         # match.group(1) = content inside the quotes
         content = match.group(1)
+        # First, restore any properly escaped quotes we might have broken
+        content = content.replace('\\"', '"')
         # Escape any " that isn't already escaped
         content = re.sub(r'(?<!\\)"', r'\\"', content)
         return '"' + content + '"'
@@ -3718,26 +4670,74 @@ def fix_json_errors(text: str) -> str:
     # Apply to all "..." strings
     text = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', safe_escape_quotes, text)
     
-    # 5. Remove trailing commas (very frequent)
+    # 9. Remove trailing commas (very frequent)
     text = re.sub(r',\s*}', '}', text)
     text = re.sub(r',\s*]', ']', text)
     
-    # 6. Fix missing quotes around property names
+    # 10. Fix missing quotes around property names
     text = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', text)
     
-    # 7. Remove BOM and invisible characters
+    # 11. Remove BOM and invisible characters
     text = text.encode('utf-8').decode('utf-8-sig')
     
-    # 8. Final cleanup - remove any stray control characters
+    # 12. Final cleanup - remove any stray control characters
     text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
     
-    # 9. If the JSON looks broken at the start, try to extract the object
+    # 13. If the JSON looks broken at the start, try to extract the object
     if text and not text.startswith('{'):
         json_match = re.search(r'(\{[\s\S]*\})', text)
         if json_match:
             text = json_match.group(1)
     
+    # 14. Fix any remaining unescaped backslashes before quotes
+    text = re.sub(r"([a-zA-Z])\\'([a-zA-Z])", r"\1'\2", text)
+    
+    # 15. Fix line breaks in strings (replace actual newlines with \n)
+    def fix_newlines_in_strings(match):
+        content = match.group(1)
+        # Replace actual newlines with \n escape
+        content = content.replace('\n', '\\n').replace('\r', '\\r')
+        return '"' + content + '"'
+    
+    # Apply to strings that might contain unescaped newlines
+    text = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', fix_newlines_in_strings, text)
+    
+    # 16. Remove any leftover control characters in strings
+    text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
+    
+    # 17. Fix common HTML entities in strings
+    text = text.replace('&quot;', '"')
+    text = text.replace('&apos;', "'")
+    text = text.replace('&amp;', '&')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    
+    # 18. Fix any remaining escaped backticks or template strings
+    text = re.sub(r'\\`', '"', text)
+    text = re.sub(r'\\\$', '$', text)
+    
+    # 19. Remove any remaining JSON-invalid control characters
+    text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+    
+    # 20. ⭐ FINAL PASS: Fix any missed escaped apostrophes
+    # This catches edge cases like 'it\'s' that might have survived
+    text = re.sub(r"'\\'([^']+)'", r"'\1'", text)
+    text = re.sub(r'"\\\'([^"]+)"', r'"\1"', text)
+    
     return text.strip()
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def clean_html_response(text: str) -> str:
@@ -3860,6 +4860,91 @@ def clean_html_response(text: str) -> str:
 MASTER_BUILD_PROMPT = """You are a Senior Full-Stack Architect and UI/UX Designer specializing in Next.js 14.
 
 Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object based on the user's request.
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: JSON OUTPUT FORMAT RULES - MUST FOLLOW 🚨🚨🚨
+================================================================================
+
+You are generating RAW JSON that will be parsed by Python's json.loads().
+The JSON contains file contents as strings. These strings may contain code.
+
+FORBIDDEN PATTERNS (NEVER output these):
+
+❌ Template literals with backticks: `text` or `${variable}`
+❌ JavaScript expressions inside strings: {`"${variable}"`}
+❌ Unescaped double quotes inside JSON string values
+❌ Trailing commas in objects or arrays
+❌ Control characters (\\n, \\t are OK, but raw newlines are NOT)
+
+EXAMPLE - WRONG (causes JSON parse error):
+{"file": "page.tsx", "content": "<p>{`\"${testimonial.quote}\"`}</p>"}
+
+EXAMPLE - CORRECT (valid JSON):
+{"file": "page.tsx", "content": "<p>{testimonial.quote}</p>"}
+
+SPECIAL RULE FOR STRINGS INSIDE JSON:
+- Escape double quotes with \\"
+- Escape backslashes with \\\\
+- Use \\n for newlines, \\t for tabs
+- NEVER use raw newlines inside string values
+
+REMEMBER: You are outputting JSON, not JavaScript. No backticks, no ${} inside strings!
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+SPECIAL RULE FOR DYNAMIC CONTENT (testimonials, features, etc.)
+================================================================================
+
+When generating JSX with .map() functions, use this pattern:
+
+✅ CORRECT (no template literals):
+```jsx
+{testimonials.map((testimonial, index) => (
+  <div key={index}>
+    <p>{testimonial.quote}</p>
+    <h4>{testimonial.author}</h4>
+  </div>
+))}
+❌ WRONG (causes JSON parsing errors):
+{testimonials.map(testimonial => (
+  <div key={testimonial.id}>
+    <p>{`"${testimonial.quote}"`}</p>  // ← NEVER use backticks or ${}
+  </div>
+))}
+
+
+
+
+
+
+
 
 
 
@@ -6375,6 +7460,9 @@ Return ONLY valid JSON like this:
 
 
 
+
+
+
         # ========== START IMAGE SEARCH IN BACKGROUND (NON-BLOCKING) ==========
         image_data = {}
         image_metadata = {}
@@ -6384,7 +7472,7 @@ Return ONLY valid JSON like this:
         # Create background task for image search
         async def fetch_images_background():
             nonlocal image_data, image_metadata, used_search_terms, image_task_complete
-            for i, term in enumerate(search_terms[:2]):  # Only 2 images
+            for i, term in enumerate(search_terms[:1]):  # Only 2 images
                 try:
                     await websocket.send_json({
                         "type": "status",
@@ -6429,6 +7517,11 @@ Return ONLY valid JSON like this:
             "type": "status",
             "message": "🚀 Starting project generation (images loading in background)..."
         })
+        
+        
+        
+        
+        
 
         # ========== RETRY LOOP ==========
         while retry_count < max_retries:
@@ -6469,6 +7562,24 @@ Return ONLY valid JSON like this:
 
             full_response = ""
             detected_files: set = set()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6831,6 +7942,7 @@ CRITICAL RULES:
                         config={
                             "response_mime_type": "application/json",
                             "temperature": 0.1 if stream_retry_count == 0 else 0.01,
+                            "max_output_tokens": 8000000,  # ⭐ Increase this
                         }
                     )
 
@@ -8800,7 +9912,91 @@ export default function {page_title.replace(' ', '')}Page() {{
                     "success": True,
                     "is_new_file": True
                 })
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                 # ⭐⭐⭐ ADD THIS - Update Navigation.tsx ⭐⭐⭐
+                navigation_path = "components/Navigation.tsx"
+                if navigation_path in updated_files:
+                    nav_content = updated_files[navigation_path]
+                    print(f"  🔧 Original navigation content length: {len(nav_content)}")
+                    
+                    # Check if signup already exists
+                    if 'signup' not in nav_content.lower() and 'Sign Up' not in nav_content:
+                        # Find the div with className="hidden md:flex space-x-6"
+                        nav_div_pattern = r'(<div className="hidden md:flex space-x-6">)([\s\S]*?)(</div>)'
+                        match = re.search(nav_div_pattern, nav_content, re.DOTALL)
+                        
+                        if match:
+                            # Add signup link inside this div
+                            signup_link = '''
+                                <Link 
+                                    href="/signup" 
+                                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition ml-4"
+                                >
+                                    Sign Up
+                                </Link>'''
+                            
+                            new_nav_content = match.group(1) + match.group(2) + signup_link + match.group(3)
+                            nav_content = nav_content.replace(match.group(0), new_nav_content)
+                            
+                            updated_files[navigation_path] = nav_content
+                            edit_results.append({
+                                "file_path": navigation_path,
+                                "original_content": "",
+                                "updated_content": nav_content,
+                                "success": True,
+                                "is_new_file": False,
+                                "changes": ["Added Sign Up button to navigation"]
+                            })
+                            print(f"  ✅ Added Sign Up button to Navigation.tsx")
+                            
+                            # Debug: Show updated navigation
+                            print(f"  🔧 Updated navigation preview: {nav_content[:500]}")
+                        else:
+                            print(f"  ⚠️ Could not find navigation div with class 'hidden md:flex space-x-6'")
+                            print(f"  🔧 Navigation content: {nav_content[:300]}")
+                    else:
+                        print(f"  ⚠️ Sign Up already exists in navigation")
+                else:
+                    print(f"  ⚠️ Navigation.tsx not found in updated_files")
+                # ⭐⭐⭐ END OF ADDED CODE ⭐⭐⭐
+                
+                
+                
+                
+                
                 continue
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+            
             elif not current_content:
                 print(f"⚠️ File not found: {file_path}")
                 continue
