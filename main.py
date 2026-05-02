@@ -3400,19 +3400,23 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
         
         
         
-        # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
+         # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
         # Get the Cloudinary URL for the image
         image_url = existing_image_url  # Use existing URL if provided during edit
+        
+        # Also check if there's a Cloudinary URL in the files
+        if not image_url and "__cloudinary_image_url__" in files:
+            image_url = files["__cloudinary_image_url__"]
+            print(f"📸 Found Cloudinary URL in files: {image_url[:80]}...")
         
         if not image_url:
             # No existing URL, upload new image
             for file_key, content in files.items():
                 if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
-                    # Upload to Cloudinary and get cached URL - PASS 'files' to store URL
-                    image_url = await get_cloudinary_url_for_preview(file_key, content, files)  # ← ADD 'files' parameter
+                    # Upload to Cloudinary and get cached URL
+                    image_url = await get_cloudinary_url_for_preview(file_key, content, files)
                     if image_url:
                         print(f"📸 Using Cloudinary URL: {image_url[:80]}...")
-                        # URL is already stored in files["__cloudinary_image_url__"] by the function
                     else:
                         # Fallback to placeholder if Cloudinary fails
                         image_url = "https://placehold.co/1920x1080/1a1a2e/white?text=Image"
@@ -3420,33 +3424,59 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                     break
         else:
             print(f"📸 Using existing Cloudinary URL (preserved from original): {image_url[:80]}...")
-            # Also store the existing URL in files for database
+            # Store the existing URL in files for database
             files["__cloudinary_image_url__"] = image_url
+        
+        # ⭐⭐⭐ CRITICAL FIX: ALWAYS use image_url for first_image_display ⭐⭐⭐
+        # During EDIT: Use Cloudinary URL from database
+        # During INITIAL BUILD: Use uploaded Cloudinary URL
+        if image_url and image_url.startswith('https://res.cloudinary.com'):
+            first_image_display = image_url
+            print(f"🖼️ ✅ Using Cloudinary URL for hero: {first_image_display[:80]}...")
+        elif first_image:
+            first_image_display = first_image
+            print(f"🖼️ Using local image path: {first_image_display}")
+        else:
+            first_image_display = 'None - use gradient background'
+            print(f"🖼️ No image available, using gradient")
         
         # If we have an image URL, force it into the home content
         if image_url:
             # Replace any image path with the Cloudinary URL
             home_content = home_content.replace('/images/image_1.jpg', image_url)
             home_content = home_content.replace('/images/image_2.jpg', image_url)
+            home_content = re.sub(r'src=["\']/images/[^"\']+\.jpg["\']', f'src="{image_url}"', home_content)
+            home_content = re.sub(r"src=['\']/images/[^'\']+\.jpg['\']", f'src="{image_url}"', home_content)
             
             # Also ensure the hero section has the image tag
             if '<img' not in home_content:
                 # Inject the image into the hero section
                 home_content = f'''
-                <section class="relative h-screen w-full overflow-hidden">
-                    <img src="{image_url}" class="absolute inset-0 w-full h-full object-cover" />
-                    <div class="absolute inset-0 bg-black/50"></div>
-                    <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
-                        <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">{brand_name}</h1>
-                        <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Welcome to {brand_name}</p>
-                        <button class="btn">Get Started</button>
-                    </div>
-                </section>
-                '''
+        <section class="relative h-screen w-full overflow-hidden">
+            <img src="{image_url}" class="absolute inset-0 w-full h-full object-cover" />
+            <div class="absolute inset-0 bg-black/50"></div>
+            <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+                <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">{brand_name}</h1>
+                <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Welcome to {brand_name}</p>
+                <button class="btn">Get Started</button>
+            </div>
+        </section>
+        '''
                 print(f"  ✅ Injected Cloudinary image into home content")
         
         # Update the first_image display for the prompt
         first_image_display = image_url if image_url else (first_image if first_image else 'None - use gradient background')
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         
         
         
@@ -3465,6 +3495,51 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: HERO BACKGROUND IMAGE URL - MUST USE CLOUDINARY URL 🚨🚨🚨
+================================================================================
+
+The hero background image MUST use EXACTLY this Cloudinary URL:
+
+{image_url if image_url else first_image_display}
+
+ABSOLUTE RULES - YOU MUST FOLLOW:
+1. DO NOT replace this URL with "/images/image_1.jpg"
+2. DO NOT use any local path like "/images/image_1.jpg"  
+3. DO NOT use placeholder images or gradients
+4. MUST use the EXACT Cloudinary URL provided above
+
+CORRECT hero section (MUST USE THIS EXACT STRUCTURE):
+<section class="relative h-screen flex items-center justify-center overflow-hidden">
+    <img src="{image_url if image_url else first_image_display}" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative z-10 text-center px-4">
+        <h1 class="text-6xl md:text-7xl font-bold text-white mb-6">{brand_name}</h1>
+        <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Your tagline here</p>
+        <a href="#" class="btn">Get Started</a>
+    </div>
+</section>
+
+WRONG - NEVER DO THIS:
+❌ <img src="/images/image_1.jpg" ...>
+❌ <img src="./image.jpg" ...>
+❌ <div class="bg-gradient"></div> (without the image)
+❌ Using any local path that starts with "/images/"
+
+================================================================================
 
 
 
@@ -7565,10 +7640,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Generate unique project name
         project_name = name_tracker.generate_unique_name("school", user_prompt)
-
+        project_id = str(uuid.uuid4())  # Generate once at the beginning
+  
+  
         # Send project name to frontend
         await websocket.send_json({
             "type": "project_name",
+            "project_id": project_id,
             "name": project_name
         })
 
@@ -8743,6 +8821,8 @@ async def edit_file(request: Dict[str, Any]):
 
         # ========== ADD THIS BLOCK - LOAD CLOUDINARY URL FROM DATABASE ==========
         original_cloudinary_image_url = None
+        
+        
         
         if project_id:
             try:
@@ -10368,21 +10448,60 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                             project_name = brand_match.group(1).strip()
                         break
                 
-                # ✅ SAVE THE ORIGINAL CLOUDINARY IMAGE URL (for hero background)
-                original_cloudinary_image_url = None
                 
-                # Check for existing Cloudinary image URL in updated_files or all_files
-                if 'preview_url' in updated_files and 'image/upload' in str(updated_files['preview_url']):
-                    original_cloudinary_image_url = updated_files['preview_url']
-                elif 'thumbnail_url' in updated_files and 'image/upload' in str(updated_files['thumbnail_url']):
-                    original_cloudinary_image_url = updated_files['thumbnail_url']
-                elif 'preview_url' in all_files and 'image/upload' in str(all_files['preview_url']):
-                    original_cloudinary_image_url = all_files['preview_url']
-                elif 'thumbnail_url' in all_files and 'image/upload' in str(all_files['thumbnail_url']):
-                    original_cloudinary_image_url = all_files['thumbnail_url']
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                # ✅ USE THE CLOUDINARY URL ALREADY LOADED FROM DATABASE
+                # The variable original_cloudinary_image_url already contains the URL from the database
+                # DO NOT overwrite it - only use it if it exists
                 
                 if original_cloudinary_image_url:
-                    print(f"📸 Found Cloudinary image URL to preserve: {original_cloudinary_image_url[:80]}...")
+                    print(f"📸 Using Cloudinary URL from database: {original_cloudinary_image_url[:80]}...")
+                else:
+                    # Only fallback to checking files if database didn't have it
+                    if 'preview_url' in updated_files and 'image/upload' in str(updated_files['preview_url']):
+                        original_cloudinary_image_url = updated_files['preview_url']
+                    elif 'thumbnail_url' in updated_files and 'image/upload' in str(updated_files['thumbnail_url']):
+                        original_cloudinary_image_url = updated_files['thumbnail_url']
+                    elif 'preview_url' in all_files and 'image/upload' in str(all_files['preview_url']):
+                        original_cloudinary_image_url = all_files['preview_url']
+                    elif 'thumbnail_url' in all_files and 'image/upload' in str(all_files['thumbnail_url']):
+                        original_cloudinary_image_url = all_files['thumbnail_url']
+                    
+                    if original_cloudinary_image_url:
+                        print(f"📸 Found Cloudinary URL in files (fallback): {original_cloudinary_image_url[:80]}...")
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
                 
                 preview_result = await generate_preview_internal(
                     updated_files,
@@ -12698,6 +12817,7 @@ async def get_project(project_id: str):
                     "preview_url": project.preview_url,      # Cloudinary URL for preview
                     "thumbnail_url": project.thumbnail_url,  # Cloudinary URL for thumbnail
                     "files_url": project.files_url,          # Cloudinary URL for ZIP
+                    "cloudinary_image_url": project.cloudinary_image_url,  # ✅ ADD THIS LINE
                     "timestamp": project.timestamp.isoformat(),
                     "project_type": project.project_type,
                     "file_count": project.file_count
@@ -13132,7 +13252,6 @@ async def root():
 
 
 
-
 @app.post("/api/save-project")
 async def save_project(request: Request):
     try:
@@ -13141,90 +13260,106 @@ async def save_project(request: Request):
         prompt = body.get("prompt", "")
         files = body.get("files", {})
         preview_html = body.get("preview_html", "")
+        incoming_project_id = body.get("id")  # ← GET THE INCOMING ID
         
-        # ========== EXTRACT BRAND NAME FROM GENERATED FILES ==========
+        # ========== EXTRACT BRAND NAME ==========
         extracted_name = extract_brand_name(files)
         if extracted_name:
             name = extracted_name
             print(f"🏷️ Extracted brand name: {name}")
         
         # ========== EXTRACT CLOUDINARY IMAGE URL ==========
-        # 🔧 FIX: Check multiple possible sources for the Cloudinary image URL
         cloudinary_image_url = None
         
-        # Source 1: Direct from files dict (set during build/edit)
         if "__cloudinary_image_url__" in files:
             cloudinary_image_url = files.get("__cloudinary_image_url__")
-            print(f"📸 Found Cloudinary image URL in files['__cloudinary_image_url__']: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
+            print(f"📸 Found Cloudinary image URL in files: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
         
-        # Source 2: Check if there's a preview_url in the files (from existing project)
         if not cloudinary_image_url and "preview_url" in files:
-            cloudinary_image_url = files.get("preview_url")
-            if cloudinary_image_url and "image/upload" in cloudinary_image_url:
-                print(f"📸 Found Cloudinary image URL in files['preview_url']: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
-        
-        # Source 3: Check for thumbnail_url
+            val = files.get("preview_url")
+            if val and "image/upload" in val:
+                cloudinary_image_url = val
+
         if not cloudinary_image_url and "thumbnail_url" in files:
-            cloudinary_image_url = files.get("thumbnail_url")
-            if cloudinary_image_url and "image/upload" in cloudinary_image_url:
-                print(f"📸 Found Cloudinary image URL in files['thumbnail_url']: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
-        
-        # Source 4: Check the preview HTML for Cloudinary URLs
+            val = files.get("thumbnail_url")
+            if val and "image/upload" in val:
+                cloudinary_image_url = val
+
         if not cloudinary_image_url and preview_html:
-            # Look for Cloudinary image URLs in the preview HTML
             import re
-            cloudinary_pattern = r'https://res\.cloudinary\.com/[^/]+/image/upload/[^"\']+'
-            matches = re.findall(cloudinary_pattern, preview_html)
+            matches = re.findall(r'https://res\.cloudinary\.com/[^/]+/image/upload/[^"\']+', preview_html)
             if matches:
                 cloudinary_image_url = matches[0]
                 print(f"📸 Found Cloudinary image URL in preview HTML: {cloudinary_image_url[:80]}...")
-        
-        # Source 5: Check if there are any image files that were uploaded to Cloudinary
-        if not cloudinary_image_url:
-            # Look for __image_urls__ metadata from the build process
-            if "__image_urls__" in files:
-                image_urls = files.get("__image_urls__", {})
-                for local_path, url in image_urls.items():
-                    if "image/upload" in url:
-                        cloudinary_image_url = url
-                        print(f"📸 Found Cloudinary image URL in __image_urls__: {cloudinary_image_url[:80]}...")
-                        break
-        
-        # Debug print
-        if cloudinary_image_url:
-            print(f"✅ FINAL Cloudinary image URL to save: {cloudinary_image_url[:100]}...")
-        else:
-            print(f"⚠️ No Cloudinary image URL found for project: {name}")
-        
-        # Get user info from token
+
+        if not cloudinary_image_url and "__image_urls__" in files:
+            image_urls = files.get("__image_urls__", {})
+            for local_path, url in image_urls.items():
+                if "image/upload" in url:
+                    cloudinary_image_url = url
+                    break
+
+        # ========== AUTH ==========
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.replace("Bearer ", "")
         
         if not token:
-            print("⚠️ No token provided")
             return {"success": False, "message": "Authentication required"}
         
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
             user_email = payload.get('email')
-            print(f"💾 Saving project for email: {user_email}")
         except Exception as e:
-            print(f"⚠️ Token decode error: {e}")
             return {"success": False, "message": "Invalid token"}
         
-        # Find user by email to get user_id
         async with AsyncSessionLocal() as session:
+            # Get user
             user_stmt = select(User).where(User.email == user_email)
             user_result = await session.execute(user_stmt)
             db_user = user_result.scalar_one_or_none()
             
-            if db_user:
-                user_id = db_user.id
-                print(f"✅ Found user: {user_email} -> {user_id}")
-            else:
-                print(f"❌ User not found: {user_email}")
+            if not db_user:
                 return {"success": False, "message": "User not found"}
             
+            user_id = db_user.id
+            
+            # ========== FIND EXISTING PROJECT ==========
+            existing_project = None
+            
+            # 1. Check by incoming ID first
+            if incoming_project_id:
+                stmt = select(Project).where(
+                    Project.id == incoming_project_id,
+                    Project.user_id == user_id
+                )
+                result = await session.execute(stmt)
+                existing_project = result.scalar_one_or_none()
+                if existing_project:
+                    print(f"✅ Found existing project by ID: {incoming_project_id}")
+            
+            # 2. Fall back to name match for same user
+            if not existing_project and name:
+                stmt = select(Project).where(
+                    Project.name == name,
+                    Project.user_id == user_id
+                )
+                result = await session.execute(stmt)
+                existing_project = result.scalar_one_or_none()
+                if existing_project:
+                    print(f"✅ Found existing project by name: {existing_project.id}")
+
+            # 3. ✅ LOAD CLOUDINARY IMAGE URL FROM DB if not in incoming files
+            if not cloudinary_image_url and existing_project and existing_project.cloudinary_image_url:
+                cloudinary_image_url = existing_project.cloudinary_image_url
+                print(f"📸 Loaded Cloudinary image URL from existing project in DB: {cloudinary_image_url[:80]}...")
+
+            # Use existing ID or generate new one
+            project_id = existing_project.id if existing_project else str(uuid.uuid4())
+            is_update = existing_project is not None
+            
+            print(f"{'🔄 Updating' if is_update else '🆕 Creating'} project: {project_id}")
+            print(f"📸 Cloudinary image URL: {cloudinary_image_url[:80] if cloudinary_image_url else 'NOT FOUND'}")
+
             # Handle timestamp
             timestamp_raw = body.get("timestamp")
             if timestamp_raw and isinstance(timestamp_raw, str):
@@ -13249,26 +13384,19 @@ async def save_project(request: Request):
             else:
                 project_type = "general"
             
-            # Create project ID
-            import uuid
-            project_id = str(uuid.uuid4())
-            
             # ========== UPLOAD TO CLOUDINARY ==========
-            preview_url = None
-            files_url = None
-            thumbnail_url = None
+            preview_url = existing_project.preview_url if existing_project else None
+            files_url = existing_project.files_url if existing_project else None
+            thumbnail_url = existing_project.thumbnail_url if existing_project else None
             
-            # 1. Upload preview HTML to Cloudinary (as HTML, not raw)
+            # Upload new preview HTML
             if preview_html:
                 try:
                     import tempfile
-                    
-                    # Create a temporary HTML file
                     with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
                         tmp.write(preview_html)
                         tmp_path = tmp.name
                     
-                    # Upload the file as HTML
                     upload_result = cloudinary.uploader.upload(
                         tmp_path,
                         folder=f"project_previews/{project_id}",
@@ -13281,24 +13409,19 @@ async def save_project(request: Request):
                     )
                     preview_url = upload_result['secure_url']
                     print(f"☁️ Preview uploaded to Cloudinary: {preview_url[:60]}...")
-                    
-                    # Cleanup temp file
                     os.unlink(tmp_path)
-                    
                 except Exception as e:
                     print(f"⚠️ Failed to upload preview: {e}")
             
-            # 2. Upload files as ZIP to Cloudinary
+            # Upload files as ZIP
             if files:
                 try:
                     import zipfile
                     from io import BytesIO
                     
-                    # Create ZIP in memory
                     zip_buffer = BytesIO()
                     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         for file_path, content in files.items():
-                            # Skip metadata keys
                             if file_path.startswith("__") and file_path.endswith("__"):
                                 continue
                             if file_path == "preview_html":
@@ -13310,8 +13433,6 @@ async def save_project(request: Request):
                             zipf.writestr(file_path, content)
                     
                     zip_buffer.seek(0)
-                    
-                    # Upload to Cloudinary
                     upload_result = cloudinary.uploader.upload(
                         zip_buffer.getvalue(),
                         folder=f"project_files/{project_id}",
@@ -13321,21 +13442,14 @@ async def save_project(request: Request):
                     )
                     files_url = upload_result['secure_url']
                     print(f"☁️ Files uploaded to Cloudinary: {files_url[:60]}...")
-                    
                 except Exception as e:
                     print(f"⚠️ Failed to upload files: {e}")
-                    files_url = None
             
-            # 3. Generate and upload thumbnail to Cloudinary
-            if preview_html:
+            # Generate thumbnail
+            if preview_html and not thumbnail_url:
                 try:
-                    # Generate thumbnail using the existing function
                     thumbnail_local_path = await generate_thumbnail_from_html(preview_html, project_id)
-                    
                     if thumbnail_local_path and os.path.exists(thumbnail_local_path):
-                        print(f"📸 Uploading thumbnail from: {thumbnail_local_path}")
-                        
-                        # Upload to Cloudinary
                         upload_result = cloudinary.uploader.upload(
                             thumbnail_local_path,
                             folder=f"project_thumbnails/{project_id}",
@@ -13347,81 +13461,69 @@ async def save_project(request: Request):
                             quality="auto:best"
                         )
                         thumbnail_url = upload_result['secure_url']
-                        print(f"☁️ Thumbnail uploaded to Cloudinary: {thumbnail_url[:60]}...")
-                        
-                        # Cleanup local thumbnail file
-                        if os.path.exists(thumbnail_local_path):
-                            os.unlink(thumbnail_local_path)
-                            print(f"🗑️ Cleaned up local thumbnail")
-                    else:
-                        print(f"⚠️ Thumbnail file not generated")
-                        
+                        print(f"☁️ Thumbnail uploaded: {thumbnail_url[:60]}...")
+                        os.unlink(thumbnail_local_path)
                 except Exception as e:
                     print(f"⚠️ Failed to upload thumbnail: {e}")
-                    import traceback
-                    traceback.print_exc()
             
-            # ========== CREATE PROJECT WITH URLs ONLY ==========
-            project = Project(
-                id=project_id,
-                name=name,
-                prompt=prompt,
-                user_id=user_id,
-                preview_url=preview_url,
-                thumbnail_url=thumbnail_url,
-                files_url=files_url,
-                cloudinary_image_url=cloudinary_image_url,  # ✅ SAVE THE CLOUDINARY IMAGE URL
-                timestamp=timestamp,
-                project_type=project_type,
-                file_count=len(files),
-                size_bytes=len(json.dumps(files)),
-                is_public=False,
-                version=1
-            )
-            session.add(project)
+            # ========== UPSERT PROJECT ==========
+            if is_update:
+                # Update existing project
+                existing_project.name = name
+                existing_project.prompt = prompt
+                existing_project.preview_url = preview_url
+                existing_project.files_url = files_url
+                existing_project.thumbnail_url = thumbnail_url or existing_project.thumbnail_url
+                existing_project.cloudinary_image_url = cloudinary_image_url or existing_project.cloudinary_image_url
+                existing_project.timestamp = timestamp
+                existing_project.project_type = project_type
+                existing_project.file_count = len(files)
+                existing_project.size_bytes = len(json.dumps(files))
+            else:
+                # Create new project
+                project = Project(
+                    id=project_id,
+                    name=name,
+                    prompt=prompt,
+                    user_id=user_id,
+                    preview_url=preview_url,
+                    thumbnail_url=thumbnail_url,
+                    files_url=files_url,
+                    cloudinary_image_url=cloudinary_image_url,
+                    timestamp=timestamp,
+                    project_type=project_type,
+                    file_count=len(files),
+                    size_bytes=len(json.dumps(files)),
+                    is_public=False,
+                    version=1
+                )
+                session.add(project)
+            
             await session.flush()
             
+            # ========== SAVE FILE METADATA ==========
+            # Delete old file records if updating
+            if is_update:
+                await session.execute(delete(ProjectFile).where(ProjectFile.project_id == project_id))
             
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-              # ========== SAVE FILE METADATA (NO CONTENT) ==========
             file_saved_count = 0
             for file_path, content in files.items():
-                # Skip metadata keys
                 if file_path.startswith("__") and file_path.endswith("__"):
                     continue
                 if file_path == "preview_html":
                     continue
                 
-                # Determine file type
                 file_type = None
                 if '.' in file_path:
                     ext = file_path.split('.')[-1].lower()
                     file_type_map = {
-                        'html': 'html', 'htm': 'html',
-                        'css': 'css', 'scss': 'scss',
-                        'js': 'javascript', 'ts': 'typescript',
-                        'jsx': 'jsx', 'tsx': 'tsx',
+                        'html': 'html', 'htm': 'html', 'css': 'css', 'scss': 'scss',
+                        'js': 'javascript', 'ts': 'typescript', 'jsx': 'jsx', 'tsx': 'tsx',
                         'json': 'json', 'md': 'markdown',
                         'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'svg': 'image'
                     }
                     file_type = file_type_map.get(ext, 'text')
                 
-                # Convert content to string for size calculation
                 if isinstance(content, dict):
                     content_str = json.dumps(content, indent=2)
                 elif not isinstance(content, str):
@@ -13429,7 +13531,6 @@ async def save_project(request: Request):
                 else:
                     content_str = content
                 
-                # Store ONLY metadata (no content)
                 project_file = ProjectFile(
                     project_id=project_id,
                     file_path=file_path,
@@ -13440,29 +13541,25 @@ async def save_project(request: Request):
                 session.add(project_file)
                 file_saved_count += 1
             
-            # ✅ ADD THIS BLOCK - Save Cloudinary image URL to project_files table
-            # ========== SAVE CLOUDINARY IMAGE URL AS A SPECIAL FILE ENTRY ==========
+            # Save hero image URL
             if cloudinary_image_url:
                 hero_image_file = ProjectFile(
                     project_id=project_id,
-                    file_path="__hero_image__",  # Special marker for hero image
+                    file_path="__hero_image__",
                     file_type="cloudinary_image",
                     size_bytes=len(cloudinary_image_url),
                     cloudinary_url=cloudinary_image_url
                 )
                 session.add(hero_image_file)
-                print(f"📸 Saved hero image URL to project_files for project {project_id}: {cloudinary_image_url[:80]}...")
+                print(f"📸 Saved hero image URL to project_files: {cloudinary_image_url[:80]}...")
             else:
-                print(f"⚠️ No cloudinary_image_url to save to project_files for project {project_id}")
+                print(f"⚠️ No cloudinary_image_url to save for project {project_id}")
             
             await session.commit()
-            
-            # ✅ Notify all connected clients to refresh their projects list
             await notify_projects_updated(name)
             
-            # Debug: Print what was saved
             print(f"\n{'='*60}")
-            print(f"✅ PROJECT SAVED SUCCESSFULLY!")
+            print(f"✅ PROJECT {'UPDATED' if is_update else 'SAVED'} SUCCESSFULLY!")
             print(f"📁 Project ID: {project_id}")
             print(f"🏷️ Project Name: {name}")
             print(f"📸 Cloudinary Image URL: {cloudinary_image_url if cloudinary_image_url else 'NOT SAVED'}")
@@ -13480,7 +13577,7 @@ async def save_project(request: Request):
                 "thumbnail_url": thumbnail_url,
                 "preview_url": preview_url,
                 "files_url": files_url,
-                "cloudinary_image_url": cloudinary_image_url  # ✅ RETURN THIS
+                "cloudinary_image_url": cloudinary_image_url
             }
             
     except Exception as e:
