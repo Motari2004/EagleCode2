@@ -787,6 +787,13 @@ try:
         preview_url = Column(String(500), nullable=True)   # Cloudinary URL for HTML preview
         thumbnail_url = Column(String(500), nullable=True) # Cloudinary URL for thumbnail
         files_url = Column(String(500), nullable=True)     # Cloudinary URL for ZIP file
+        cloudinary_image_url = Column(String(500), nullable=True)  # ✅ ADD THIS - Hero image URL
+
+
+
+
+
+
 
     # Project Files table (metadata only - NO file content)
     class ProjectFile(Base):
@@ -1063,7 +1070,7 @@ async def manage_package_json(current_content: str, edit_description: str) -> tu
         is_auth_creation = any(phrase in edit_lower for phrase in [
             'create signup', 'create login', 'create auth', 'add signup', 'add login',
             'create sign up', 'signup page', 'login page', 'authentication',
-            'add authentication', 'add auth', 'implement signup'
+            'add authentication', 'add auth', 'implement signup', 'implement sign up', 'add sign up', 'sign up page',
         ])
         
         if is_auth_creation:
@@ -1668,11 +1675,19 @@ IMAGE_CACHE = {}
 
 
 
+
+
+
+
+
 # ========== CLOUDINARY IMAGE CACHE FOR PREVIEWS ==========
 CLOUDINARY_CACHE_DIR = Path("cloudinary_cache")
 CLOUDINARY_CACHE_DIR.mkdir(exist_ok=True)
 
-async def get_cloudinary_url_for_preview(file_key: str, content: str) -> str:
+
+
+
+async def get_cloudinary_url_for_preview(file_key: str, content: str, project_files: Dict = None) -> str:
     """Upload image to Cloudinary and return URL (cached locally)"""
     import hashlib
     
@@ -1689,6 +1704,11 @@ async def get_cloudinary_url_for_preview(file_key: str, content: str) -> str:
         with open(cache_file, 'r', encoding='utf-8') as f:
             cached_url = f.read().strip()
             print(f"📸 Using cached Cloudinary URL for {file_key}")
+            
+            # ✅ Store the URL in project_files for database
+            if project_files is not None:
+                project_files["__cloudinary_image_url__"] = cached_url
+            
             return cached_url
     
     try:
@@ -1721,13 +1741,17 @@ async def get_cloudinary_url_for_preview(file_key: str, content: str) -> str:
             f.write(cloudinary_url)
         
         print(f"✅ Uploaded and cached Cloudinary URL")
+        
+        # ✅ Store the URL in project_files for database
+        if project_files is not None:
+            project_files["__cloudinary_image_url__"] = cloudinary_url
+            print(f"📸 Stored Cloudinary image URL in project_files")
+        
         return cloudinary_url
         
     except Exception as e:
         print(f"❌ Failed to upload {file_key} to Cloudinary: {e}")
         return None
-
-
 
 
 
@@ -2144,6 +2168,41 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
+def preserve_cloudinary_urls(html_content: str, existing_files: Dict[str, Any]) -> str:
+    """Preserve Cloudinary URLs from existing files"""
+    import re
+    
+    # Look for image Cloudinary URL (image/upload, not raw/upload)
+    image_cloudinary_url = None
+    
+    # Check for thumbnail_url first (this is the actual image)
+    if 'thumbnail_url' in existing_files and existing_files['thumbnail_url']:
+        image_cloudinary_url = existing_files['thumbnail_url']
+        print(f"  📸 Found thumbnail_url: {image_cloudinary_url[:80]}...")
+    
+    # If no thumbnail_url, look for any image URL in files
+    if not image_cloudinary_url and 'files' in existing_files:
+        if 'thumbnail_url' in existing_files['files']:
+            image_cloudinary_url = existing_files['files']['thumbnail_url']
+    
+    # If found thumbnail_url (image), use it
+    if image_cloudinary_url and 'image/upload' in image_cloudinary_url:
+        # Replace any incorrect src attributes
+        html_content = re.sub(
+            r'src="[^"]*?(?:image_1\.jpg|raw/upload[^"]*\.html)[^"]*"',
+            f'src="{image_cloudinary_url}"',
+            html_content
+        )
+        print(f"  ✅ Replaced with image Cloudinary URL")
+    
+    # Also fix onError syntax (JSX to HTML)
+    html_content = re.sub(
+        r'onError=\{\s*\(e\)\s*=>\s*\{[^}]+\}\s*\}',
+        'onerror="this.style.display=\'none\'"',
+        html_content
+    )
+    
+    return html_content
 
 
 
@@ -2163,7 +2222,14 @@ def generate_placeholder_image(width: int = 800, height: int = 600, text: str = 
 
 
 
-async def generate_preview_internal(files: Dict[str, Any], project_name: str) -> Dict[str, Any]:
+
+
+
+
+
+
+
+async def generate_preview_internal(files: Dict[str, Any], project_name: str, existing_image_url: str = None) -> Dict[str, Any]:
     import re  # ⭐ ADD THIS LINE - MUST BE FIRST
     """Generate beautiful HTML preview - extracts ALL pages and footer content"""
     try:
@@ -2541,6 +2607,22 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 print(f"🔧 Fixed {fixes_count} onError handler(s) in preview HTML")
             
             return html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3090,7 +3172,15 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                 
                 
                 
-                # ========== ADD THIS AUTH OVERRIDE RIGHT HERE ==========
+                
+                
+                
+                
+                
+                
+                
+                
+             # ========== ADD THIS AUTH OVERRIDE RIGHT HERE ==========
                 # Override signup/login pages with backend HTML forms
                 if route_name in ['signup', 'login', 'auth']:
                     if route_name == 'signup':
@@ -3103,7 +3193,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                                         Already have an account? <a href="#" onclick="showPage('login'); return false;" class="font-medium text-purple-400 hover:text-purple-300">Sign in</a>
                                     </p>
                                 </div>
-                                <form id="signup-form" class="mt-8 space-y-6" onsubmit="handleSignup(event); return false;">
+                                <form id="signup-form" class="mt-8 space-y-6">
                                     <div class="space-y-4">
                                         <div>
                                             <input type="text" name="name" required placeholder="Full name" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
@@ -3134,7 +3224,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
                                         Or <a href="#" onclick="showPage('signup'); return false;" class="font-medium text-purple-400 hover:text-purple-300">create a new account</a>
                                     </p>
                                 </div>
-                                <form id="login-form" class="mt-8 space-y-6" onsubmit="handleLogin(event); return false;">
+                                <form id="login-form" class="mt-8 space-y-6">
                                     <div class="space-y-4">
                                         <div>
                                             <input type="email" name="email" required placeholder="Email address" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
@@ -3310,22 +3400,28 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         
         
-        
-        
-         # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
+        # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
         # Get the Cloudinary URL for the image
-        image_url = None
-        for file_key, content in files.items():
-            if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
-                # Upload to Cloudinary and get cached URL
-                image_url = await get_cloudinary_url_for_preview(file_key, content)
-                if image_url:
-                    print(f"📸 Using Cloudinary URL: {image_url[:80]}...")
-                else:
-                    # Fallback to placeholder if Cloudinary fails
-                    image_url = "https://placehold.co/1920x1080/1a1a2e/white?text=Image"
-                    print(f"⚠️ Cloudinary failed, using placeholder")
-                break
+        image_url = existing_image_url  # Use existing URL if provided during edit
+        
+        if not image_url:
+            # No existing URL, upload new image
+            for file_key, content in files.items():
+                if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
+                    # Upload to Cloudinary and get cached URL - PASS 'files' to store URL
+                    image_url = await get_cloudinary_url_for_preview(file_key, content, files)  # ← ADD 'files' parameter
+                    if image_url:
+                        print(f"📸 Using Cloudinary URL: {image_url[:80]}...")
+                        # URL is already stored in files["__cloudinary_image_url__"] by the function
+                    else:
+                        # Fallback to placeholder if Cloudinary fails
+                        image_url = "https://placehold.co/1920x1080/1a1a2e/white?text=Image"
+                        print(f"⚠️ Cloudinary failed, using placeholder")
+                    break
+        else:
+            print(f"📸 Using existing Cloudinary URL (preserved from original): {image_url[:80]}...")
+            # Also store the existing URL in files for database
+            files["__cloudinary_image_url__"] = image_url
         
         # If we have an image URL, force it into the home content
         if image_url:
@@ -3351,11 +3447,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str) ->
         
         # Update the first_image display for the prompt
         first_image_display = image_url if image_url else (first_image if first_image else 'None - use gradient background')
-        
-        
-        
-        
-        
         
         
         
@@ -8638,17 +8729,72 @@ async def edit_file(request: Dict[str, Any]):
         project_id: Optional[str] = request.get("project_id")
         project_name_from_request: str = request.get("project_name", "")
 
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== ADD THIS BLOCK - LOAD CLOUDINARY URL FROM DATABASE ==========
+        original_cloudinary_image_url = None
+        
+        if project_id:
+            try:
+                async with AsyncSessionLocal() as session:
+                    stmt = select(Project).where(Project.id == project_id)
+                    result = await session.execute(stmt)
+                    existing_project = result.scalar_one_or_none()
+                    
+                    if existing_project and existing_project.cloudinary_image_url:
+                        original_cloudinary_image_url = existing_project.cloudinary_image_url
+                        print(f"📸 Loaded Cloudinary URL from database: {original_cloudinary_image_url[:80]}...")
+                        
+                        # Store in all_files for preservation
+                        all_files["__original_cloudinary_url__"] = original_cloudinary_image_url
+                        
+                        if not project_name_from_request:
+                            project_name_from_request = existing_project.name
+            except Exception as e:
+                print(f"⚠️ Could not load existing project: {e}")
+        # ========== END OF ADDED BLOCK ==========
+
+
+
+
+
         print(f"\n{'='*70}")
+        
+        
         print(f"🔧 EDIT REQUEST RECEIVED")
         print(f"📝 Description: {edit_description}")
         print(f"📁 Available files: {len(all_files)} files")
         if project_id:
             print(f"🆔 Project ID: {project_id}")
+            
+            
+            
       
         if user_db_connection_string:
             print(f"🗄️ User's Database provided: {user_db_connection_string[:50]}...")
       
         print(f"{'='*70}\n")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
         if not edit_description:
             raise HTTPException(status_code=400, detail="Edit description is required")
@@ -8778,100 +8924,101 @@ async def edit_file(request: Dict[str, Any]):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
         # ========== STEP 1: CHECK FOR DELETION REQUESTS (HIGHEST PRIORITY) ==========
         deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
         is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
-      
+        
         # Also check for package.json specific deletions
         is_package_json_deletion = 'package.json' in edit_description.lower() and any(keyword in edit_description.lower() for keyword in ['remove', 'delete'])
         
         if is_deletion_request or is_package_json_deletion:
             print(f"🤖 AI analyzing deletion request: {edit_description}")
             
-            
-            
-            
-        # SPECIAL HANDLE FOR PACKAGE.JSON DELETIONS
-        if is_package_json_deletion or '@neondatabase' in edit_description.lower() or 'package.json' in edit_description.lower():
-            print(f"📦 Detected package.json modification request")
-            
-            # Look for package.json file
-            package_json_path = "package.json"
-            if package_json_path in updated_files:
-                current_package_json = updated_files[package_json_path]
+            # SPECIAL HANDLE FOR PACKAGE.JSON DELETIONS
+            if is_package_json_deletion or '@neondatabase' in edit_description.lower() or 'package.json' in edit_description.lower():
+                print(f"📦 Detected package.json modification request")
                 
-                # Use the manage_package_json function to remove the dependency
-                updated_content, changes = await manage_package_json(current_package_json, edit_description)
-                
-                if updated_content and changes:
-                    # Update the file in memory
-                    updated_files[package_json_path] = updated_content
+                # Look for package.json file
+                package_json_path = "package.json"
+                if package_json_path in updated_files:
+                    current_package_json = updated_files[package_json_path]
                     
-                    # CRITICAL: Add to edit_results so frontend knows file changed
-                    edit_results.append({
-                        "file_path": package_json_path,
-                        "original_content": current_package_json,
-                        "updated_content": updated_content,
-                        "success": True,
-                        "is_new_file": False,
-                        "changes": changes
-                    })
+                    # Use the manage_package_json function to remove the dependency
+                    updated_content, changes = await manage_package_json(current_package_json, edit_description)
                     
-                    print(f"✅ package.json updated: {changes}")
-                    
-                    # Regenerate preview
-                    new_preview_html = existing_preview
-                    try:
-                        preview_result = await generate_preview_internal(updated_files, project_name_from_request or "Scorpio Project")
-                        if preview_result.get("success"):
-                            new_preview_html = preview_result.get("preview_html")
-                            updated_files["preview_html"] = new_preview_html
-                            await save_regenerated_preview(
-                                preview_html=new_preview_html,
-                                project_name=project_name_from_request or "Scorpio Project",
-                                project_id=project_id
-                            )
-                    except Exception as preview_error:
-                        print(f"⚠️ Preview error: {preview_error}")
-                    
-                    # Return with the updated file so frontend can apply the change
-                    return {
-                        "success": True,
-                        "deleted_files": [],
-                        "removed_links": [],
-                        "edits": edit_results,  # ← ADD THIS
-                        "files_edited": [package_json_path],  # ← ADD THIS
-                        "updated_files": {
-                            package_json_path: updated_content
-                        },
-                        "preview_html": new_preview_html,
-                        "message": f"✅ Updated package.json: {', '.join(changes)}"
-                    }
+                    if updated_content and changes:
+                        # Update the file in memory
+                        updated_files[package_json_path] = updated_content
+                        
+                        # CRITICAL: Add to edit_results so frontend knows file changed
+                        edit_results.append({
+                            "file_path": package_json_path,
+                            "original_content": current_package_json,
+                            "updated_content": updated_content,
+                            "success": True,
+                            "is_new_file": False,
+                            "changes": changes
+                        })
+                        
+                        print(f"✅ package.json updated: {changes}")
+                        
+                        # Regenerate preview
+                        new_preview_html = existing_preview
+                        try:
+                            preview_result = await generate_preview_internal(updated_files, project_name_from_request or "Scorpio Project")
+                            if preview_result.get("success"):
+                                new_preview_html = preview_result.get("preview_html")
+                                updated_files["preview_html"] = new_preview_html
+                                await save_regenerated_preview(
+                                    preview_html=new_preview_html,
+                                    project_name=project_name_from_request or "Scorpio Project",
+                                    project_id=project_id
+                                )
+                        except Exception as preview_error:
+                            print(f"⚠️ Preview error: {preview_error}")
+                        
+                        # Return with the updated file so frontend can apply the change
+                        return {
+                            "success": True,
+                            "deleted_files": [],
+                            "removed_links": [],
+                            "edits": edit_results,
+                            "files_edited": [package_json_path],
+                            "updated_files": {
+                                package_json_path: updated_content
+                            },
+                            "preview_html": new_preview_html,
+                            "message": f"✅ Updated package.json: {', '.join(changes)}"
+                        }
+                    else:
+                        print(f"⚠️ No changes made to package.json")
+                        return {
+                            "success": True,
+                            "message": "No matching dependencies found to remove",
+                            "preview_html": existing_preview
+                        }
                 else:
-                    print(f"⚠️ No changes made to package.json")
+                    print(f"⚠️ package.json not found")
                     return {
-                        "success": True,
-                        "message": "No matching dependencies found to remove",
+                        "success": False,
+                        "message": "package.json not found in project",
                         "preview_html": existing_preview
                     }
-            else:
-                print(f"⚠️ package.json not found")
-                return {
-                    "success": False,
-                    "message": "package.json not found in project",
-                    "preview_html": existing_preview
-                }
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
+            
+            # ========== REGULAR PAGE/FILE DELETION HANDLING ==========
             # Create summary of existing pages for AI
             existing_pages = []
             for file_path in updated_files.keys():
@@ -8886,10 +9033,10 @@ async def edit_file(request: Dict[str, Any]):
                             page_name = parts[-2] if len(parts) > 1 else 'home'
                             if page_name not in ['layout', 'page', 'loading', 'error']:
                                 existing_pages.append(page_name)
-          
+            
             existing_pages = list(set(existing_pages))
             print(f"📄 Existing pages: {existing_pages}")
-          
+            
             # Also check navigation links
             navigation_links = []
             if "components/Navigation.tsx" in updated_files:
@@ -8898,7 +9045,7 @@ async def edit_file(request: Dict[str, Any]):
                 href_matches += re.findall(r"href='/([^']+)'", nav_content)
                 navigation_links = list(set(href_matches))
                 print(f"🔗 Navigation links: {navigation_links}")
-          
+            
             # Let AI decide what to delete
             deletion_prompt = f"""You are an AI code editor. Analyze this deletion request and decide what files/links to remove.
 DELETION REQUEST: {edit_description}
@@ -8915,6 +9062,7 @@ Return ONLY a JSON object with:
   "remove_auth_folder": true/false,
   "explanation": "brief explanation"
 }}"""
+            
             try:
                 analysis_text = await model_router.generate_content(
                     prompt=deletion_prompt,
@@ -8934,13 +9082,13 @@ Return ONLY a JSON object with:
                     "remove_auth_folder": 'auth' in edit_description.lower() or 'login' in edit_description.lower() or 'signup' in edit_description.lower(),
                     "explanation": "Fallback analysis"
                 }
-          
+            
             pages_to_delete = deletion_analysis.get("pages_to_delete", [])
             links_to_remove = deletion_analysis.get("links_to_remove", [])
             remove_auth_folder = deletion_analysis.get("remove_auth_folder", False)
-          
+            
             all_deleted_files = []
-          
+            
             # Delete pages identified by AI
             for page_name in pages_to_delete:
                 print(f"🗑️ AI decided to delete page: '{page_name}'")
@@ -8961,7 +9109,7 @@ Return ONLY a JSON object with:
                             all_deleted_files.append(file_path)
                             print(f"   🗑️ Deleted: {file_path}")
                             break
-          
+            
             # Delete auth folder if AI suggests
             if remove_auth_folder:
                 print(f"🗑️ AI decided to delete auth folder")
@@ -8986,7 +9134,7 @@ Return ONLY a JSON object with:
                 nav_content = updated_files["components/Navigation.tsx"]
                 print(f"🗑️ AI decided to remove navigation links: {links_to_remove}")
                 print(f"📝 Original navigation:\n{nav_content[:500]}")
-              
+                
                 for link in links_to_remove:
                     link_prompt = f"""Remove the navigation link for '{link}' from this Next.js Navigation component.
 Specifically find and remove the Link component that has href="/{link}" (including the opening tag, closing tag, and all content between them).
@@ -9000,21 +9148,22 @@ Return ONLY the complete updated component code with the '{link}' link removed.
 CRITICAL: Keep ALL indentation exactly as in the original.
 The code should be valid TypeScript/JSX with preserved indentation.
 UPDATED CODE:"""
-                  
+                    
                     try:
                         link_response = await model_router.generate_content(
                             prompt=link_prompt,
                             config={"temperature": 0.1, "max_output_tokens": 200000}
                         )
                         new_content = link_response.strip()
-                      
+                        
                         if new_content.startswith("```"):
                             lines = new_content.split('\n')
-                            if lines[0].startswith('```'): lines = lines[1:]
+                            if lines[0].startswith('```'): 
+                                lines = lines[1:]
                             if lines and lines[-1].strip() == '```':
                                 lines = lines[:-1]
                             new_content = '\n'.join(lines)
-                      
+                        
                         if f'href="/{link}"' not in new_content and f"href='/{link}'" not in new_content:
                             nav_content = new_content
                             print(f"   ✅ AI successfully removed '{link}' link")
@@ -9028,7 +9177,7 @@ UPDATED CODE:"""
                             for pattern in regex_patterns:
                                 nav_content = re.sub(pattern, '', nav_content, flags=re.DOTALL | re.IGNORECASE)
                             print(f"   🔧 Regex removed '{link}'")
-                          
+                            
                     except Exception as e:
                         print(f"   ⚠️ AI failed: {e}, using regex")
                         regex_patterns = [
@@ -9039,7 +9188,7 @@ UPDATED CODE:"""
                         for pattern in regex_patterns:
                             nav_content = re.sub(pattern, '', nav_content, flags=re.DOTALL | re.IGNORECASE)
                         print(f"   🔧 Regex removed '{link}'")
-              
+                
                 # Final cleanup
                 nav_content = re.sub(r'<div\s+className="flex\s+space-x-6">\s*</div>', '', nav_content)
                 nav_content = re.sub(r'<div\s+className="flex\s+space-x-6">\s*$', '', nav_content)
@@ -9047,7 +9196,7 @@ UPDATED CODE:"""
                 nav_content = re.sub(r',\s*,', ',', nav_content)
                 nav_content = re.sub(r'\s+', ' ', nav_content)
                 nav_content = re.sub(r'>\s+<', '><', nav_content)
-              
+                
                 updated_files["components/Navigation.tsx"] = nav_content
                 print(f"📝 Final navigation:\n{nav_content[:500]}")
 
@@ -9060,14 +9209,14 @@ UPDATED CODE:"""
                     brand_match = re.search(r'<Link[^>]*href="/"[^>]*>([^<]+)</Link>', nav_file)
                     if brand_match:
                         project_name = brand_match.group(1).strip()
-              
+                
                 preview_result = await generate_preview_internal(updated_files, project_name)
                 if preview_result.get("success"):
                     new_preview_html = preview_result.get("preview_html")
                     updated_files["preview_html"] = new_preview_html
                     print(f"✅ Preview regenerated! Length: {len(new_preview_html):,} chars")
                     
-                    # SAVE REGENERATED PREVIEW TO DISK (Option A)
+                    # SAVE REGENERATED PREVIEW TO DISK
                     await save_regenerated_preview(
                         preview_html=new_preview_html,
                         project_name=project_name,
@@ -9078,7 +9227,7 @@ UPDATED CODE:"""
             except Exception as preview_error:
                 print(f"⚠️ Preview error: {preview_error}")
                 new_preview_html = existing_preview
-          
+            
             return {
                 "success": True,
                 "deleted_files": all_deleted_files,
@@ -9090,6 +9239,13 @@ UPDATED CODE:"""
                 "message": f"✅ Processed: {edit_description}",
                 "files_edited": all_deleted_files
             }
+        
+
+
+
+
+
+
 
 
 
@@ -9135,7 +9291,7 @@ UPDATED CODE:"""
         is_db_request = any(keyword in edit_description.lower() for keyword in [
             'database', 'db', 'postgres', 'neon', 'login', 'signup', 'register',
             'authentication', 'auth', 'user table', 'create table', 'schema',
-            'integrating', 'connect to database', 'neon database'
+            'integrating', 'connect to database', 'neon database', 'Implement signup', 'Implement sign up', 'Implement signup'
         ])
       
       
@@ -10185,6 +10341,22 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
         preview_html = existing_preview
         should_regenerate = force_regenerate or len(edit_results) > 0 or db_schema_created
       
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
         if should_regenerate:
             print(f"🔄 Regenerating preview...")
             try:
@@ -10196,9 +10368,44 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                             project_name = brand_match.group(1).strip()
                         break
                 
-                preview_result = await generate_preview_internal(updated_files, project_name)
+                # ✅ SAVE THE ORIGINAL CLOUDINARY IMAGE URL (for hero background)
+                original_cloudinary_image_url = None
+                
+                # Check for existing Cloudinary image URL in updated_files or all_files
+                if 'preview_url' in updated_files and 'image/upload' in str(updated_files['preview_url']):
+                    original_cloudinary_image_url = updated_files['preview_url']
+                elif 'thumbnail_url' in updated_files and 'image/upload' in str(updated_files['thumbnail_url']):
+                    original_cloudinary_image_url = updated_files['thumbnail_url']
+                elif 'preview_url' in all_files and 'image/upload' in str(all_files['preview_url']):
+                    original_cloudinary_image_url = all_files['preview_url']
+                elif 'thumbnail_url' in all_files and 'image/upload' in str(all_files['thumbnail_url']):
+                    original_cloudinary_image_url = all_files['thumbnail_url']
+                
+                if original_cloudinary_image_url:
+                    print(f"📸 Found Cloudinary image URL to preserve: {original_cloudinary_image_url[:80]}...")
+                
+                preview_result = await generate_preview_internal(
+                    updated_files,
+                    project_name,
+                    existing_image_url=original_cloudinary_image_url 
+                    )
                 if preview_result.get("success"):
                     preview_html = preview_result.get("preview_html")
+                    
+                    # ✅ PRESERVE CLOUDINARY IMAGE URL IN THE HTML
+                    if original_cloudinary_image_url:
+                        # Replace local image path with Cloudinary URL
+                        preview_html = preview_html.replace('/images/image_1.jpg', original_cloudinary_image_url)
+                        preview_html = re.sub(
+                            r'src="[^"]*image_1\.jpg[^"]*"',
+                            f'src="{original_cloudinary_image_url}"',
+                            preview_html
+                        )
+                        print(f"✅ Restored Cloudinary image URL in preview")
+                    
+                    # Also call preserve_cloudinary_urls for any other Cloudinary URLs
+                    preview_html = preserve_cloudinary_urls(preview_html, updated_files)
+                    
                     updated_files["preview_html"] = preview_html
                     print(f"✅ Preview regenerated!")
                     
@@ -10208,8 +10415,25 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                         project_name=project_name,
                         project_id=project_id
                     )
+                else:
+                    preview_html = existing_preview
             except Exception as e:
                 print(f"⚠️ Preview error: {e}")
+                preview_html = existing_preview
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
       
         print(f"\n{'='*70}")
         print(f"✅ EDIT COMPLETE: {len(edit_results)} file(s) modified")
@@ -10217,17 +10441,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
             new_flag = " (NEW)" if result.get("is_new_file") else ""
             print(f"   - {result['file_path']}{new_flag}")
             
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-               # After creating signup page, create ONLY the corresponding API route
+        # After creating signup page, create ONLY the corresponding API route
         if auth_created or db_schema_created:
             print(f"\n📡 Creating API route for authentication...")
             
@@ -12657,7 +12871,8 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                 Project.file_count,
                 Project.thumbnail_url,   # Cloudinary URL for thumbnail
                 Project.preview_url,     # Cloudinary URL for preview HTML
-                Project.files_url        # Cloudinary URL for ZIP file
+                Project.files_url,       # Cloudinary URL for ZIP file
+                Project.cloudinary_image_url  # ← Make sure this is included!
             ).where(
                 Project.user_id == actual_user_id
             ).order_by(
@@ -12677,7 +12892,8 @@ async def get_projects(request: Request, limit: int = 10, offset: int = 0):
                     "file_count": row[5],
                     "thumbnail_url": row[6],   # ← Cloudinary URL
                     "preview_url": row[7],     # ← Cloudinary URL (NEW)
-                    "files_url": row[8]        # ← Cloudinary URL (NEW)
+                    "files_url": row[8],        # ← Cloudinary URL (NEW)
+                    "cloudinary_image_url": row[9]  # ← Add this line
                 }
                 for row in rows
             ]
@@ -12905,6 +13121,18 @@ async def root():
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 @app.post("/api/save-project")
 async def save_project(request: Request):
     try:
@@ -12919,7 +13147,54 @@ async def save_project(request: Request):
         if extracted_name:
             name = extracted_name
             print(f"🏷️ Extracted brand name: {name}")
-        # ============================================================
+        
+        # ========== EXTRACT CLOUDINARY IMAGE URL ==========
+        # 🔧 FIX: Check multiple possible sources for the Cloudinary image URL
+        cloudinary_image_url = None
+        
+        # Source 1: Direct from files dict (set during build/edit)
+        if "__cloudinary_image_url__" in files:
+            cloudinary_image_url = files.get("__cloudinary_image_url__")
+            print(f"📸 Found Cloudinary image URL in files['__cloudinary_image_url__']: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
+        
+        # Source 2: Check if there's a preview_url in the files (from existing project)
+        if not cloudinary_image_url and "preview_url" in files:
+            cloudinary_image_url = files.get("preview_url")
+            if cloudinary_image_url and "image/upload" in cloudinary_image_url:
+                print(f"📸 Found Cloudinary image URL in files['preview_url']: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
+        
+        # Source 3: Check for thumbnail_url
+        if not cloudinary_image_url and "thumbnail_url" in files:
+            cloudinary_image_url = files.get("thumbnail_url")
+            if cloudinary_image_url and "image/upload" in cloudinary_image_url:
+                print(f"📸 Found Cloudinary image URL in files['thumbnail_url']: {cloudinary_image_url[:80] if cloudinary_image_url else 'None'}...")
+        
+        # Source 4: Check the preview HTML for Cloudinary URLs
+        if not cloudinary_image_url and preview_html:
+            # Look for Cloudinary image URLs in the preview HTML
+            import re
+            cloudinary_pattern = r'https://res\.cloudinary\.com/[^/]+/image/upload/[^"\']+'
+            matches = re.findall(cloudinary_pattern, preview_html)
+            if matches:
+                cloudinary_image_url = matches[0]
+                print(f"📸 Found Cloudinary image URL in preview HTML: {cloudinary_image_url[:80]}...")
+        
+        # Source 5: Check if there are any image files that were uploaded to Cloudinary
+        if not cloudinary_image_url:
+            # Look for __image_urls__ metadata from the build process
+            if "__image_urls__" in files:
+                image_urls = files.get("__image_urls__", {})
+                for local_path, url in image_urls.items():
+                    if "image/upload" in url:
+                        cloudinary_image_url = url
+                        print(f"📸 Found Cloudinary image URL in __image_urls__: {cloudinary_image_url[:80]}...")
+                        break
+        
+        # Debug print
+        if cloudinary_image_url:
+            print(f"✅ FINAL Cloudinary image URL to save: {cloudinary_image_url[:100]}...")
+        else:
+            print(f"⚠️ No Cloudinary image URL found for project: {name}")
         
         # Get user info from token
         auth_header = request.headers.get("Authorization", "")
@@ -12986,180 +13261,226 @@ async def save_project(request: Request):
             # 1. Upload preview HTML to Cloudinary (as HTML, not raw)
             if preview_html:
                 try:
-                        import gzip
-                        import tempfile
-                        import os
-                        
-                        # Create a temporary HTML file
-                        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
-                                tmp.write(preview_html)
-                                tmp_path = tmp.name
-                        
-                        # Upload the file as HTML
-                        upload_result = cloudinary.uploader.upload(
-                                tmp_path,
-                                folder=f"project_previews/{project_id}",
-                                public_id="preview",
-                                resource_type="auto",
-                                overwrite=True,
-                                format="html",
-                                use_filename=True,
-                                unique_filename=False,
-                              
-                        )
-                        preview_url = upload_result['secure_url']
-                        print(f"☁️ Preview uploaded to Cloudinary: {preview_url[:60]}...")
-                        
-                        # Cleanup temp file
-                        os.unlink(tmp_path)
-                        
+                    import tempfile
+                    
+                    # Create a temporary HTML file
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
+                        tmp.write(preview_html)
+                        tmp_path = tmp.name
+                    
+                    # Upload the file as HTML
+                    upload_result = cloudinary.uploader.upload(
+                        tmp_path,
+                        folder=f"project_previews/{project_id}",
+                        public_id="preview",
+                        resource_type="auto",
+                        overwrite=True,
+                        format="html",
+                        use_filename=True,
+                        unique_filename=False,
+                    )
+                    preview_url = upload_result['secure_url']
+                    print(f"☁️ Preview uploaded to Cloudinary: {preview_url[:60]}...")
+                    
+                    # Cleanup temp file
+                    os.unlink(tmp_path)
+                    
                 except Exception as e:
-                        print(f"⚠️ Failed to upload preview: {e}")
+                    print(f"⚠️ Failed to upload preview: {e}")
             
             # 2. Upload files as ZIP to Cloudinary
             if files:
                 try:
-                        import zipfile
-                        from io import BytesIO
-                        
-                        # Create ZIP in memory
-                        zip_buffer = BytesIO()
-                        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                                for file_path, content in files.items():
-                                        if file_path == "preview_html":
-                                                continue
-                                        if isinstance(content, dict):
-                                                content = json.dumps(content, indent=2)
-                                        elif not isinstance(content, str):
-                                                content = str(content)
-                                        zipf.writestr(file_path, content)
-                        
-                        zip_buffer.seek(0)
-                        
-                        # Upload to Cloudinary
-                        upload_result = cloudinary.uploader.upload(
-                                zip_buffer.getvalue(),
-                                folder=f"project_files/{project_id}",
-                                public_id="files",
-                                resource_type="raw",
-                                overwrite=True
-                        )
-                        files_url = upload_result['secure_url']
-                        print(f"☁️ Files uploaded to Cloudinary: {files_url[:60]}...")
-                        
+                    import zipfile
+                    from io import BytesIO
+                    
+                    # Create ZIP in memory
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for file_path, content in files.items():
+                            # Skip metadata keys
+                            if file_path.startswith("__") and file_path.endswith("__"):
+                                continue
+                            if file_path == "preview_html":
+                                continue
+                            if isinstance(content, dict):
+                                content = json.dumps(content, indent=2)
+                            elif not isinstance(content, str):
+                                content = str(content)
+                            zipf.writestr(file_path, content)
+                    
+                    zip_buffer.seek(0)
+                    
+                    # Upload to Cloudinary
+                    upload_result = cloudinary.uploader.upload(
+                        zip_buffer.getvalue(),
+                        folder=f"project_files/{project_id}",
+                        public_id="files",
+                        resource_type="raw",
+                        overwrite=True
+                    )
+                    files_url = upload_result['secure_url']
+                    print(f"☁️ Files uploaded to Cloudinary: {files_url[:60]}...")
+                    
                 except Exception as e:
-                        print(f"⚠️ Failed to upload files: {e}")
-                        files_url = None
+                    print(f"⚠️ Failed to upload files: {e}")
+                    files_url = None
             
             # 3. Generate and upload thumbnail to Cloudinary
             if preview_html:
                 try:
-                        # Generate thumbnail and get local file path
-                        thumbnail_local_path = await generate_thumbnail_from_html(preview_html, project_id)
+                    # Generate thumbnail using the existing function
+                    thumbnail_local_path = await generate_thumbnail_from_html(preview_html, project_id)
+                    
+                    if thumbnail_local_path and os.path.exists(thumbnail_local_path):
+                        print(f"📸 Uploading thumbnail from: {thumbnail_local_path}")
                         
-                        if thumbnail_local_path and os.path.exists(thumbnail_local_path):
-                                print(f"📸 Uploading thumbnail from: {thumbnail_local_path}")
-                                
-                                # Upload to Cloudinary
-                                upload_result = cloudinary.uploader.upload(
-                                        thumbnail_local_path,
-                                        folder=f"project_thumbnails/{project_id}",
-                                        public_id="thumbnail",
-                                        overwrite=True,
-                                        width=400,
-                                        height=225,
-                                        crop="fill",
-                                        quality="auto:best"
-                                )
-                                thumbnail_url = upload_result['secure_url']
-                                print(f"☁️ Thumbnail uploaded to Cloudinary: {thumbnail_url[:60]}...")
-                                
-                                # Cleanup local thumbnail file
-                                if os.path.exists(thumbnail_local_path):
-                                        os.unlink(thumbnail_local_path)
-                                        print(f"🗑️ Cleaned up local thumbnail")
-                        else:
-                                print(f"⚠️ Thumbnail file not generated")
-                                
+                        # Upload to Cloudinary
+                        upload_result = cloudinary.uploader.upload(
+                            thumbnail_local_path,
+                            folder=f"project_thumbnails/{project_id}",
+                            public_id="thumbnail",
+                            overwrite=True,
+                            width=400,
+                            height=225,
+                            crop="fill",
+                            quality="auto:best"
+                        )
+                        thumbnail_url = upload_result['secure_url']
+                        print(f"☁️ Thumbnail uploaded to Cloudinary: {thumbnail_url[:60]}...")
+                        
+                        # Cleanup local thumbnail file
+                        if os.path.exists(thumbnail_local_path):
+                            os.unlink(thumbnail_local_path)
+                            print(f"🗑️ Cleaned up local thumbnail")
+                    else:
+                        print(f"⚠️ Thumbnail file not generated")
+                        
                 except Exception as e:
-                        print(f"⚠️ Failed to upload thumbnail: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    print(f"⚠️ Failed to upload thumbnail: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             # ========== CREATE PROJECT WITH URLs ONLY ==========
             project = Project(
-                    id=project_id,
-                    name=name,
-                    prompt=prompt,
-                    user_id=user_id,
-                    preview_url=preview_url,
-                    thumbnail_url=thumbnail_url,
-                    files_url=files_url,
-                    timestamp=timestamp,
-                    project_type=project_type,
-                    file_count=len(files),
-                    size_bytes=len(json.dumps(files)),
-                    is_public=False,
-                    version=1
+                id=project_id,
+                name=name,
+                prompt=prompt,
+                user_id=user_id,
+                preview_url=preview_url,
+                thumbnail_url=thumbnail_url,
+                files_url=files_url,
+                cloudinary_image_url=cloudinary_image_url,  # ✅ SAVE THE CLOUDINARY IMAGE URL
+                timestamp=timestamp,
+                project_type=project_type,
+                file_count=len(files),
+                size_bytes=len(json.dumps(files)),
+                is_public=False,
+                version=1
             )
             session.add(project)
             await session.flush()
             
-            # ========== SAVE FILE METADATA (NO CONTENT) ==========
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+              # ========== SAVE FILE METADATA (NO CONTENT) ==========
             file_saved_count = 0
             for file_path, content in files.items():
-                    if file_path == "preview_html":
-                            continue
-                    
-                    # Determine file type
-                    file_type = None
-                    if '.' in file_path:
-                            ext = file_path.split('.')[-1].lower()
-                            file_type_map = {
-                                    'html': 'html', 'htm': 'html',
-                                    'css': 'css', 'scss': 'scss',
-                                    'js': 'javascript', 'ts': 'typescript',
-                                    'jsx': 'jsx', 'tsx': 'tsx',
-                                    'json': 'json', 'md': 'markdown',
-                                    'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'svg': 'image'
-                            }
-                            file_type = file_type_map.get(ext, 'text')
-                    
-                    # Convert content to string for size calculation
-                    if isinstance(content, dict):
-                            content_str = json.dumps(content, indent=2)
-                    elif not isinstance(content, str):
-                            content_str = str(content)
-                    else:
-                            content_str = content
-                    
-                    # Store ONLY metadata (no content)
-                    project_file = ProjectFile(
-                            project_id=project_id,
-                            file_path=file_path,
-                            file_type=file_type,
-                            size_bytes=len(content_str),
-                            cloudinary_url=f"{files_url}/{file_path}" if files_url else None
-                    )
-                    session.add(project_file)
-                    file_saved_count += 1
+                # Skip metadata keys
+                if file_path.startswith("__") and file_path.endswith("__"):
+                    continue
+                if file_path == "preview_html":
+                    continue
+                
+                # Determine file type
+                file_type = None
+                if '.' in file_path:
+                    ext = file_path.split('.')[-1].lower()
+                    file_type_map = {
+                        'html': 'html', 'htm': 'html',
+                        'css': 'css', 'scss': 'scss',
+                        'js': 'javascript', 'ts': 'typescript',
+                        'jsx': 'jsx', 'tsx': 'tsx',
+                        'json': 'json', 'md': 'markdown',
+                        'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'svg': 'image'
+                    }
+                    file_type = file_type_map.get(ext, 'text')
+                
+                # Convert content to string for size calculation
+                if isinstance(content, dict):
+                    content_str = json.dumps(content, indent=2)
+                elif not isinstance(content, str):
+                    content_str = str(content)
+                else:
+                    content_str = content
+                
+                # Store ONLY metadata (no content)
+                project_file = ProjectFile(
+                    project_id=project_id,
+                    file_path=file_path,
+                    file_type=file_type,
+                    size_bytes=len(content_str),
+                    cloudinary_url=f"{files_url}/{file_path}" if files_url else None
+                )
+                session.add(project_file)
+                file_saved_count += 1
+            
+            # ✅ ADD THIS BLOCK - Save Cloudinary image URL to project_files table
+            # ========== SAVE CLOUDINARY IMAGE URL AS A SPECIAL FILE ENTRY ==========
+            if cloudinary_image_url:
+                hero_image_file = ProjectFile(
+                    project_id=project_id,
+                    file_path="__hero_image__",  # Special marker for hero image
+                    file_type="cloudinary_image",
+                    size_bytes=len(cloudinary_image_url),
+                    cloudinary_url=cloudinary_image_url
+                )
+                session.add(hero_image_file)
+                print(f"📸 Saved hero image URL to project_files for project {project_id}: {cloudinary_image_url[:80]}...")
+            else:
+                print(f"⚠️ No cloudinary_image_url to save to project_files for project {project_id}")
             
             await session.commit()
             
             # ✅ Notify all connected clients to refresh their projects list
             await notify_projects_updated(name)
-            print(f"✅ Saved project '{name}' for user {user_email}")
+            
+            # Debug: Print what was saved
+            print(f"\n{'='*60}")
+            print(f"✅ PROJECT SAVED SUCCESSFULLY!")
+            print(f"📁 Project ID: {project_id}")
+            print(f"🏷️ Project Name: {name}")
+            print(f"📸 Cloudinary Image URL: {cloudinary_image_url if cloudinary_image_url else 'NOT SAVED'}")
+            print(f"📄 Preview URL: {preview_url[:60] if preview_url else 'NOT SAVED'}...")
+            print(f"🖼️ Thumbnail URL: {thumbnail_url[:60] if thumbnail_url else 'NOT SAVED'}...")
+            print(f"{'='*60}\n")
             
             return {
-                    "success": True,
-                    "id": project_id,
-                    "name": name,
-                    "user_email": user_email,
-                    "file_count": file_saved_count,
-                    "has_thumbnail": thumbnail_url is not None,
-                    "thumbnail_url": thumbnail_url,
-                    "preview_url": preview_url,
-                    "files_url": files_url
+                "success": True,
+                "id": project_id,
+                "name": name,
+                "user_email": user_email,
+                "file_count": file_saved_count,
+                "has_thumbnail": thumbnail_url is not None,
+                "thumbnail_url": thumbnail_url,
+                "preview_url": preview_url,
+                "files_url": files_url,
+                "cloudinary_image_url": cloudinary_image_url  # ✅ RETURN THIS
             }
             
     except Exception as e:
@@ -13167,7 +13488,6 @@ async def save_project(request: Request):
         import traceback
         traceback.print_exc()
         return {"success": False, "message": str(e)}
-
 
 
 
