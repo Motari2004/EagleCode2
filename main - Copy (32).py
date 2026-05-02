@@ -3502,16 +3502,6 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
-================================================================================
-MOBILE MENU REQUIREMENTS
-================================================================================
-- Hamburger button must exist and be clickable
-- Mobile menu must slide in from right
-- Clicking overlay or link must close menu
-- Hamburger must animate to X when open
-
-
-
 
 
 
@@ -3728,6 +3718,8 @@ DESIGN REQUIREMENTS:
 
 
 
+
+
 ================================================================================
 COMPLETE JAVASCRIPT:
 ================================================================================
@@ -3752,67 +3744,32 @@ COMPLETE JAVASCRIPT:
         window.scrollTo(0, 0);
     }}
     
-    function toggleMobileMenu() {{
-        const mobileMenu = document.getElementById('mobileMenu');
-        const mobileOverlay = document.getElementById('mobileOverlay');
-        const hamburger = document.querySelector('.hamburger');
-        
-        if (mobileMenu) {{
-            mobileMenu.classList.toggle('active');
-        }}
-        if (mobileOverlay) {{
-            mobileOverlay.classList.toggle('active');
-        }}
-        if (hamburger) {{
-            hamburger.classList.toggle('active');
-        }}
-    }}
-    
-    function closeMobileMenu() {{
-        const mobileMenu = document.getElementById('mobileMenu');
-        const mobileOverlay = document.getElementById('mobileOverlay');
-        const hamburger = document.querySelector('.hamburger');
-        
-        if (mobileMenu) {{
-            mobileMenu.classList.remove('active');
-        }}
-        if (mobileOverlay) {{
-            mobileOverlay.classList.remove('active');
-        }}
-        if (hamburger) {{
-            hamburger.classList.remove('active');
-        }}
-    }}
-    
     document.addEventListener('DOMContentLoaded', function() {{
         if (typeof lucide !== 'undefined') {{
             lucide.createIcons();
         }}
         
-        const hamburger = document.querySelector('.hamburger');
-        if (hamburger) {{
-            hamburger.addEventListener('click', toggleMobileMenu);
+        const mobileMenuBtn = document.getElementById('mobile-menu-button');
+        if (mobileMenuBtn) {{
+            mobileMenuBtn.addEventListener('click', function() {{
+                const mobileMenu = document.getElementById('mobile-menu');
+                if (mobileMenu) {{
+                    mobileMenu.classList.toggle('hidden');
+                }}
+            }});
         }}
         
-        const overlay = document.getElementById('mobileOverlay');
-        if (overlay) {{
-            overlay.addEventListener('click', closeMobileMenu);
-        }}
-        
-        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        document.querySelectorAll('[data-page]').forEach(link => {{
             link.addEventListener('click', (e) => {{
                 e.preventDefault();
                 const pageId = link.getAttribute('data-page');
                 if (pageId) showPage(pageId);
             }});
         }});
-        
-        const brandLink = document.querySelector('.brand');
-        if (brandLink) {{
-            brandLink.addEventListener('click', handleBrandClick);
-        }}
     }});
 </script>
+
+
 
 
 
@@ -4232,27 +4189,7 @@ footer {{
 
 
 
-/* Hamburger animation to X when open */
-.hamburger.active span:nth-child(1) {{
-    {{transform}}: rotate(45deg) translate(5px, 5px);
-}}
 
-.hamburger.active span:nth-child(2) {{
-    opacity: 0;
-}}
-
-.hamburger.active span:nth-child(3) {{
-    {{transform}}: rotate(-45deg) translate(5px, -5px);
-}}
-
-/* Add transition to hamburger spans */
-.hamburger span {{
-    width: 25px;
-    height: 3px;
-    background: #9ca3af;
-    border-radius: 2px;
-    transition: all 0.3s ease;
-}}
 
 
 
@@ -4264,6 +4201,7 @@ footer {{
 
 
 </style>
+
 
 
 
@@ -4319,11 +4257,8 @@ function showPage(pageId) {{
 function toggleMenu() {{
     const menu = document.getElementById('mobileMenu');
     const overlay = document.getElementById('mobileOverlay');
-    const hamburger = document.querySelector('.hamburger');
-    
     if (menu) menu.classList.toggle('active');
     if (overlay) overlay.classList.toggle('active');
-    if (hamburger) hamburger.classList.toggle('active');
 }}
 
 // Handle brand/logo click - ALWAYS go to home page
@@ -4419,6 +4354,7 @@ window.addEventListener('popstate', () => {{
     showPage(path);
 }});
 </script>
+
 
 
 
