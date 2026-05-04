@@ -4271,15 +4271,70 @@ The final HTML preview should be a TRUE representation of the Next.js project, c
 
 
 
+================================================================================
+🚨 CRITICAL: USE EXACT NAVIGATION HTML - DO NOT MODIFY 🚨
+================================================================================
 
+You MUST use the navigation HTML provided below EXACTLY as is.
+DO NOT add, remove, or modify any links.
+
+The brand/logo is the ONLY home link. There is NO separate "Home" button.
 
 ================================================================================
 EXACT NAVIGATION HTML - USE THIS EXACTLY (DO NOT MODIFY):
 ================================================================================
 {navigation_html}
 
+================================================================================
+RULES FOR THIS NAVIGATION:
+================================================================================
+1. ✅ The brand/logo clicks to home page (already has onclick="handleBrandClick(event)")
+2. ✅ Only these links exist: Projects, About, Contact (or whatever is in the HTML above)
+3. ❌ DO NOT add a "Home" link - it does not exist in the source
+4. ❌ DO NOT add any extra links that aren't in the HTML above
+5. ✅ Keep ALL classes, icons, and styling exactly as shown
+
+================================================================================
+IF THE NAVIGATION ABOVE IS EMPTY OR MISSING, USE THIS FALLBACK (WITHOUT HOME):
+================================================================================
+<nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
+    <a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
+        <i data-lucide="sparkles" class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
+        <span class="text-xl font-bold bg-gradient-to-r from-yellow-400 to-purple-500 bg-clip-text text-transparent">{brand_name}</span>
+    </a>
+    <div class="hidden md:flex space-x-2">
+        <a href="/projects" class="nav-link flex items-center gap-2 group" data-page="projects">
+            <i data-lucide="folder" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
+            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">Projects</span>
+        </a>
+        <a href="/about" class="nav-link flex items-center gap-2 group" data-page="about">
+            <i data-lucide="info" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
+            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">About</span>
+        </a>
+        <a href="/contact" class="nav-link flex items-center gap-2 group" data-page="contact">
+            <i data-lucide="mail" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
+            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">Contact</span>
+        </a>
+    </div>
+    <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+        <i data-lucide="menu" class="w-6 h-6 text-yellow-400"></i>
+    </button>
+</nav>
 
 
+
+
+================================================================================
+VERIFICATION: The final HTML MUST NOT contain any "Home" link in the navigation.
+================================================================================
+
+
+
+This ensures the AI:
+1. Uses your exact navigation HTML (with the correct links and icons)
+2. Never adds a "Home" link
+3. Preserves all icons and styling
+4. Only shows Projects, About, Contact (or whatever is in your source)
 
 
 
@@ -5328,6 +5383,23 @@ footer {{
 
 
 
+
+
+
+/* Increase feature icon sizes */
+.feature-icon {{
+    font-size: 3rem;
+    width: auto;
+    height: auto;
+}}
+
+/* For all icons in feature cards */
+.grid.md\:grid-cols-4 > div i {{
+    font-size: 2rem;
+    width: auto;
+    height: auto;
+    margin-bottom: 1rem;
+}}
 
 
 
