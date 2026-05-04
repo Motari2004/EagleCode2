@@ -2331,12 +2331,8 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 
 
 
-
-
-
-
         def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
-                    """Convert Next.js Navigation component to HTML with Lucide icons - FULLY DYNAMIC"""
+                    """Convert Next.js Navigation component to HTML with Lucide icons - ONLY for e-commerce links"""
                     
                     # ========== DYNAMIC ICON EXTRACTION ==========
                     icon_name = "Sparkles"  # default
@@ -2378,6 +2374,8 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                         "graduationcap": "graduation-cap",
                         "shoppingbag": "shopping-bag",
                         "shoppingcart": "shopping-cart",
+                        "sparkles": "sparkles",
+                        "dumbbell": "dumbbell",
                     }
                     lucide_icon = special_mappings.get(lucide_icon, lucide_icon)
                     
@@ -2387,37 +2385,48 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                     if text_match:
                         brand_text_class = text_match.group(1)
                     
-                    # ========== BUILD NAVIGATION BUTTONS FROM EXTRACTED LINKS ==========
+                    # ========== BUILD NAVIGATION BUTTONS - ONLY ICONS FOR E-COMMERCE ==========
                     nav_buttons_html = ""
                     print(f"📋 Building navigation for {len(nav_links)} links: {nav_links}")
                     
+                    # E-commerce keywords that should have icons
+                    ECOMMERCE_KEYWORDS = ["shop", "store", "catalog", "catalogue", "cart", "basket", "products", "checkout"]
+                    
                     for href, label in nav_links:
-                        # Map label to appropriate icon
                         label_lower = label.lower()
-                        if "shop" in label_lower or "store" in label_lower:
-                            item_icon = "shopping-bag"
-                        elif "catalog" in label_lower or "catalogue" in label_lower:
-                            item_icon = "grid"
-                        elif "cart" in label_lower:
-                            item_icon = "shopping-cart"
-                        elif "about" in label_lower:
-                            item_icon = "info"
-                        elif "contact" in label_lower:
-                            item_icon = "mail"
-                        elif "home" in label_lower:
-                            item_icon = "home"
-                        elif "projects" in label_lower:
-                            item_icon = "folder"
-                        else:
-                            item_icon = "circle"
                         
-                        # Extract color without the number for hover (500 -> 400 for lighter)
-                        base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
-                        hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
+                        # Check if this is an e-commerce link (should have icon)
+                        is_ecommerce = any(keyword in label_lower for keyword in ECOMMERCE_KEYWORDS)
                         
-                        nav_buttons_html += f'''
+                        if is_ecommerce:
+                            # Map e-commerce links to appropriate icons
+                            if "shop" in label_lower or "store" in label_lower:
+                                item_icon = "shopping-bag"
+                            elif "catalog" in label_lower or "catalogue" in label_lower:
+                                item_icon = "grid"
+                            elif "cart" in label_lower or "basket" in label_lower:
+                                item_icon = "shopping-cart"
+                            elif "products" in label_lower:
+                                item_icon = "package"
+                            elif "checkout" in label_lower:
+                                item_icon = "credit-card"
+                            else:
+                                item_icon = "circle"
+                            
+                            # Extract color for hover effects
+                            base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
+                            hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
+                            
+                            # Build e-commerce link WITH icon
+                            nav_buttons_html += f'''
                         <a href="{href}" class="nav-link flex items-center gap-2 group" data-page="{href.replace('/', '')}">
                             <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                        </a>'''
+                        else:
+                            # Build non-e-commerce link WITHOUT icon (text only)
+                            nav_buttons_html += f'''
+                        <a href="{href}" class="nav-link group" data-page="{href.replace('/', '')}">
                             <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
                         </a>'''
                     
@@ -2437,7 +2446,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                     </nav>
                     
                     <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
-                        {nav_buttons_html.replace('class="nav-link flex items-center gap-2 group"', 'class="mobile-nav-link flex items-center gap-3 group w-full px-4 py-2 rounded-lg hover:bg-white/10"')}
+                        {nav_buttons_html.replace('class="nav-link flex items-center gap-2 group"', 'class="mobile-nav-link flex items-center gap-3 group w-full px-4 py-2 rounded-lg hover:bg-white/10"').replace('class="nav-link group"', 'class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10"')}
                     </div>
                     
                     <script>
@@ -2448,7 +2457,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                         lucide.createIcons();
                     </script>
                     '''
-                    
                     
                     
                     
@@ -3904,8 +3912,6 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
-
-
 ================================================================================
 🚨 AI INSTRUCTION: HANDLING NAVIGATION LINKS WITH ICONS 🚨
 ================================================================================
@@ -3914,12 +3920,14 @@ When you see navigation links with icons inside the Link component, you MUST:
 
 1. Extract BOTH the href and the text label
 2. Preserve the icon by converting it to HTML
+3. ONLY add icons to E-COMMERCE links (Shop, Catalog, Cart, Products, Store, Basket, Checkout)
+4. Keep OTHER links (About, Contact, Projects, Services, Blog, etc.) as TEXT-ONLY
 
 ================================================================================
-PATTERN TO RECOGNIZE:
+PATTERNS TO RECOGNIZE:
 ================================================================================
 
-React pattern:
+React pattern for E-COMMERCE links (WITH icon):
 ```jsx
 <Link href="/cart" className="flex items-center gap-2">
     <ShoppingBag className="w-5 h-5" /> Cart
