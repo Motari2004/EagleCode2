@@ -2898,6 +2898,8 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                                     rendered_html = rendered_html.replace(f'{{{item_var}.desc}}', item['desc'])
                                     rendered_html = rendered_html.replace(f'{{{index_var}}}', str(idx))
                                     rendered_items.append(rendered_html)
+                                    # Fix icon class for ShieldCheck
+                                    rendered_html = rendered_html.replace('fa-shield-check', 'fa-shield-alt')
                               
                               print(f"      ✅ Rendered {len(rendered_items)} items")
                               return '\n'.join(rendered_items)
@@ -2912,6 +2914,11 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                   # Convert JSX to HTML
                   print(f"\n📌 STEP 8: Converting JSX to HTML...")
                   extracted = re.sub(r'className=', 'class=', extracted)
+                  
+                  
+                  extracted = extracted.replace('fa-shield-check', 'fa-shield-alt')
+                  
+                  
                   extracted = re.sub(r'htmlFor=', 'for=', extracted)
                   extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
                   extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
@@ -2976,6 +2983,7 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
             
             print(f"❌ No JSX extracted, using fallback")
             return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
+        
         
         
         
@@ -3337,6 +3345,17 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
         # Get home page content
         home_content = page_contents.get('page', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
         
+        
+        
+        
+        # Fix ShieldCheck icon to use correct Font Awesome class
+        home_content = home_content.replace('fa-shield-check', 'fa-shield-alt')       
+        
+        
+        
+        
+        
+        
         # Get backend URL
         BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
         
@@ -3497,6 +3516,105 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
             print("⚠️ No FAQ section found in source")
         else:
             print(f"📊 Total FAQ items extracted: {faq_html.count('faq-btn')}")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== EXTRACT FOOTER FROM SOURCE ==========
+        footer_html = ""
+        
+        # Check for Footer.tsx component file
+        footer_component = files.get("components/Footer.tsx", "")
+        
+        if footer_component:
+            print("🔍 Extracting footer from components/Footer.tsx")
+            
+            # Extract the JSX content from return statement
+            return_match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', footer_component, re.DOTALL)
+            
+            if return_match:
+                footer_html = return_match.group(1)
+                
+                # Convert React/JSX to HTML
+                footer_html = re.sub(r'className=', 'class=', footer_html)
+                footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
+                footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                
+                # Convert Lucide icons to Font Awesome
+                footer_html = re.sub(r'<Sparkles\s*/>', '<i class="fas fa-sparkles text-purple-500"></i>', footer_html)
+                footer_html = re.sub(r'<Mail\s*/>', '<i class="fas fa-envelope"></i>', footer_html)
+                footer_html = re.sub(r'<Phone\s*/>', '<i class="fas fa-phone"></i>', footer_html)
+                footer_html = re.sub(r'<Send\s*/>', '<i class="fas fa-paper-plane"></i>', footer_html)
+                footer_html = re.sub(r'<ArrowUp\s*/>', '<i class="fas fa-arrow-up"></i>', footer_html)
+                
+                # Remove useState and useEffect hooks
+                footer_html = re.sub(r'\{showScroll \&\& \(', '', footer_html)
+                footer_html = re.sub(r'\)\}', '', footer_html)
+                
+                print(f"✅ Footer extracted from component: {len(footer_html)} chars")
+        
+        # Fallback to default footer if component not found
+        if not footer_html:
+            from datetime import datetime
+            footer_html = f'''
+            <footer class="bg-zinc-950 border-t border-white/10 py-12">
+                <div class="container mx-auto px-4 grid md:grid-cols-4 gap-8">
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-2"><i class="fas fa-sparkles text-purple-500"></i><span class="font-bold">{brand_name}</span></div>
+                        <p class="text-sm text-gray-400">Premium digital solutions.</p>
+                    </div>
+                    <div><h4 class="font-bold mb-4">Quick Links</h4><ul class="space-y-2 text-sm text-gray-400"><li>Courses</li><li>Admissions</li></ul></div>
+                    <div><h4 class="font-bold mb-4">Contact</h4><ul class="space-y-2 text-sm text-gray-400"><li>support@example.com</li><li>+1 (555) 123-4567</li></ul></div>
+                    <div><h4 class="font-bold mb-4">Newsletter</h4><div class="flex gap-2"><input class="bg-white/5 p-2 rounded w-full" placeholder="Email" /><button class="bg-purple-600 p-2 rounded"><i class="fas fa-paper-plane"></i></button></div></div>
+                </div>
+                <div class="text-center mt-8 text-sm text-gray-600">© {datetime.now().year} {brand_name}. All rights reserved.</div>
+            </footer>
+            '''
+        
+        # Also extract scroll to top button JavaScript
+        scroll_script = """
+        <script>
+        // Scroll to Top Functionality
+        let scrollBtn = document.getElementById('scrollToTop');
+        if(scrollBtn) {
+            window.addEventListener('scroll', () => {
+                if(window.scrollY > 500) {
+                    scrollBtn.classList.remove('hidden');
+                } else {
+                    scrollBtn.classList.add('hidden');
+                }
+            });
+            scrollBtn.addEventListener('click', () => {
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            });
+        }
+        </script>
+        """       
         
         
         
@@ -4336,19 +4454,160 @@ EXACT NAVIGATION LINKS (use these exactly):
 ================================================================================
 {nav_links_json}
 
-================================================================================
-EXACT FOOTER HTML - CONVERT THIS TO HTML (PRESERVE ALL TEXT, CONVERT ICONS TO FONT AWESOME):
-================================================================================
-{footer_html if footer_html else "Create a simple footer with copyright and navigation links"}
 
-IMPORTANT FOOTER ICON CONVERSION RULES:
-- Convert <Instagram /> to <i class="fab fa-instagram"></i>
-- Convert <Facebook /> to <i class="fab fa-facebook"></i>
-- Convert <Twitter /> to <i class="fab fa-twitter"></i>
-- Convert <Mail /> to <i class="fas fa-envelope"></i>
-- Convert <Phone /> to <i class="fas fa-phone"></i>
-- Convert <MapPin /> to <i class="fas fa-map-marker-alt"></i>
-- Keep ALL text content EXACTLY the same
+
+
+
+================================================================================
+EXACT FOOTER HTML - USE THE EXTRACTED CONTENT BELOW (DO NOT GENERATE NEW FOOTER)
+================================================================================
+
+The footer HTML below has been EXTRACTED from your components/Footer.tsx file.
+You MUST use this EXACT HTML. DO NOT modify, simplify, or replace it.
+
+EXTRACTED FOOTER HTML (USE THIS EXACTLY):
+================================================================================
+{footer_html}
+
+================================================================================
+🚨 CRITICAL: IF EXTRACTED FOOTER IS MISSING OR EMPTY, USE THIS FALLBACK 🚨
+================================================================================
+{f'''
+<footer class="relative mt-20 bg-gradient-to-b from-zinc-950 to-black border-t border-white/10 py-12">
+    <div class="container mx-auto px-4 grid md:grid-cols-4 gap-8">
+        <div class="space-y-4">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-sparkles text-purple-500"></i>
+                <h3 class="font-bold text-lg">{brand_name}</h3>
+            </div>
+            <p class="text-sm text-gray-400">Premium digital solutions for modern businesses.</p>
+            <div class="flex gap-4">
+                <i class="fab fa-facebook-f text-gray-400 hover:text-purple-400 transition-colors cursor-pointer"></i>
+                <i class="fab fa-twitter text-gray-400 hover:text-purple-400 transition-colors cursor-pointer"></i>
+                <i class="fab fa-instagram text-gray-400 hover:text-purple-400 transition-colors cursor-pointer"></i>
+            </div>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">Quick Links</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+                <li><a href="/shop" class="hover:text-purple-400 transition-colors">Shop</a></li>
+                <li><a href="/catalog" class="hover:text-purple-400 transition-colors">Catalog</a></li>
+                <li><a href="/about" class="hover:text-purple-400 transition-colors">About Us</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">Contact</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+                <li class="flex items-center gap-2"><i class="fas fa-envelope"></i> support@{brand_name.lower().replace(' ', '')}.com</li>
+                <li class="flex items-center gap-2"><i class="fas fa-phone"></i> +1 (555) 123-4567</li>
+                <li class="flex items-center gap-2"><i class="fas fa-map-marker-alt"></i> 123 Innovation Drive, NY 10001</li>
+            </ul>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">Newsletter</h4>
+            <p class="text-sm text-gray-400 mb-3">Get 10% off your first order</p>
+            <form class="flex gap-2" onsubmit="handleNewsletter(event)">
+                <input type="email" placeholder="Your email address" class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 transition-colors" />
+                <button type="submit" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all"><i class="fas fa-paper-plane"></i></button>
+            </form>
+        </div>
+    </div>
+    <div class="text-center mt-8 pt-8 border-t border-white/10 text-sm text-gray-500">
+        © 2026 {brand_name}. Crafted with <i class="fas fa-heart text-red-500"></i> in Nairobi
+    </div>
+</footer>
+''' if not footer_html else ''}
+
+================================================================================
+🚨 FOOTER ICON CONVERSION RULES - APPLY TO EXTRACTED CONTENT 🚨
+================================================================================
+
+The extracted footer may contain Lucide icons. Convert them to Font Awesome:
+
+| Pattern | Replace With |
+|---------|--------------|
+| `<Sparkles className="..." />` | `<i class="fas fa-sparkles text-purple-500"></i>` |
+| `<Mail className="..." />` | `<i class="fas fa-envelope"></i>` |
+| `<Phone className="..." />` | `<i class="fas fa-phone"></i>` |
+| `<MapPin className="..." />` | `<i class="fas fa-map-marker-alt"></i>` |
+| `<Send className="..." />` | `<i class="fas fa-paper-plane"></i>` |
+| `<Heart className="..." />` | `<i class="fas fa-heart text-red-500"></i>` |
+| `<Facebook className="..." />` | `<i class="fab fa-facebook-f"></i>` |
+| `<Twitter className="..." />` | `<i class="fab fa-twitter"></i>` |
+| `<Instagram className="..." />` | `<i class="fab fa-instagram"></i>` |
+| `<ArrowUp />` | `<i class="fas fa-arrow-up"></i>` |
+
+================================================================================
+🚨 SCROLL TO TOP BUTTON & NEWSLETTER HANDLER - MUST INCLUDE 🚨
+================================================================================
+
+Add this button before closing </body>:
+```html
+<button id="scrollToTop" class="fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:scale-110 transition-all duration-300 flex items-center justify-center opacity-0 invisible">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+Add this script before closing </body>:
+
+<script>
+(function() {{
+    const scrollBtn = document.getElementById('scrollToTop');
+    if (scrollBtn) {{
+        window.addEventListener('scroll', function() {{
+            if (window.scrollY > 500) {{
+                scrollBtn.classList.remove('opacity-0', 'invisible');
+                scrollBtn.classList.add('opacity-100', 'visible');
+            }} else {{
+                scrollBtn.classList.add('opacity-0', 'invisible');
+                scrollBtn.classList.remove('opacity-100', 'visible');
+            }}
+        }});
+        scrollBtn.addEventListener('click', function() {{
+            window.scrollTo({{ top: 0, behavior: 'smooth' }});
+        }});
+    }}
+    
+    window.handleNewsletter = function(event) {{
+        event.preventDefault();
+        const email = event.target.querySelector('input[type="email"]')?.value;
+        if (email) {{
+            alert('Thank you for subscribing with: ' + email);
+            event.target.reset();
+        }}
+    }};
+}})();
+</script>
+
+================================================================================
+KEEP ALL TEXT CONTENT EXACTLY AS EXTRACTED - DO NOT MODIFY:
+================================================================================
+
+
+1. Preserve ALL link text
+
+2. Preserve ALL descriptions
+
+3. Preserve ALL contact information
+
+4. Preserve copyright text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ================================================================================
 EXACT HERO BACKGROUND IMAGE URL (use this exactly):
@@ -5256,6 +5515,15 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
         # ========== CLEAN ONERROR HANDLERS ==========
         preview_html = clean_onError_handlers(preview_html)  # ← ADD THIS LINE
         # ============================================
+        
+        
+        
+        # Fix ShieldCheck icon to use correct Font Awesome class
+        preview_html = preview_html.replace('fa-shield-check', 'fa-shield-alt')       
+        
+        
+        
+        
 
         # Ensure doctype
         if not preview_html.lower().startswith("<!doctype"):
@@ -5482,6 +5750,9 @@ document.addEventListener('DOMContentLoaded', function() {{
             preview_html = preview_html.replace('</body>', f'{auth_script}\n</body>')
         else:
             preview_html = preview_html + auth_script
+            
+        # Fix ShieldCheck icon one more time to be safe
+        preview_html = preview_html.replace('fa-shield-check', 'fa-shield-alt')           
 
         print(f"✅ Beautiful preview generated! Length: {len(preview_html):,} chars")
         return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"}
