@@ -2329,73 +2329,108 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 
 
 
+
+
+
+
         def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
-                    """Convert Next.js Navigation component to HTML with Lucide icons"""
+                    """Convert Next.js Navigation component to HTML with Lucide icons - FULLY DYNAMIC"""
                     
-                    # Extract icon name from imports - IMPROVED PATTERN
-                    icon_match = re.search(r'import\s+\{\s*(\w+)\s*\}\s+from\s+[\'"]lucide-react[\'"]', nav_content)
-                    icon_name = icon_match.group(1) if icon_match else "Dumbbell"
+                    # ========== DYNAMIC ICON EXTRACTION ==========
+                    icon_name = "Sparkles"  # default
+                    icon_size = "w-8 h-8"
+                    icon_color = "text-purple-500"
                     
-                    print(f"🎨 Extracted icon from navigation: {icon_name}")
+                    # Method 1: Extract from JSX with any className pattern
+                    jsx_pattern = r'<(\w+)\s+className="([^"]*)"'
+                    jsx_matches = re.findall(jsx_pattern, nav_content)
+                    for match in jsx_matches:
+                        potential_icon = match[0]
+                        class_str = match[1]
+                        # Check if it's likely an icon (not a div or span)
+                        if potential_icon[0].isupper() and len(potential_icon) > 1:
+                            icon_name = potential_icon
+                            # Extract size from className
+                            size_match = re.search(r'w-(\d+)\s+h-(\d+)', class_str)
+                            if size_match:
+                                icon_size = f"w-{size_match.group(1)} h-{size_match.group(2)}"
+                            # Extract color from className
+                            color_match = re.search(r'text-(\w+-\d+)', class_str)
+                            if color_match:
+                                icon_color = f"text-{color_match.group(1)}"
+                            break
                     
-                    # Map icon names to Lucide data-lucide attributes - EXPANDED MAP
-                    icon_map = {
-                        "Dumbbell": "dumbbell",
-                        "ShoppingBag": "shopping-bag",
-                        "ShoppingCart": "shopping-cart",
-                        "Grid": "grid",
-                        "Home": "home",
-                        "Star": "star",
-                        "Heart": "heart",
-                        "User": "user",
-                        "Menu": "menu",
-                        "X": "x",
-                        "Coffee": "coffee",
-                        "GraduationCap": "graduation-cap",
-                        "Hotel": "hotel",
-                        "Cpu": "cpu",
-                        "Sparkles": "sparkles",
-                        "Zap": "zap",
+                    # Method 2: Extract from imports if JSX extraction failed
+                    if icon_name == "Sparkles":
+                        import_match = re.search(r'import\s+\{\s*(\w+)\s*\}\s+from\s+[\'"]lucide-react[\'"]', nav_content)
+                        if import_match:
+                            icon_name = import_match.group(1)
+                    
+                    print(f"🎨 Extracted icon: {icon_name}")
+                    print(f"   Size: {icon_size}")
+                    print(f"   Color: {icon_color}")
+                    
+                    # Map icon name to Lucide data-lucide attribute
+                    lucide_icon = icon_name.lower()
+                    special_mappings = {
+                        "graduationcap": "graduation-cap",
+                        "shoppingbag": "shopping-bag",
+                        "shoppingcart": "shopping-cart",
                     }
+                    lucide_icon = special_mappings.get(lucide_icon, lucide_icon)
                     
-                    # Get the mapped icon
-                    lucide_icon = icon_map.get(icon_name, "dumbbell")
+                    # Extract brand text gradient className
+                    brand_text_class = "text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"
+                    text_match = re.search(r'<span[^>]*className="([^"]*)"[^>]*>[^<]*</span>', nav_content)
+                    if text_match:
+                        brand_text_class = text_match.group(1)
                     
-                    print(f"🎨 Using Lucide icon: {lucide_icon} (from {icon_name})")
-                    
-                    # Build navigation HTML with YELLOW styled icons
+                    # ========== BUILD NAVIGATION BUTTONS FROM EXTRACTED LINKS ==========
                     nav_buttons_html = ""
+                    print(f"📋 Building navigation for {len(nav_links)} links: {nav_links}")
+                    
                     for href, label in nav_links:
-                        # Map label to icon
+                        # Map label to appropriate icon
                         label_lower = label.lower()
-                        if "shop" in label_lower:
+                        if "shop" in label_lower or "store" in label_lower:
                             item_icon = "shopping-bag"
-                        elif "catalog" in label_lower:
+                        elif "catalog" in label_lower or "catalogue" in label_lower:
                             item_icon = "grid"
                         elif "cart" in label_lower:
                             item_icon = "shopping-cart"
+                        elif "about" in label_lower:
+                            item_icon = "info"
+                        elif "contact" in label_lower:
+                            item_icon = "mail"
                         elif "home" in label_lower:
                             item_icon = "home"
+                        elif "projects" in label_lower:
+                            item_icon = "folder"
                         else:
                             item_icon = "circle"
                         
+                        # Extract color without the number for hover (500 -> 400 for lighter)
+                        base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
+                        hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
+                        
                         nav_buttons_html += f'''
                         <a href="{href}" class="nav-link flex items-center gap-2 group" data-page="{href.replace('/', '')}">
-                            <i data-lucide="{item_icon}" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
-                            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">{label}</span>
+                            <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
                         </a>'''
                     
+                    # ========== GENERATE FINAL NAVIGATION HTML ==========
                     return f'''
                     <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
                         <a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
-                            <i data-lucide="{lucide_icon}" class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
-                            <span class="text-xl font-bold bg-gradient-to-r from-yellow-400 to-purple-500 bg-clip-text text-transparent">{brand_name}</span>
+                            <i data-lucide="{lucide_icon}" class="{icon_size} {icon_color} drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
+                            <span class="{brand_text_class}">{brand_name}</span>
                         </a>
                         <div class="hidden md:flex space-x-2">
                             {nav_buttons_html}
                         </div>
                         <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
-                            <i data-lucide="menu" class="w-6 h-6 text-yellow-400"></i>
+                            <i data-lucide="menu" class="{icon_size.replace('w-8', 'w-6')} {icon_color}"></i>
                         </button>
                     </nav>
                     
@@ -2411,11 +2446,15 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                         lucide.createIcons();
                     </script>
                     '''
-
-
-
-
-
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
 
 
 
@@ -3268,6 +3307,43 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
         for route, content in page_contents.items():
             print(f"    • {route}: {len(content)} chars")
         print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== BUILD DYNAMIC PAGES SECTION FOR PROMPT ==========
+        pages_section = ""
+        for route, content in page_contents.items():
+            pages_section += f"""
+--- PAGE: {route} ---
+{content[:50000]}
+--- END OF PAGE: {route} ---
+
+"""
+        
+        print(f"📄 Built pages section for routes: {list(page_contents.keys())}")       
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
         # ========== DEBUG: CHECK WHAT WAS EXTRACTED ==========
         print(f"\n🔍 DEBUG - page_contents keys: {list(page_contents.keys())}")
@@ -3803,6 +3879,102 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 FAQ SECTION - USE THIS EXACT HTML (DO NOT MODIFY) 🚨
+================================================================================
+
+The following FAQ HTML has been pre-built from your source file.
+You MUST include this EXACT HTML in the FAQ section.
+
+{faq_html}
+
+DO NOT generate new FAQ items. DO NOT add or remove any questions.
+Simply place this HTML inside the FAQ section div.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+CRITICAL: YOU MUST USE THE EXACT CONTENT BELOW FOR EACH PAGE
+================================================================================
+
+{pages_section}
+
+================================================================================
+NOW GENERATE THE HTML PREVIEW USING THE EXACT CONTENT ABOVE
+================================================================================
+
+For EACH page in the extraction above, create:
+<div id="page_{route}" class="page">
+    <div class="container mx-auto px-4 py-20">
+        [PASTE THE EXACT CONTENT FROM THE PAGE EXTRACTION ABOVE - DO NOT MODIFY]
+    </div>
+</div>
+
+DO NOT write "Welcome to our about page" or any other placeholder text.
+USE THE EXACT CONTENT PROVIDED ABOVE.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 NAVIGATION STYLING REQUIREMENTS - MUST INCLUDE EXACT CLASSES 🚨
+================================================================================
+
+When generating navigation HTML, you MUST include these exact classes for the brand icon:
+
+BRAND ICON REQUIREMENTS:
+- MUST have: class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"
+- MUST have: data-lucide="[THE_ICON_NAME_EXTRACTED_FROM_SOURCE]" 
+- MUST be wrapped in: <a class="brand flex items-center gap-2 group">
+
+EXAMPLE - CORRECT BRAND HTML:
+```html
+<a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
+    <i data-lucide="sparkles" class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
+    <span class="text-xl font-bold bg-gradient-to-r from-yellow-400 to-purple-500 bg-clip-text text-transparent">Brand Name</span>
+</a>
 
 
 
