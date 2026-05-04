@@ -1650,6 +1650,8 @@ app.add_middleware(
         
         "https://*.vercel.app",
         
+        
+        
         "null",  # ← ADD THIS - for local HTML files
         "blob:",  # ← ADD THIS - for preview iframes        
         
@@ -2545,13 +2547,11 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 
 
 
-
-
-
-
         # ========== COLLECT NAVIGATION ==========
-        nav_links = []  # ⭐ ADD THIS LINE - initialize nav_links
+        nav_links = []
         nav_content = ""
+        brand_name = project_name
+        
         nav_paths = [
             "components/Navigation.tsx",
             "components/Navigation.jsx", 
@@ -2571,32 +2571,11 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                 if any(x in fp for x in ["Navigation", "Navbar", "Header"]) and fp.endswith((".tsx", ".jsx")):
                     nav_content = content
                     break
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        # Extract brand and navigation links
-        brand_name = project_name        
+        
+        # ========== EXTRACT BRAND AND NAVIGATION LINKS ==========
+        print(f"🔍 DEBUG - nav_content length: {len(nav_content) if nav_content else 0}")
+        print(f"🔍 DEBUG - nav_content preview: {nav_content[:500] if nav_content else 'EMPTY'}")
+        
         if nav_content:
             brand_patterns = [
                 r'<Link\s+href="/"[^>]*>(.*?)</Link>',
@@ -2609,24 +2588,70 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                     if brand_name:
                         break
             
-            link_patterns = [
-                r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
-                r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
-            ]
+            # Extract ALL hrefs first (captures cart with icon)
+            href_pattern = r'<Link\s+href="/([^"]+)"'
+            all_hrefs = re.findall(href_pattern, nav_content)
+            href_pattern2 = r"<Link\s+href='/([^']+)'"
+            all_hrefs.extend(re.findall(href_pattern2, nav_content))
             
-            for pattern in link_patterns:
-                matches = re.findall(pattern, nav_content, re.DOTALL)
-                for href, text in matches:
-                    clean_text = re.sub(r'<[^>]+>', '', text).strip()
-                    if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
-                        nav_links.append((href, clean_text))
-                if nav_links:
-                    break
+            print(f"🔍 Found hrefs: {all_hrefs}")
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_hrefs = []
+            for href in all_hrefs:
+                if href not in seen:
+                    seen.add(href)
+                    unique_hrefs.append(href)
+            
+            print(f"🔍 Unique hrefs: {unique_hrefs}")
+            
+            # Generate labels from hrefs
+            for href in unique_hrefs:
+                if href != "/" and href.lower() != brand_name.lower():
+                    # Try to extract label from the link content first
+                    label_pattern = rf'<Link\s+href="/{href}"[^>]*>(.*?)</Link>'
+                    label_match = re.search(label_pattern, nav_content, re.DOTALL)
+                    if label_match:
+                        label_content = label_match.group(1)
+                        # Remove icon tags to get text
+                        clean_label = re.sub(r'<[^>]+>', '', label_content).strip()
+                        if clean_label:
+                            label = clean_label
+                        else:
+                            label = href.capitalize()
+                    else:
+                        label = href.capitalize()
+                    
+                    nav_links.append((href, label))
+                    print(f"🔍 Added link: {href} -> {label}")
+            
+            # If still no links, fallback to old patterns
+            if not nav_links:
+                link_patterns = [
+                    r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
+                    r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
+                ]
+                for pattern in link_patterns:
+                    matches = re.findall(pattern, nav_content, re.DOTALL)
+                    for href, text in matches:
+                        clean_text = re.sub(r'<[^>]+>', '', text).strip()
+                        if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
+                            nav_links.append((href, clean_text))
+                    if nav_links:
+                        break
         
         if not nav_links:
-            nav_links = [("courses", "Courses"), ("about", "About"), ("contact", "Contact")]
+            nav_links = [("shop", "Shop"), ("catalog", "Catalog"), ("cart", "Cart")]
+            print("🔍 Using default nav_links")
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
+        
+        # ========== CONVERT NAVIGATION TO HTML ==========
+        navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
+        navigation_html_for_prompt = navigation_html
+
+
 
 
 
@@ -2712,15 +2737,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 
 
 
-        # Convert navigation to HTML with Lucide icons
-        navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
-        # ⭐⭐⭐ END OF ADDED LINE ⭐⭐⭐
-        
-        
-        navigation_html_for_prompt = navigation_html 
-
-
-
 
 
 
@@ -2777,6 +2793,11 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
         
         
         
+        
+        
+
+
+
         
         
         
@@ -3876,6 +3897,47 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
 Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 AI INSTRUCTION: HANDLING NAVIGATION LINKS WITH ICONS 🚨
+================================================================================
+
+When you see navigation links with icons inside the Link component, you MUST:
+
+1. Extract BOTH the href and the text label
+2. Preserve the icon by converting it to HTML
+
+================================================================================
+PATTERN TO RECOGNIZE:
+================================================================================
+
+React pattern:
+```jsx
+<Link href="/cart" className="flex items-center gap-2">
+    <ShoppingBag className="w-5 h-5" /> Cart
+</Link>
+
+HTML output MUST be:
+<a href="/cart" class="nav-link flex items-center gap-2 group" data-page="cart">
+    <i data-lucide="shopping-bag" class="w-4 h-4 text-purple-400 group-hover:text-pink-500 group-hover:scale-110 transition-all duration-300"></i>
+    <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Cart</span>
+</a>
+
+
+
+================================================================================
+ICON MAPPING FOR NAVIGATION LINKS:
+================================================================================
+
+- ShoppingBag → shopping-bag
 
 
 
@@ -5566,7 +5628,7 @@ footer {{
 }}
 
 /* For all icons in feature cards */
-.grid.md\:grid-cols-4 > div i {{
+.grid.md\\:grid-cols-4 > div i {{
     font-size: 2rem;
     width: auto;
     height: auto;
