@@ -10037,6 +10037,7 @@ Now generate the complete project for this request: [USER_PROMPT_HERE]"""
 
 
 
+
 @app.websocket("/ws/build")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -10051,15 +10052,12 @@ async def websocket_endpoint(websocket: WebSocket):
         raw_payload = await websocket.receive_text()
         data = json.loads(raw_payload)
         user_prompt = data.get("prompt", "").strip()
-        
-        # ✅ OPTIONAL: Add force_new support
-        force_new = data.get("force_new", False)
-        
         max_retries = 3
         retry_count = 0
 
         if not user_prompt:
             await websocket.send_json({"type": "error", "message": "Prompt is required"})
+            # Don't close - just keep connection alive
             while True:
                 await asyncio.sleep(60)
                 try:
@@ -10072,11 +10070,12 @@ async def websocket_endpoint(websocket: WebSocket):
         project_name = name_tracker.generate_unique_name("school", user_prompt)
         project_id = str(uuid.uuid4())  # Generate once at the beginning
   
-        # ✅ FIXED: Change "project_name" to "project_id"
+  
+        # Send project name to frontend
         await websocket.send_json({
-            "type": "project_id",      # ← CHANGE THIS LINE
+            "type": "project_name",
             "project_id": project_id,
-            "project_name": project_name  # ← Keep this as project_name
+            "name": project_name
         })
 
         # ── Always-defined variables (never undefined later) ──
@@ -10084,8 +10083,6 @@ async def websocket_endpoint(websocket: WebSocket):
         _pl = user_prompt.lower()
         image_data = {}
         image_metadata = {}
-        
-
 
 
 
@@ -15679,6 +15676,10 @@ async def root():
 
 
 
+
+
+
+
 @app.post("/api/save-project")
 async def save_project(request: Request):
     try:
@@ -15750,13 +15751,11 @@ async def save_project(request: Request):
             
             user_id = db_user.id
             
-            # ========== FIND EXISTING PROJECT - FIXED ==========
-            # ONLY match by explicit ID
-            # DO NOT match by name or prompt - this was the bug!
+            # ========== FIND EXISTING PROJECT ==========
             existing_project = None
             
-            # Only check by incoming ID if it exists and is not "new"
-            if incoming_project_id and incoming_project_id != "new":
+            # 1. Check by incoming ID first
+            if incoming_project_id:
                 stmt = select(Project).where(
                     Project.id == incoming_project_id,
                     Project.user_id == user_id
@@ -15765,16 +15764,25 @@ async def save_project(request: Request):
                 existing_project = result.scalar_one_or_none()
                 if existing_project:
                     print(f"✅ Found existing project by ID: {incoming_project_id}")
-            # ❌ REMOVED: Fall back to name match (this was causing the bug)
-            # No more matching by name - each new project gets a fresh ID
             
-            # Load Cloudinary image URL from DB if available
+            # 2. Fall back to name match for same user
+            if not existing_project and name:
+                stmt = select(Project).where(
+                    Project.name == name,
+                    Project.user_id == user_id
+                )
+                result = await session.execute(stmt)
+                existing_project = result.scalar_one_or_none()
+                if existing_project:
+                    print(f"✅ Found existing project by name: {existing_project.id}")
+
+            # 3. ✅ LOAD CLOUDINARY IMAGE URL FROM DB if not in incoming files
             if not cloudinary_image_url and existing_project and existing_project.cloudinary_image_url:
                 cloudinary_image_url = existing_project.cloudinary_image_url
                 print(f"📸 Loaded Cloudinary image URL from existing project in DB: {cloudinary_image_url[:80]}...")
 
             # Use existing ID or generate new one
-            project_id = existing_project.id if existing_project else incoming_project_id or str(uuid.uuid4())
+            project_id = existing_project.id if existing_project else str(uuid.uuid4())
             is_update = existing_project is not None
             
             print(f"{'🔄 Updating' if is_update else '🆕 Creating'} project: {project_id}")
@@ -16005,8 +16013,6 @@ async def save_project(request: Request):
         import traceback
         traceback.print_exc()
         return {"success": False, "message": str(e)}
-
-
 
 
 

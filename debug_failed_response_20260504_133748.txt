@@ -1,0 +1,2 @@
+{
+  "package.json": "{\n  \"name\": \"horizon-warehouse-gym\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\
