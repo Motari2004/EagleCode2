@@ -2310,6 +2310,75 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
                 )
             
             return footer_html
+        
+        # ========== EXTRACT FOOTER CONTENT ==========
+        footer_html = ""
+        footer_paths = [
+            "components/Footer.tsx",
+            "components/Footer.jsx",
+            "app/components/Footer.tsx",
+        ]
+        
+        for fp in footer_paths:
+            if fp in files:
+                footer_content = files[fp]
+                # Extract the JSX return content
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', footer_content)
+                if match:
+                    footer_html = match.group(1)
+                else:
+                    footer_html = footer_content
+                
+                # Convert JSX to HTML
+                footer_html = re.sub(r'className=', 'class=', footer_html)
+                footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
+                footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                
+                # Convert icons to Font Awesome
+                footer_html = convert_footer_to_fontawesome(footer_html)
+                print(f"✅ Footer extracted and converted to Font Awesome")
+                break
+        
+        # If no footer found, use default
+        if not footer_html:
+            from datetime import datetime
+            footer_html = f'''
+            <footer class="bg-zinc-950 border-t border-zinc-800 py-12">
+                <div class="container mx-auto grid md:grid-cols-4 gap-8 px-4">
+                    <div>
+                        <h4 class="font-bold mb-4">{brand_name}</h4>
+                        <p class="text-sm text-gray-400">Premium lifestyle goods.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4">Links</h4>
+                        <p class="text-sm text-gray-400">Shop | Catalog | Cart</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4">Contact</h4>
+                        <p class="text-sm text-gray-400">info@{brand_name.lower().replace(' ', '')}.com</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <i class="fab fa-instagram text-gray-400 hover:text-purple-400"></i>
+                        <i class="fab fa-facebook text-gray-400 hover:text-purple-400"></i>
+                        <i class="fab fa-twitter text-gray-400 hover:text-purple-400"></i>
+                    </div>
+                </div>
+                <div class="text-center mt-8 text-sm text-gray-600">
+                    © {datetime.now().year} {brand_name}. Crafted with <i class="fas fa-heart text-red-400"></i> in Nairobi
+                </div>
+            </footer>
+            '''
+        
+        # ========== INCLUDE FONT AWESOME CDN IN PREVIEW ==========
+        # Make sure to add this to your final preview HTML <head> section
+        font_awesome_cdn = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
+        
+        # Continue with the rest of your preview generation...
+        # Make sure to add {font_awesome_cdn} to your <head> section
+
+
+
+
 
 
 
@@ -2330,87 +2399,143 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 
 
         def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
-                    """Convert Next.js Navigation component to HTML with Lucide icons"""
-                    
-                    # Extract icon name from imports - IMPROVED PATTERN
-                    icon_match = re.search(r'import\s+\{\s*(\w+)\s*\}\s+from\s+[\'"]lucide-react[\'"]', nav_content)
-                    icon_name = icon_match.group(1) if icon_match else "Dumbbell"
-                    
-                    print(f"🎨 Extracted icon from navigation: {icon_name}")
-                    
-                    # Map icon names to Lucide data-lucide attributes - EXPANDED MAP
-                    icon_map = {
-                        "Dumbbell": "dumbbell",
-                        "ShoppingBag": "shopping-bag",
-                        "ShoppingCart": "shopping-cart",
-                        "Grid": "grid",
-                        "Home": "home",
-                        "Star": "star",
-                        "Heart": "heart",
-                        "User": "user",
-                        "Menu": "menu",
-                        "X": "x",
-                        "Coffee": "coffee",
-                        "GraduationCap": "graduation-cap",
-                        "Hotel": "hotel",
-                        "Cpu": "cpu",
-                        "Sparkles": "sparkles",
-                        "Zap": "zap",
-                    }
-                    
-                    # Get the mapped icon
-                    lucide_icon = icon_map.get(icon_name, "dumbbell")
-                    
-                    print(f"🎨 Using Lucide icon: {lucide_icon} (from {icon_name})")
-                    
-                    # Build navigation HTML with YELLOW styled icons
-                    nav_buttons_html = ""
-                    for href, label in nav_links:
-                        # Map label to icon
-                        label_lower = label.lower()
-                        if "shop" in label_lower:
-                            item_icon = "shopping-bag"
-                        elif "catalog" in label_lower:
-                            item_icon = "grid"
-                        elif "cart" in label_lower:
-                            item_icon = "shopping-cart"
-                        elif "home" in label_lower:
-                            item_icon = "home"
-                        else:
-                            item_icon = "circle"
-                        
-                        nav_buttons_html += f'''
-                        <a href="{href}" class="nav-link flex items-center gap-2 group" data-page="{href.replace('/', '')}">
-                            <i data-lucide="{item_icon}" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
-                            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">{label}</span>
-                        </a>'''
-                    
-                    return f'''
-                    <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
-                        <a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
-                            <i data-lucide="{lucide_icon}" class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
-                            <span class="text-xl font-bold bg-gradient-to-r from-yellow-400 to-purple-500 bg-clip-text text-transparent">{brand_name}</span>
-                        </a>
-                        <div class="hidden md:flex space-x-2">
-                            {nav_buttons_html}
-                        </div>
-                        <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
-                            <i data-lucide="menu" class="w-6 h-6 text-yellow-400"></i>
-                        </button>
-                    </nav>
-                    
-                    <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
-                        {nav_buttons_html.replace('class="nav-link flex items-center gap-2 group"', 'class="mobile-nav-link flex items-center gap-3 group w-full px-4 py-2 rounded-lg hover:bg-white/10"')}
-                    </div>
-                    
-                    <script>
-                        document.getElementById('mobile-menu-button')?.addEventListener('click', function() {{
-                            const menu = document.getElementById('mobile-menu');
-                            if (menu) menu.classList.toggle('hidden');
-                        }});
-                        lucide.createIcons();
-                    </script>
-                    '''
+            """Convert Next.js Navigation component to HTML with Lucide icons"""
+            
+            # Extract icon name from imports - IMPROVED PATTERN
+            icon_match = re.search(r'import\s+\{\s*(\w+)\s*\}\s+from\s+[\'"]lucide-react[\'"]', nav_content)
+            icon_name = icon_match.group(1) if icon_match else "Dumbbell"
+            
+            print(f"🎨 Extracted icon from navigation: {icon_name}")
+            
+            # Map icon names to Lucide data-lucide attributes - EXPANDED MAP
+            icon_map = {
+                # Fitness/Gym icons
+                "Dumbbell": "dumbbell",
+                "DumbbellIcon": "dumbbell",
+                "Barbell": "dumbbell",
+                "Weight": "dumbbell",
+                
+                # Tech icons
+                "Cpu": "cpu",
+                "CpuIcon": "cpu",
+                "Chip": "cpu",
+                "Microchip": "cpu",
+                
+                # People icons
+                "Users": "users",
+                "User": "user",
+                "UserCircle": "user-circle",
+                "UsersRound": "users",
+                
+                # Calendar/Schedule icons
+                "Calendar": "calendar",
+                "CalendarIcon": "calendar",
+                "Clock": "clock",
+                
+                # Achievement icons
+                "Award": "award",
+                "Trophy": "trophy",
+                "Medal": "medal",
+                "Star": "star",
+                
+                # Navigation/Menu icons
+                "Home": "home",
+                "Menu": "menu",
+                "MenuIcon": "menu",
+                "Hamburger": "menu",
+                
+                # Common UI icons
+                "Heart": "heart",
+                "Check": "check",
+                "CheckCircle": "check-circle",
+                "Mail": "mail",
+                "Envelope": "mail",
+                "Phone": "phone",
+                "Call": "phone",
+                "MapPin": "map-pin",
+                "Location": "map-pin",
+                
+                # Business icons
+                "ShoppingBag": "shopping-bag",
+                "ShoppingCart": "shopping-cart",
+                "Coffee": "coffee",
+                "GraduationCap": "graduation-cap",
+                "School": "school",
+                "Hotel": "hotel",
+                "Building": "building",
+                "Utensils": "utensils",
+                "Food": "utensils",
+                
+                # Media icons
+                "Film": "film",
+                "Movie": "film",
+                "Music": "music",
+                "Play": "play",
+                
+                # Creative icons
+                "Sparkles": "sparkles",
+                "Zap": "zap",
+                "Lightning": "zap",
+            }
+            
+            # Get the mapped icon, default to "dumbbell" for gym/fitness projects
+            lucide_icon = icon_map.get(icon_name, "dumbbell")
+            
+            # Also check the brand name for context (if icon not found, infer from project type)
+            if lucide_icon == "dumbbell" and icon_name != "Dumbbell":
+                # Check if this is likely a gym/fitness project
+                gym_keywords = ["fitness", "gym", "athletic", "training", "workout", "strength", "athletics"]
+                if any(keyword in brand_name.lower() for keyword in gym_keywords):
+                    lucide_icon = "dumbbell"
+                    print(f"   🔍 Inferred 'dumbbell' from brand name: {brand_name}")
+                # Check if this is a coffee/cafe project
+                elif any(keyword in brand_name.lower() for keyword in ["coffee", "cafe", "brew", "roast", "bean"]):
+                    lucide_icon = "coffee"
+                    print(f"   🔍 Inferred 'coffee' from brand name: {brand_name}")
+                # Check if this is a school/academy
+                elif any(keyword in brand_name.lower() for keyword in ["academy", "school", "college", "university", "campus"]):
+                    lucide_icon = "graduation-cap"
+                    print(f"   🔍 Inferred 'graduation-cap' from brand name: {brand_name}")
+                # Check if this is a hotel/resort
+                elif any(keyword in brand_name.lower() for keyword in ["hotel", "resort", "lodge", "inn", "suites"]):
+                    lucide_icon = "hotel"
+                    print(f"   🔍 Inferred 'hotel' from brand name: {brand_name}")
+            
+            print(f"🎨 Using Lucide icon: {lucide_icon} (from {icon_name})")
+            
+            # Build navigation HTML with Lucide icons
+            nav_buttons_html = ""
+            for href, label in nav_links:
+                nav_buttons_html += f'''
+                <a href="{href}" class="hover:text-purple-400 transition-colors">{label}</a>'''
+            
+            return f'''
+            <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
+                <a href="/" class="flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" onclick="handleBrandClick(event)">
+                    <i data-lucide="{lucide_icon}" class="w-6 h-6 text-purple-400"></i>
+                    {brand_name}
+                </a>
+                <div class="hidden md:flex space-x-6">
+                    {nav_buttons_html}
+                </div>
+                <button id="mobile-menu-button" class="md:hidden">
+                    <i data-lucide="menu" class="w-6 h-6 text-white"></i>
+                </button>
+            </nav>
+            
+            <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+                {nav_buttons_html.replace('class="hover:text-purple-400 transition-colors"', 'class="block px-4 py-2 hover:bg-purple-500/20 rounded-lg transition-colors"')}
+            </div>
+            
+            <script>
+                document.getElementById('mobile-menu-button')?.addEventListener('click', function() {{
+                    const menu = document.getElementById('mobile-menu');
+                    if (menu) menu.classList.toggle('hidden');
+                }});
+                lucide.createIcons();
+            </script>
+            '''
+
 
 
 
@@ -2590,79 +2715,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
 
 
-
-
-
-
-
-
-
-
-        
-        # ========== EXTRACT FOOTER CONTENT ==========
-        footer_html = ""
-        footer_paths = [
-            "components/Footer.tsx",
-            "components/Footer.jsx",
-            "app/components/Footer.tsx",
-        ]
-        
-        for fp in footer_paths:
-            if fp in files:
-                footer_content = files[fp]
-                # Extract the JSX return content
-                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', footer_content)
-                if match:
-                    footer_html = match.group(1)
-                else:
-                    footer_html = footer_content
-                
-                # Convert JSX to HTML
-                footer_html = re.sub(r'className=', 'class=', footer_html)
-                footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
-                footer_html = re.sub(r'</Link>', '</a>', footer_html)
-                
-                # Convert icons to Font Awesome
-                footer_html = convert_footer_to_fontawesome(footer_html)
-                print(f"✅ Footer extracted and converted to Font Awesome")
-                break
-        
-        # If no footer found, use default
-        if not footer_html:
-            from datetime import datetime
-            footer_html = f'''
-            <footer class="bg-zinc-950 border-t border-zinc-800 py-12">
-                <div class="container mx-auto grid md:grid-cols-4 gap-8 px-4">
-                    <div>
-                        <h4 class="font-bold mb-4">{brand_name}</h4>
-                        <p class="text-sm text-gray-400">Premium lifestyle goods.</p>
-                    </div>
-                    <div>
-                        <h4 class="font-bold mb-4">Links</h4>
-                        <p class="text-sm text-gray-400">Shop | Catalog | Cart</p>
-                    </div>
-                    <div>
-                        <h4 class="font-bold mb-4">Contact</h4>
-                        <p class="text-sm text-gray-400">info@{brand_name.lower().replace(' ', '')}.com</p>
-                    </div>
-                    <div class="flex gap-4">
-                        <i class="fab fa-instagram text-gray-400 hover:text-purple-400"></i>
-                        <i class="fab fa-facebook text-gray-400 hover:text-purple-400"></i>
-                        <i class="fab fa-twitter text-gray-400 hover:text-purple-400"></i>
-                    </div>
-                </div>
-                <div class="text-center mt-8 text-sm text-gray-600">
-                    © {datetime.now().year} {brand_name}. Crafted with <i class="fas fa-heart text-red-400"></i> in Nairobi
-                </div>
-            </footer>
-            '''
-        
-        # ========== INCLUDE FONT AWESOME CDN IN PREVIEW ==========
-        # Make sure to add this to your final preview HTML <head> section
-        font_awesome_cdn = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
-        
-        # Continue with the rest of your preview generation...
-        # Make sure to add {font_awesome_cdn} to your <head> section
 
 
 
@@ -3348,250 +3400,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
         
         
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-         # ========== FORCE EXTRACT FAQ AND STATS FROM SOURCE FILES ==========
-        homepage_source = files.get("app/page.tsx", "")
-        faq_component_source = files.get("components/FAQ.tsx", "")
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-         # ========== STRONG FAQ EXTRACTION - HANDLES ALL FORMATS ==========
-        faq_html = ""
-        stats_html = ""
-        
-        # Combine all source files to search
-        all_source = homepage_source + "\n" + faq_component_source
-        
-        # METHOD 1: Extract from inline map array (most common in your code)
-        # Pattern: {[ { q: "text", a: "text" }, { q: "text", a: "text" } ].map(...)}
-        inline_map_pattern = r'\{\s*\[\s*\{\s*(?:q|question):\s*["\']([^"\']+)["\']\s*,\s*(?:a|answer):\s*["\']([^"\']+)["\']\s*\}'
-        inline_items = re.findall(inline_map_pattern, homepage_source)
-        
-        if inline_items:
-            print(f"✅ Found {len(inline_items)} FAQ items from inline map")
-            for question, answer in inline_items:
-                faq_html += f'''
-            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
-                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
-                    <span class="font-semibold text-white">{question}</span>
-                    <i class="fas fa-plus text-purple-400"></i>
-                </button>
-                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
-                    {answer}
-                </div>
-            </div>'''
-        
-        # METHOD 2: Extract from React component state array
-        # Pattern: const [openFaq, setOpenFaq] = useState... and array defined above
-        if not faq_html:
-            # Look for faqs array with q/a properties
-            const_faq_pattern = r'(?:const|let)\s+faqs\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-            const_match = re.search(const_faq_pattern, all_source, re.DOTALL)
-            
-            if const_match:
-                faq_content = const_match.group(1)
-                # Match both { q: "...", a: "..." } and { question: "...", answer: "..." }
-                item_pattern = r'\{\s*(?:q|question):\s*["\']([^"\']+)["\']\s*,\s*(?:a|answer):\s*["\']([^"\']+)["\']\s*\}'
-                faq_items = re.findall(item_pattern, faq_content)
-                
-                if faq_items:
-                    for question, answer in faq_items:
-                        faq_html += f'''
-            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
-                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
-                    <span class="font-semibold text-white">{question}</span>
-                    <i class="fas fa-plus text-purple-400"></i>
-                </button>
-                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
-                    {answer}
-                </div>
-            </div>'''
-                    print(f"✅ Extracted {len(faq_items)} FAQ items from const faqs array")
-        
-        # METHOD 3: Extract from JSX directly (for inline FAQ without array variable)
-        if not faq_html:
-            # Look for FAQ items in the JSX structure
-            jsx_faq_pattern = r'<div[^>]*className="[^"]*faq[^"]*"[^>]*>.*?<span[^>]*>([^<]+)</span>.*?<p[^>]*>([^<]+)</p>'
-            jsx_matches = re.findall(jsx_faq_pattern, homepage_source, re.DOTALL)
-            
-            if jsx_matches:
-                for question, answer in jsx_matches:
-                    faq_html += f'''
-            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
-                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
-                    <span class="font-semibold text-white">{question.strip()}</span>
-                    <i class="fas fa-plus text-purple-400"></i>
-                </button>
-                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
-                    {answer.strip()}
-                </div>
-            </div>'''
-                    print(f"✅ Extracted {len(jsx_matches)} FAQ items from JSX structure")
-        
-        # METHOD 4: Extract as last resort using simple search
-        if not faq_html:
-            # Search for patterns like "question:" and "answer:" in the source
-            simple_pattern = r'(?:q|question)[:\s]+["\']([^"\']+)["\']\s*,\s*(?:a|answer)[:\s]+["\']([^"\']+)["\']'
-            simple_matches = re.findall(simple_pattern, all_source, re.IGNORECASE)
-            
-            if simple_matches:
-                print(f"✅ Found {len(simple_matches)} FAQ items using simple pattern")
-                for question, answer in simple_matches:
-                    faq_html += f'''
-            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
-                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
-                    <span class="font-semibold text-white">{question}</span>
-                    <i class="fas fa-plus text-purple-400"></i>
-                </button>
-                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
-                    {answer}
-                </div>
-            </div>'''
-        
-        if not faq_html:
-            faq_html = '<p class="text-gray-400 text-center">No FAQ items found</p>'
-            print("⚠️ No FAQ section found in source")
-        else:
-            print(f"📊 Total FAQ items extracted: {faq_html.count('faq-btn')}")
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-         # ========== EXTRACT TESTIMONIALS FROM SOURCE ==========
-        testimonials_html = ""
-        
-        # Check for testimonials array in homepage
-        testimonials_pattern = r'const\s+testimonials\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-        testimonials_match = re.search(testimonials_pattern, homepage_source, re.DOTALL)
-        
-        if not testimonials_match:
-            # Also check if testimonials are defined as a variable
-            alt_pattern = r'const\s+testimonials\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-            testimonials_match = re.search(alt_pattern, homepage_source, re.DOTALL)
-        
-        if testimonials_match:
-            testimonials_content = testimonials_match.group(1)
-            
-            # Try format 1: { name: "...", role: "...", quote: "..." }
-            pattern1 = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*role:\s*["\']([^"\']+)["\']\s*,\s*quote:\s*["\']([^"\']+)["\']\s*\}'
-            testimonial_items = re.findall(pattern1, testimonials_content)
-            
-            # If not found, try format 2: { name: "...", text: "..." } (no role)
-            if not testimonial_items:
-                pattern2 = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*text:\s*["\']([^"\']+)["\']\s*\}'
-                items = re.findall(pattern2, testimonials_content)
-                for name, text in items:
-                    testimonial_items.append((name, "", text))
-                print(f"📝 Found testimonials without roles")
-            
-            if testimonial_items:
-                for name, role, quote in testimonial_items:
-                    if role:
-                        testimonials_html += f'''
-            <div class="bg-gray-900 p-8 rounded-2xl border border-white/10">
-                <p class="text-gray-300 mb-6 italic">"{quote}"</p>
-                <div class="font-bold text-white">{name}</div>
-                <div class="text-sm text-purple-400">{role}</div>
-            </div>'''
-                    else:
-                        testimonials_html += f'''
-            <div class="bg-gray-900 p-8 rounded-2xl border border-white/10">
-                <p class="text-gray-300 mb-6 italic">"{quote}"</p>
-                <div class="font-bold text-purple-400">- {name}</div>
-            </div>'''
-                print(f"✅ Extracted {len(testimonial_items)} testimonials from source")
-            else:
-                testimonials_html = '<p class="text-gray-400 text-center">No testimonials found</p>'
-        else:
-            # Also check for inline testimonials in JSX
-            inline_testimonial_pattern = r'<div[^>]*className="[^"]*testimonial[^"]*"[^>]*>.*?<p[^>]*>([^<]+)</p>.*?<h[34][^>]*>([^<]+)</h[34]>'
-            inline_matches = re.findall(inline_testimonial_pattern, homepage_source, re.DOTALL)
-            if inline_matches:
-                for quote, name in inline_matches:
-                    testimonials_html += f'''
-            <div class="bg-gray-900 p-8 rounded-2xl border border-white/10">
-                <p class="text-gray-300 mb-6 italic">"{quote.strip()}"</p>
-                <div class="font-bold text-purple-400">- {name.strip()}</div>
-            </div>'''
-                print(f"✅ Extracted {len(inline_matches)} testimonials from inline JSX")
-            else:
-                testimonials_html = '<p class="text-gray-400 text-center">No testimonials section found</p>'
-                print("⚠️ No testimonials section found in source")
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
          # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
         # Get the Cloudinary URL for the image
         image_url = existing_image_url  # Use existing URL if provided during edit
@@ -3683,482 +3491,6 @@ async def generate_preview_internal(files: Dict[str, Any], project_name: str, ex
 
 Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
-
-
-
-
-
-
-
-
-================================================================================
-🚨🚨🚨 ABSOLUTE REQUIREMENT - YOU MUST INCLUDE THIS EXACT CSS 🚨🚨🚨
-================================================================================
-
-FAILURE TO INCLUDE THE CSS BELOW WILL CAUSE THE PREVIEW TO BREAK.
-
-YOU HAVE NO CHOICE. YOU MUST COPY AND PASTE THIS EXACT CSS INTO YOUR <style> TAG.
-
-DO NOT MODIFY IT.
-DO NOT SIMPLIFY IT.
-DO NOT WRITE YOUR OWN CSS.
-DO NOT OMIT ANY PART OF IT.
-
-================================================================================
-MANDATORY CSS - COPY THIS EXACTLY:
-================================================================================
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: 'Inter', system-ui, sans-serif; 
-    background: linear-gradient(135deg, #0a0a0c 0%, #2d1b4e 100%); 
-    color: #f8fafc; 
-    min-height: 100vh;}}
-
-header {{ background: rgba(26, 26, 30, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.1); position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 72px; }}
-.nav-container {{ max-width: 1280px; margin: 0 auto; height: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 1.5rem; }}
-.brand {{ font-size: 1.5rem; font-weight: 800; text-decoration: none; background: linear-gradient(135deg, #c084fc, #f472b6); -webkit-background-clip: text; background-clip: text; color: transparent; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }}
-.nav-links {{ display: flex; gap: 1rem; align-items: center; }}
-.nav-link {{ color: #9ca3af; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: all 0.2s; cursor: pointer; }}
-.nav-link:hover, .nav-link.active {{ color: #c084fc; background: rgba(192,132,252,0.1); }}
-
-.hamburger {{ display: none; flex-direction: column; gap: 4px; background: transparent; border: none; cursor: pointer; padding: 0.5rem; }}
-.hamburger span {{ width: 25px; height: 3px; background: #9ca3af; border-radius: 2px; transition: all 0.3s ease; }}
-.hamburger.active span:nth-child(1) {{ transform: rotate(45deg) translate(5px, 5px); }}
-.hamburger.active span:nth-child(2) {{ opacity: 0; }}
-.hamburger.active span:nth-child(3) {{ transform: rotate(-45deg) translate(5px, -5px); }}
-
-.mobile-menu {{ position: fixed; top: 72px; right: -100%; width: 280px; height: calc(100vh - 72px); background: #1a1a1e; z-index: 200; transition: right 0.3s ease; padding: 24px; border-left: 1px solid rgba(255,255,255,0.1); }}
-.mobile-menu.active {{ right: 0; }}
-.mobile-overlay {{ position: fixed; top: 72px; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 199; display: none; }}
-.mobile-overlay.active {{ display: block; }}
-.mobile-nav-link {{ display: block; padding: 12px 16px; color: #9ca3af; text-decoration: none; border-radius: 0.5rem; margin-bottom: 8px; transition: all 0.2s; cursor: pointer; }}
-.mobile-nav-link:hover, .mobile-nav-link.active {{ color: #c084fc; background: rgba(192,132,252,0.1); }}
-
-.page {{ display: none; min-height: calc(100vh - 72px); padding-top: 88px; }}
-.page.active {{ display: block; }}
-.container {{ max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }}
-
-@media (max-width: 768px) {{ .nav-links {{ display: none; }} .hamburger {{ display: flex; }} }}
-
-
-
-
-
-
-
-/* Yellow Icon Styles for Navigation */
-.nav-link i, 
-.mobile-nav-link i {{
-    filter: drop-shadow(0 0 3px rgba(234, 179, 8, 0.5));
-    transition: all 0.3s ease;
-}}
-
-.nav-link:hover i, 
-.mobile-nav-link:hover i {{
-    filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.8));
-    transform: scale(1.1);
-}}
-
-.nav-link:hover span, 
-.mobile-nav-link:hover span {{
-    color: #eab308;
-}}
-
-.nav-link.active i, 
-.mobile-nav-link.active i {{
-    color: #fbbf24;
-    filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.8));
-}}
-
-.nav-link.active span, 
-.mobile-nav-link.active span {{
-    color: #fbbf24;
-}}
-
-.brand i {{
-    filter: drop-shadow(0 0 5px rgba(234, 179, 8, 0.5));
-}}
-
-.brand:hover i {{
-    transform: scale(1.05);
-    filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.8));
-}}
-</style>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 CRITICAL: PROPER CONTAINER STRUCTURE - MUST FOLLOW EXACTLY 🚨
-================================================================================
-
-You MUST wrap ALL section content in a proper container with mx-auto for centering.
-
-================================================================================
-HERO SECTION - CORRECT STRUCTURE (MUST USE THIS EXACTLY):
-================================================================================
-
-```html
-<section class="relative h-screen flex items-center justify-center overflow-hidden">
-    <!-- Background Image -->
-    <img src="[IMAGE_URL]" alt="Hero" class="absolute inset-0 w-full h-full object-cover" />
-    
-    <!-- Overlay -->
-    <div class="absolute inset-0 bg-black/50"></div>
-    
-    <!-- Content Container - THIS IS THE KEY -->
-    <div class="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <!-- ALL hero content goes INSIDE this div -->
-        <span class="inline-block px-4 py-1 rounded-full bg-purple-500/20 text-purple-300 text-sm mb-4">BADGE TEXT</span>
-        <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">[BRAND_NAME]</h1>
-        <p class="text-lg md:text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[DESCRIPTION]</p>
-        <div class="flex gap-4 justify-center">
-            <a href="/shop" class="btn">Shop Now →</a>
-            <a href="/catalog" class="btn">View Collection</a>
-        </div>
-    </div>
-</section>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 NAVIGATION & MOBILE MENU CSS REQUIREMENTS - MUST INCLUDE EXACTLY 🚨
-================================================================================
-
-You MUST include these COMPLETE navigation styles in your <style> tag:
-
-```css
-/* ========== HEADER & NAVIGATION ========== */
-header {{
-    background: rgba(26, 26, 30, 0.95);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    height: 72px;
-}}
-
-.nav-container {{
-    max-width: 1280px;
-    margin: 0 auto;
-    height: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 1.5rem;
-}}
-
-.brand {{
-    font-size: 1.5rem;
-    font-weight: 800;
-    text-decoration: none;
-    background: linear-gradient(135deg, #c084fc, #f472b6);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-}}
-
-.nav-links {{
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}}
-
-.nav-link {{
-    color: #9ca3af;
-    text-decoration: none;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    transition: all 0.2s;
-    cursor: pointer;
-}}
-
-.nav-link:hover,
-.nav-link.active {{
-    color: #c084fc;
-    background: rgba(192, 132, 252, 0.1);
-}}
-
-/* ========== MOBILE MENU ========== */
-.hamburger {{
-    display: none;
-    flex-direction: column;
-    gap: 4px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0.5rem;
-}}
-
-.hamburger span {{
-    width: 25px;
-    height: 3px;
-    background: #9ca3af;
-    border-radius: 2px;
-    transition: all 0.3s ease;
-}}
-
-/* Hamburger animation to X when open */
-.hamburger.active span:nth-child(1) {{
-    transform: rotate(45deg) translate(5px, 5px);
-}}
-
-.hamburger.active span:nth-child(2) {{
-    opacity: 0;
-}}
-
-.hamburger.active span:nth-child(3) {{
-    transform: rotate(-45deg) translate(5px, -5px);
-}}
-
-.mobile-menu {{
-    position: fixed;
-    top: 72px;
-    right: -100%;
-    width: 280px;
-    height: calc(100vh - 72px);
-    background: #1a1a1e;
-    z-index: 200;
-    transition: right 0.3s ease;
-    padding: 24px;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-}}
-
-.mobile-menu.active {{
-    right: 0;
-}}
-
-.mobile-overlay {{
-    position: fixed;
-    top: 72px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 199;
-    display: none;
-}}
-
-.mobile-overlay.active {{
-    display: block;
-}}
-
-.mobile-nav-link {{
-    display: block;
-    padding: 12px 16px;
-    color: #9ca3af;
-    text-decoration: none;
-    border-radius: 0.5rem;
-    margin-bottom: 8px;
-    transition: all 0.2s;
-    cursor: pointer;
-}}
-
-.mobile-nav-link:hover,
-.mobile-nav-link.active {{
-    color: #c084fc;
-    background: rgba(192, 132, 252, 0.1);
-}}
-
-/* Responsive */
-@media (max-width: 768px) {{
-    .nav-links {{
-        display: none;
-    }}
-    .hamburger {{
-        display: flex;
-    }}
-}}
-
-
-
-
-
-
-================================================================================
-🚨 AI INSTRUCTIONS FOR HTML PREVIEW GENERATION 🚨
-================================================================================
-
-You are generating a COMPLETE HTML preview from Next.js React components.
-
-================================================================================
-CRITICAL RULES FOR NAVIGATION:
-================================================================================
-
-1. Navigation links MUST NOT have inline onclick attributes:
-   ✅ CORRECT: <a href="#" class="nav-link" data-page="courses">Courses</a>
-   ❌ WRONG: <a href="#" onclick="handleNavClick()" data-page="courses">Courses</a>
-
-2. The JavaScript handles all clicks via event listeners - do NOT add onclick to nav links
-
-3. Each page div MUST have id="page_pagename" where pagename matches data-page attribute
-
-4. Active page MUST have class="active", others should not
-
-
-
-================================================================================
-EXACT HOME PAGE CONTENT - CONVERT THIS JSX TO HTML (PRESERVE EVERYTHING):
-================================================================================
-{home_content}
-
-================================================================================
-EXACT FAQ CONTENT - USE THIS EXACT HTML (DO NOT MODIFY):
-================================================================================
-{faq_html}
-
-================================================================================
-EXACT STATS CONTENT - USE THIS EXACT HTML (DO NOT MODIFY):
-================================================================================
-{faq_html}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 CRITICAL: FAQ SECTION - PRESERVE ALL EXTRACTED ITEMS 🚨
-================================================================================
-
-You have been provided with FAQ content extracted from the source file below.
-The number of FAQ items will vary based on what exists in the source.
-
-EXTRACTED FAQ CONTENT (use ALL items below - do not add or remove):
-================================================================================
-{faq_html if faq_html else 'No FAQ items found in source'}
-================================================================================
-
-CRITICAL RULES FOR FAQ:
-1. Use EVERY FAQ item in the HTML above - preserve ALL questions and answers
-2. DO NOT add new FAQ items that don't exist
-3. DO NOT remove any FAQ items
-4. Each FAQ item MUST have working accordion toggle functionality
-5. The answer must be hidden initially and shown when clicking the question
-
-If there are 4 items in the extracted content → generate 4 items in HTML
-If there are 3 items → generate 3 items
-If there are 2 items → generate 2 items
-If there is 1 item → generate 1 item
-If there are 0 items → skip the FAQ section entirely
-
-================================================================================
-EXTRACTED FAQ HTML (USE THESE EXACT QUESTIONS AND ANSWERS):
-================================================================================
-{faq_html}
-
-
-
-
-
-
-
-
-
-================================================================================
-EXACT TESTIMONIALS CONTENT - USE THIS EXACT HTML:
-================================================================================
-{testimonials_html}
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 PREVIEW GENERATION INSTRUCTION - INCLUDE ALL SECTIONS FROM SOURCE FILES 🚨
-================================================================================
-
-
-Generate a complete HTML preview that includes EVERY section found in the source files.
-
-CRITICAL RULES:
-1. **ALWAYS include** the Navigation component (from components/Navigation.tsx)
-2. **ALWAYS include** the Hero section (from app/page.tsx)
-3. **ALWAYS include** the Features section (from app/page.tsx) - if present
-4. **ALWAYS include** the Testimonials section (from app/page.tsx) - if present
-5. **ALWAYS include** the Stats section (from app/page.tsx) - if present
-6. **ALWAYS include** the FAQ section (from app/page.tsx) - if present
-7. **ALWAYS include** the Footer (from components/Footer.tsx)
-
-For EACH section found in the source files:
-- Copy the EXACT content (same text, same images, same layout)
-- Convert React components to HTML
-- Preserve all styling classes
-- Keep the same order as the original page
-
-If a section does NOT exist in the source files → DO NOT generate it
-
-The final HTML preview should be a TRUE representation of the Next.js project, containing ALL sections that exist in the original code.
-
-================================================================================
-
-
-
-
-
-
-
-
-
-
-================================================================================
-EXACT NAVIGATION HTML - USE THIS EXACTLY (DO NOT MODIFY):
-================================================================================
-{navigation_html}
 
 
 
@@ -4396,14 +3728,6 @@ DESIGN REQUIREMENTS:
 
 
 
-
-
-
-
-
-
-
-
 ================================================================================
 COMPLETE JAVASCRIPT:
 ================================================================================
@@ -4443,93 +3767,6 @@ COMPLETE JAVASCRIPT:
             hamburger.classList.toggle('active');
         }}
     }}
-    
-    
-    
-    
-    
-    
-    
-
-    // ========== FAQ ACCORDION FUNCTIONS ==========
-    function initFaqAccordion() {{
-        const faqButtons = document.querySelectorAll('.faq-btn, .faq-question');
-        faqButtons.forEach(button => {{
-            button.removeEventListener('click', handleFaqClick);
-            button.addEventListener('click', handleFaqClick);
-        }});
-    }}
-    
-    function handleFaqClick(event) {{
-        const button = event.currentTarget;
-        const answer = button.nextElementSibling;
-        const icon = button.querySelector('i');
-        if (answer && answer.classList.contains('hidden')) {{
-            answer.classList.remove('hidden');
-            if (icon) {{
-                icon.classList.remove('fa-plus');
-                icon.classList.add('fa-minus');
-            }}
-        }} else if (answer) {{
-            answer.classList.add('hidden');
-            if (icon) {{
-                icon.classList.remove('fa-minus');
-                icon.classList.add('fa-plus');
-            }}
-        }}
-    }}
-    
-
-    function initScrollToTop() {{
-        const scrollBtn = document.getElementById('scrollToTop');
-        if (!scrollBtn) return;
-        window.addEventListener('scroll', () => {{
-            if (window.scrollY > 500) {{
-                scrollBtn.classList.remove('opacity-0', 'invisible');
-                scrollBtn.classList.add('opacity-100', 'visible');
-            }} else {{
-                scrollBtn.classList.add('opacity-0', 'invisible');
-                scrollBtn.classList.remove('opacity-100', 'visible');
-            }}
-        }});
-        scrollBtn.addEventListener('click', () => {{
-            window.scrollTo({{ top: 0, behavior: 'smooth' }});
-        }});
-    }}
-    
-    // ========== NEWSLETTER FORM HANDLER ==========
-    function initNewsletterForm() {{
-        const newsletterForm = document.getElementById('newsletterForm');
-        if (newsletterForm) {{
-            newsletterForm.addEventListener('submit', (e) => {{
-                e.preventDefault();
-                const emailInput = newsletterForm.querySelector('input[type="email"]');
-                if (emailInput && emailInput.value) {{
-                    alert(`Thank you for subscribing with: ${{emailInput.value}}`);
-                    emailInput.value = '';
-                }}
-            }});
-        }}
-    }}
-
-    
-    
-    
-    function toggleMobileMenu() {{
-        const mobileMenu = document.getElementById('mobileMenu');
-        const mobileOverlay = document.getElementById('mobileOverlay');
-        const hamburger = document.querySelector('.hamburger');
-        
-        if (mobileMenu) mobileMenu.classList.toggle('active');
-        if (mobileOverlay) mobileOverlay.classList.toggle('active');
-        if (hamburger) hamburger.classList.toggle('active');
-    }}
-    
-    
-    
-    
-    
-    
     
     function closeMobileMenu() {{
         const mobileMenu = document.getElementById('mobileMenu');
@@ -5015,54 +4252,6 @@ footer {{
     background: #9ca3af;
     border-radius: 2px;
     transition: all 0.3s ease;
-}}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ========== FAQ ACCORDION STYLES ========== */
-.faq-answer {{
-    transition: all 0.3s ease;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-}}
-
-.faq-answer.hidden {{
-    display: none;
-}}
-
-.faq-btn, .faq-question {{
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: transparent;
-    width: 100%;
-    text-align: left;
-}}
-
-.faq-btn:hover, .faq-question:hover {{
-    background: rgba(255, 255, 255, 0.05);
-}}
-
-.faq-btn i, .faq-question i {{
-    transition: transform 0.2s ease;
 }}
 
 
@@ -5996,755 +5185,6 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 
-================================================================================
-🚨 FEATURES SECTION - MUST HAVE HEADING 🚨
-================================================================================
-
-The Features section MUST include a heading "Features" before the grid.
-
-REQUIRED STRUCTURE:
-```html
-<section className="py-20 px-4">
-  <div className="container mx-auto">
-    <h2 className="text-4xl font-bold text-center mb-12 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-      Features
-    </h2>
-    <div className="grid md:grid-cols-3 gap-8">
-      <!-- Feature cards here -->
-    </div>
-  </div>
-</section>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 FAQ SECTION REQUIREMENTS - MUST FOLLOW EXACTLY 🚨
-================================================================================
-
-When generating the FAQ section, you MUST use this EXACT pattern:
-
-1. **Define FAQ array at top of component:**
-```tsx
-const faqs = [
-  { q: "Question 1?", a: "Answer 1" },
-  { q: "Question 2?", a: "Answer 2" },
-  { q: "Question 3?", a: "Answer 3" }
-];
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 COMPLETE WEBSITE SECTIONS - MUST GENERATE ALL 7 SECTIONS 🚨
-================================================================================
-
-Generate a COMPLETE, PREMIUM Next.js 14 home page (app/page.tsx) with ALL 7 sections below.
-EACH SECTION MUST HAVE REAL CONTENT - NO PLACEHOLDERS OR EMPTY DIVS.
-
-================================================================================
-SECTION 1: HERO SECTION - FULL SCREEN WITH IMAGE
-================================================================================
-
-REQUIRED STRUCTURE:
-```tsx
-<section className="relative h-screen flex items-center justify-center overflow-hidden">
-  <img 
-    src="/images/image_1.jpg" 
-    alt="Hero background" 
-    className="absolute inset-0 w-full h-full object-cover" 
-    onError={(e) => { 
-      e.currentTarget.style.display = 'none'; 
-      e.currentTarget.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-950', 'to-pink-950'); 
-    }} 
-  />
-  <div className="absolute inset-0 bg-black/50" />
-  <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-    <span className="inline-block px-4 py-1 rounded-full bg-purple-500/20 text-purple-300 text-sm mb-4 backdrop-blur-sm">LIMITED EDITION</span>
-    <h1 className="text-5xl md:text-7xl font-bold text-white mb-6">[BRAND NAME]</h1>
-    <p className="text-lg md:text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[UNIQUE TAGLINE - 10-15 WORDS DESCRIBING THE BRAND]</p>
-    <div className="flex gap-4 justify-center">
-      <Link href="/shop" className="px-8 py-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold hover:scale-105 transition-all duration-300 shadow-lg shadow-purple-500/25">
-        Shop Now →
-      </Link>
-      <Link href="/catalog" className="px-8 py-3 rounded-full border border-white/30 text-white font-semibold hover:bg-white/10 transition-all duration-300">
-        View Collection
-      </Link>
-    </div>
-  </div>
-</section>
-
-
-
-================================================================================
-SECTION 2: FEATURES SECTION - 4 CARDS WITH ICONS
-================================================================================
-
-REQUIRED STRUCTURE:
-'''tsx
-<section className="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
-  <div className="container mx-auto">
-    <div className="text-center mb-12">
-      <span className="text-purple-400 text-sm uppercase tracking-wider">Why Choose Us</span>
-      <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        Premium Features
-      </h2>
-      <p className="text-gray-400 mt-4 max-w-2xl mx-auto">Experience excellence with our premium services</p>
-    </div>
-    
-    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {[
-        { icon: Truck, title: "Free Shipping", desc: "Free delivery on orders over $50", color: "from-blue-500 to-cyan-500" },
-        { icon: ShieldCheck, title: "Secure Payment", desc: "100% secure transactions", color: "from-green-500 to-emerald-500" },
-        { icon: Headphones, title: "24/7 Support", desc: "Round-the-clock assistance", color: "from-purple-500 to-pink-500" },
-        { icon: Star, title: "Premium Quality", desc: "Handpicked premium products", color: "from-yellow-500 to-orange-500" }
-      ].map((feature, idx) => (
-        <div key={idx} className="group relative bg-gradient-to-br from-white/5 to-white/3 rounded-2xl p-6 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1">
-          <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${feature.color} flex items-center justify-center mb-4 shadow-lg`}>
-            <feature.icon className="w-7 h-7 text-white" />
-          </div>
-          <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
-          <p className="text-gray-400 text-sm">{feature.desc}</p>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-
-
-================================================================================
-SECTION 3: TESTIMONIALS SECTION - 3 UNIQUE REVIEWS
-================================================================================
-
-REQUIRED STRUCTURE:
-'''tsx
-<section className="py-20 px-4">
-  <div className="container mx-auto">
-    <div className="text-center mb-12">
-      <span className="text-purple-400 text-sm uppercase tracking-wider">Testimonials</span>
-      <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        What Our Customers Say
-      </h2>
-    </div>
-    
-    <div className="grid md:grid-cols-3 gap-6">
-      {[
-        { quote: "Absolutely love this brand! The quality is exceptional and customer service is top-notch.", name: "Sarah Johnson", role: "Verified Buyer", rating: 5, initial: "S" },
-        { quote: "Fast shipping and beautiful packaging. Will definitely order again!", name: "Michael Chen", role: "Repeat Customer", rating: 5, initial: "M" },
-        { quote: "Great products at reasonable prices. The attention to detail is impressive.", name: "Emily Rodriguez", role: "Happy Customer", rating: 4, initial: "E" }
-      ].map((testimonial, idx) => (
-        <div key={idx} className="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl p-6 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300">
-          <div className="flex gap-1 mb-4">
-            {[...Array(5)].map((_, i) => (
-              <Star key={i} className={`w-4 h-4 ${i < testimonial.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />
-            ))}
-          </div>
-          <p className="text-gray-300 mb-6 italic">"{testimonial.quote}"</p>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <span className="text-white font-bold">{testimonial.initial}</span>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white">{testimonial.name}</h4>
-              <p className="text-xs text-purple-400">{testimonial.role}</p>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-
-
-
-================================================================================
-SECTION 4: STATS SECTION - 4 IMPRESSIVE NUMBERS
-================================================================================
-
-REQUIRED STRUCTURE:
-'''tsx
-<section className="py-20 px-4 bg-gradient-to-r from-purple-950/50 to-pink-950/50">
-  <div className="container mx-auto">
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-      {[
-        { number: "5000+", label: "Happy Customers", icon: "😊" },
-        { number: "50+", label: "Countries Served", icon: "🌍" },
-        { number: "10K+", label: "Products Sold", icon: "📦" },
-        { number: "24/7", label: "Customer Support", icon: "💬" }
-      ].map((stat, idx) => (
-        <div key={idx} className="text-center group">
-          <div className="text-4xl mb-2">{stat.icon}</div>
-          <div className="text-3xl md:text-4xl font-bold text-white mb-2">{stat.number}</div>
-          <p className="text-gray-400 text-sm">{stat.label}</p>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-
-
-
-
-
-
-
-================================================================================
-SECTION 5: FAQ SECTION - ACCORDION WITH 4 QUESTIONS
-================================================================================
-
-REQUIRED STRUCTURE (MUST HAVE 'use client'):
-'''tsx
-'use client';
-
-import { useState } from 'react';
-import { Plus, Minus } from 'lucide-react';
-
-export default function FAQ() {
-  const [openIndex, setOpenIndex] = useState(null);
-
-  const faqs = [
-    { q: "What is your shipping policy?", a: "We offer free shipping on orders over $50. Standard shipping takes 3-5 business days." },
-    { q: "How do I track my order?", a: "Once your order ships, you'll receive a tracking number via email." },
-    { q: "What is your return policy?", a: "We accept returns within 30 days of purchase for a full refund." },
-    { q: "Do you ship internationally?", a: "Yes, we ship to over 50 countries worldwide." }
-  ];
-
-  return (
-    <section className="py-20 px-4">
-      <div className="container mx-auto max-w-3xl">
-        <div className="text-center mb-12">
-          <span className="text-purple-400 text-sm uppercase tracking-wider">FAQ</span>
-          <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            Frequently Asked Questions
-          </h2>
-        </div>
-        
-        <div className="space-y-4">
-          {faqs.map((faq, idx) => (
-            <div key={idx} className="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
-              <button
-                onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
-                className="w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors"
-              >
-                <span className="font-semibold text-white">{faq.q}</span>
-                {openIndex === idx ? <Minus className="w-5 h-5 text-purple-400" /> : <Plus className="w-5 h-5 text-purple-400" />}
-              </button>
-              {openIndex === idx && (
-                <div className="px-6 pb-4 text-gray-400">
-                  {faq.a}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-
-
-
-
-
-================================================================================
-SECTION 6: FOOTER - COMPLETE WITH SCROLL TO TOP
-================================================================================
-
-Generate a PREMIUM Footer component at "components/Footer.tsx" with ALL requirements below.
-
-================================================================================
-FILE STRUCTURE (MUST FOLLOW EXACTLY):
-================================================================================
-
-```tsx
-'use client';
-
-import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import { 
-  Heart, Mail, Phone, MapPin, Send, 
-  Facebook, Twitter, Instagram, Youtube, 
-  Sparkles, ArrowUp 
-} from 'lucide-react';
-
-export default function Footer() {
-  const [email, setEmail] = useState('');
-  const [showScrollTop, setShowScrollTop] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 500);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleSubscribe = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (email) {
-      alert(`Thank you for subscribing with: ${email}`);
-      setEmail('');
-    }
-  };
-
-  const currentYear = new Date().getFullYear();
-
-  return (
-    <>
-      {/* Scroll to Top Button */}
-      {showScrollTop && (
-        <button
-          onClick={scrollToTop}
-          className="fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:scale-110 transition-all duration-300 flex items-center justify-center group"
-          aria-label="Scroll to top"
-        >
-          <ArrowUp className="w-5 h-5 group-hover:-translate-y-1 transition-transform" />
-        </button>
-      )}
-
-      <footer className="relative mt-20 overflow-hidden">
-        {/* Decorative top border with gradient */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500 to-transparent" />
-        
-        {/* Glowing background orbs */}
-        <div className="absolute top-20 -left-20 w-72 h-72 bg-purple-500/20 rounded-full blur-3xl animate-pulse-slow" />
-        <div className="absolute bottom-20 -right-20 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '2s' }} />
-        
-        {/* Subtle grid pattern overlay */}
-        <div 
-          className="absolute inset-0 opacity-5 pointer-events-none"
-          style={{
-            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(139, 92, 246, 0.3) 1px, transparent 1px)',
-            backgroundSize: '40px 40px'
-          }}
-        />
-        
-        {/* Main Footer Content */}
-        <div className="relative z-10 bg-gradient-to-t from-black via-black/95 to-transparent backdrop-blur-sm">
-          <div className="container mx-auto px-4 py-12 md:py-16">
-            
-            {/* 4-Column Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
-              
-              {/* COLUMN 1: Brand Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/25">
-                    <Sparkles className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                      {{PROJECT_NAME}}
-                    </h3>
-                    <p className="text-[10px] tracking-[0.2em] text-purple-400/60 uppercase">PREMIUM COLLECTION</p>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-400 leading-relaxed">
-                  Discover premium quality products crafted with passion, innovation, and attention to detail. Experience excellence in every purchase.
-                </p>
-                <div className="flex gap-3 pt-2">
-                  <a href="#" className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center hover:bg-purple-600/30 transition-all group">
-                    <Facebook className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
-                  </a>
-                  <a href="#" className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center hover:bg-purple-600/30 transition-all group">
-                    <Twitter className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
-                  </a>
-                  <a href="#" className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center hover:bg-purple-600/30 transition-all group">
-                    <Instagram className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
-                  </a>
-                  <a href="#" className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center hover:bg-purple-600/30 transition-all group">
-                    <Youtube className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
-                  </a>
-                </div>
-              </div>
-              
-              {/* COLUMN 2: Quick Links */}
-              <div>
-                <h4 className="text-white font-semibold mb-4 text-lg">Quick Links</h4>
-                <ul className="space-y-3">
-                  <li>
-                    <Link href="/shop" className="text-gray-400 hover:text-purple-400 transition-colors text-sm flex items-center gap-2 group">
-                      <span className="w-1 h-1 rounded-full bg-purple-400 opacity-0 group-hover:opacity-100 transition-opacity"></span>
-                      Shop
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/catalog" className="text-gray-400 hover:text-purple-400 transition-colors text-sm flex items-center gap-2 group">
-                      <span className="w-1 h-1 rounded-full bg-purple-400 opacity-0 group-hover:opacity-100 transition-opacity"></span>
-                      Catalog
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/about" className="text-gray-400 hover:text-purple-400 transition-colors text-sm flex items-center gap-2 group">
-                      <span className="w-1 h-1 rounded-full bg-purple-400 opacity-0 group-hover:opacity-100 transition-opacity"></span>
-                      About Us
-                    </Link>
-                  </li>
-                  <li>
-                    <Link href="/contact" className="text-gray-400 hover:text-purple-400 transition-colors text-sm flex items-center gap-2 group">
-                      <span className="w-1 h-1 rounded-full bg-purple-400 opacity-0 group-hover:opacity-100 transition-opacity"></span>
-                      Contact
-                    </Link>
-                  </li>
-                </ul>
-              </div>
-              
-              {/* COLUMN 3: Contact Info */}
-              <div>
-                <h4 className="text-white font-semibold mb-4 text-lg">Contact Info</h4>
-                <ul className="space-y-4">
-                  <li className="flex items-center gap-3 text-gray-400 text-sm group">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                      <Mail className="w-4 h-4 text-purple-400" />
-                    </div>
-                    <span>support@{{PROJECT_NAME_LOWER}}.com</span>
-                  </li>
-                  <li className="flex items-center gap-3 text-gray-400 text-sm group">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                      <Phone className="w-4 h-4 text-purple-400" />
-                    </div>
-                    <span>+1 (555) 123-4567</span>
-                  </li>
-                  <li className="flex items-center gap-3 text-gray-400 text-sm group">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                      <MapPin className="w-4 h-4 text-purple-400" />
-                    </div>
-                    <span>123 Premium Boulevard, New York, NY 10001</span>
-                  </li>
-                </ul>
-              </div>
-              
-              {/* COLUMN 4: Newsletter Signup */}
-              <div>
-                <h4 className="text-white font-semibold mb-4 text-lg">Newsletter</h4>
-                <p className="text-gray-400 text-sm mb-4">
-                  Subscribe to get 10% off your first order and receive exclusive offers!
-                </p>
-                <form onSubmit={handleSubscribe} className="space-y-3">
-                  <div className="relative">
-                    <input 
-                      type="email" 
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email" 
-                      required
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all placeholder:text-gray-600"
-                    />
-                    <Send className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  </div>
-                  <button 
-                    type="submit" 
-                    className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 font-semibold text-sm shadow-lg shadow-purple-500/25"
-                  >
-                    Subscribe Now
-                  </button>
-                </form>
-              </div>
-            </div>
-            
-            {/* Bottom Bar - Copyright & Legal Links */}
-            <div className="border-t border-white/10 mt-12 pt-8">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex gap-6">
-                  <Link href="/privacy" className="text-gray-500 hover:text-purple-400 transition-colors text-xs">
-                    Privacy Policy
-                  </Link>
-                  <Link href="/terms" className="text-gray-500 hover:text-purple-400 transition-colors text-xs">
-                    Terms of Service
-                  </Link>
-                  <Link href="/shipping" className="text-gray-500 hover:text-purple-400 transition-colors text-xs">
-                    Shipping Info
-                  </Link>
-                </div>
-                <p className="text-gray-500 text-sm flex items-center gap-1">
-                  © {currentYear} {{PROJECT_NAME}}. Crafted with 
-                  <Heart className="w-3 h-3 text-red-500 inline animate-pulse mx-1" /> 
-                  in Nairobi
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
-    </>
-  );
-}
-    
-    
-    
-    
-    
-    
-    
-================================================================================
-CSS ANIMATIONS NEEDED IN GLOBALS.CSS:
-================================================================================
-
-
-@keyframes pulse-slow {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-.animate-pulse-slow {
-  animation: pulse-slow 3s ease-in-out infinite;
-}
-
-
-
-================================================================================
-VERIFICATION BEFORE OUTPUT:
-================================================================================
-
-1. Does the home page include all 7 sections with real content?
-2. Are all sections styled with gradients, hover effects, and premium design elements?
-3. Copyright year updates automatically
-4. Social icons have hover effects
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-PREMIUM E-COMMERCE HOME PAGE REQUIREMENTS:
-================================================================================
-
-Generate app/page.tsx with:
-
-1. **Hero Section**: Full-screen with gradient overlay, brand name, tagline, CTA buttons
-2. **Features Section**: 3-4 premium features with icons (e.g., "Free Shipping", "24/7 Support", "Premium Quality")
-3. **Featured Products**: Grid of 3-6 products with:
-   - Image placeholder (SVG or gradient)
-   - Product name, price, short description
-   - Hover effect with "Add to Cart" button
-4. **Testimonials**: 2-3 customer reviews with avatars (initials in circles)
-5. **Newsletter Signup**: Glass card with email input and subscribe button
-6. **Stats Section**: 3 stats (e.g., "5000+ Customers", "50+ Countries", "10K+ Products")
-
-Example Featured Products section:
-```tsx
-<section className="py-20 px-4">
-  <div className="container mx-auto">
-    <div className="text-center mb-12">
-      <span className="text-purple-400 text-sm uppercase tracking-wider">Featured</span>
-      <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        Best Sellers
-      </h2>
-      <p className="text-gray-400 mt-4">Discover our most popular products</p>
-    </div>
-    
-    <div className="grid md:grid-cols-3 gap-8">
-      {[1, 2, 3].map((item) => (
-        <div key={item} className="group relative bg-gradient-to-br from-white/5 to-white/3 rounded-2xl p-6 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300">
-          <div className="w-full h-48 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl mb-4 flex items-center justify-center group-hover:scale-105 transition-transform">
-            <svg className="w-16 h-16 text-purple-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-bold mb-2">Product Name</h3>
-          <p className="text-gray-400 text-sm mb-3">Premium quality product description</p>
-          <div className="flex items-center justify-between">
-            <span className="text-2xl font-bold text-purple-400">$49.99</span>
-            <button className="px-4 py-2 bg-purple-600/20 rounded-full text-purple-400 hover:bg-purple-600 hover:text-white transition-all">
-              Add to Cart
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-</section>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-PREMIUM SHOP PAGE (app/shop/page.tsx):
-================================================================================
-
-Generate a complete shop page with:
-
-```tsx
-'use client';
-
-import { useState } from 'react';
-import Link from 'next/link';
-import { ShoppingBag, Heart, Star } from 'lucide-react';
-
-const products = [
-  { id: 1, name: "Premium Hoodie", price: 79.99, rating: 4.8, category: "Apparel" },
-  { id: 2, name: "Classic Tee", price: 29.99, rating: 4.5, category: "Apparel" },
-  { id: 3, name: "Leather Backpack", price: 129.99, rating: 4.9, category: "Accessories" },
-  { id: 4, name: "Wireless Headphones", price: 89.99, rating: 4.7, category: "Electronics" },
-  { id: 5, name: "Ceramic Mug", price: 19.99, rating: 4.6, category: "Home" },
-  { id: 6, name: "Desk Mat", price: 34.99, rating: 4.4, category: "Office" },
-];
-
-export default function ShopPage() {
-  const [filter, setFilter] = useState('all');
-
-  const filteredProducts = filter === 'all' ? products : products.filter(p => p.category.toLowerCase() === filter);
-
-  return (
-    <div className="min-h-screen pt-20">
-      {/* Hero Banner */}
-      <div className="relative h-64 md:h-96 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-900/80 to-pink-900/80" />
-        <div className="absolute inset-0 bg-[url('/images/image_1.jpg')] bg-cover bg-center mix-blend-overlay" />
-        <div className="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">Shop Collection</h1>
-          <p className="text-lg text-gray-200">Discover premium products crafted for excellence</p>
-        </div>
-      </div>
-
-      {/* Filter Bar */}
-      <div className="sticky top-16 z-40 bg-black/80 backdrop-blur-xl border-b border-white/10 py-4">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-3">
-            {['all', 'apparel', 'accessories', 'electronics', 'home', 'office'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilter(cat)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                  filter === cat
-                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25'
-                    : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Products Grid */}
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map((product) => (
-            <div key={product.id} className="group relative bg-gradient-to-br from-white/5 to-white/3 rounded-2xl overflow-hidden backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1">
-              <div className="relative h-64 bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-                <ShoppingBag className="w-16 h-16 text-purple-400/50 group-hover:scale-110 transition-transform" />
-                <button className="absolute top-3 right-3 p-2 rounded-full bg-black/50 hover:bg-purple-600 transition-colors">
-                  <Heart className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-5">
-                <div className="flex items-center gap-1 mb-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className={`w-3 h-3 ${i < Math.floor(product.rating) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />
-                  ))}
-                  <span className="text-xs text-gray-500 ml-1">{product.rating}</span>
-                </div>
-                <h3 className="text-lg font-bold mb-1">{product.name}</h3>
-                <p className="text-sm text-gray-400 mb-3">{product.category}</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold text-purple-400">${product.price}</span>
-                  <button className="px-4 py-2 bg-purple-600/20 rounded-full text-purple-400 hover:bg-purple-600 hover:text-white transition-all text-sm">
-                    Add to Cart
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ================================================================================
@@ -6907,6 +5347,11 @@ onError={(e) => {
 
 
 
+
+
+
+
+
 ================================================================================
 🚨🚨🚨 CRITICAL RULES FOR ALL GENERATED CODE 🚨🚨🚨
 ================================================================================
@@ -6927,6 +5372,7 @@ onError={(e) => {
   e.currentTarget.style.display = 'none';
   e.currentTarget.parentElement.classList.add(...);  // Missing ?.
 }}
+
 
 
 
@@ -7009,20 +5455,6 @@ export default function MyPage() {
     />
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -7276,18 +5708,6 @@ CRITICAL SITE STRUCTURE & NAVIGATION
        - Should be haivng the social media icons and links
        - Style the footer with a "glass" effect or a clean, dark aesthetic to match the senior designer requirements.
        - ALL Lucide imports MUST be declared at the top
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
 
 ================================================================================
 TECHNICAL BUILD RULES — NO EXCEPTIONS
@@ -7304,8 +5724,6 @@ OUTPUT FORMAT — RAW JSON ONLY
 - Keys = file paths (strings), Values = full file content as strings.
 - Escape double quotes as \" and newlines as \\n.
 - NEVER output raw newlines or unescaped quotes inside JSON string values.
-
-
 
 
 
@@ -7631,23 +6049,9 @@ Requirements:
 - Add smooth hover transitions and maintain the overall dark luxurious aesthetic (no solid black or white backgrounds).
 - Ensure the footer looks rich and complete so the home page (app/page.tsx) ends beautifully when the footer is placed at the bottom.
 
-
-
-
-
-
-
-
-
-
-
 In app/page.tsx, place this Footer at the very end of the main content, after all sections (hero, features, gallery, testimonials, etc.), so it sits naturally at the bottom of the home page.
 
 Also import and include the Footer in app/layout.tsx so it appears consistently across all pages.
-
-
-
-
 
 
 
@@ -7855,7 +6259,7 @@ INSTEAD, create fresh combinations like:
 - "Radiant Bean Roastery"
 
 ALWAYS generate NEW, UNIQUE names for EVERY request.
-
+================================================================================
 
 
 
@@ -7877,12 +6281,17 @@ For COFFEE/ROASTERY websites:
 
 
 
+
+
+
+
 For SCHOOL websites (choose DIFFERENT each time):
 - Option A: ["Courses", "Enrollment", "Faculty", "Events", "Visit"]
 - Option B: ["Programs", "Admissions", "Staff", "Calendar", "Connect"]
 - Option C: ["Academics", "Apply", "Teachers", "Activities", "Directions"]
 - Option D: ["Classes", "Join", "Mentors", "Schedule", "Location"]
 - Option E: ["Studies", "Register", "Instructors", "News", "Contact"]
+
 
 
 
@@ -7916,21 +6325,6 @@ For PORTFOLIO websites:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ================================================================================
 NAVIGATION GENERATION RULES - MUST VARY EACH TIME:
 ================================================================================
@@ -7939,8 +6333,6 @@ NAVIGATION GENERATION RULES - MUST VARY EACH TIME:
 
 2. Based on project type, generate DIFFERENT navigation labels EACH TIME. Choose RANDOMLY from these options:
 
-
-
    SCHOOL websites (pick a DIFFERENT set each time):
    - Option A: ["Courses", "Enroll", "Faculty", "Events", "Visit"]
    - Option B: ["Programs", "Admissions", "Staff", "Calendar", "Connect"]
@@ -7948,16 +6340,12 @@ NAVIGATION GENERATION RULES - MUST VARY EACH TIME:
    - Option D: ["Classes", "Join", "Mentors", "Schedule", "Location"]
    - Option E: ["Studies", "Register", "Instructors", "News", "Contact"]
 
-
-
    COFFEE/ROASTERY websites (pick a DIFFERENT set each time):
    - Option A: ["Our Coffees", "Subscribe", "Brew Guide", "Story", "Contact"]
    - Option B: ["Shop", "Delivery", "Recipes", "About", "Locations"]
    - Option C: ["Blends", "Membership", "How to Brew", "Heritage", "Visit Us"]
    - Option D: ["Roasts", "Club", "Methods", "Journal", "Reach Out"]
    - Option E: ["Beans", "Subscription", "Techniques", "Origins", "Connect"]
-
-
 
    HOTEL websites (pick a DIFFERENT set each time):
    - Option A: ["Suites", "Amenities", "Gallery", "Reservations", "Location"]
@@ -7968,23 +6356,36 @@ NAVIGATION GENERATION RULES - MUST VARY EACH TIME:
 
 
 
+
+
+
+
+
+
+
+
    E-COMMERCE websites (pick a DIFFERENT set each time):
    - Option A: ["Store", "Browse", "Items", "Payment"]
    - Option B: ["Shop", "Catalog", "Cart", "Checkout"]
    - Option C: ["Products", "Collections", "Bag", "Secure Checkout"]
+
    - Option D: ["Market", "Categories", "Basket", "Order"]
    - Option E: ["Goods", "Showcase", "Selections", "Complete Order"]
    
    
    
+   
+   
+   
+   
+   
+
    PORTFOLIO websites (pick a DIFFERENT set each time):
    - Option A: ["Projects", "About", "Services", "Contact"]
    - Option B: ["Work", "Bio", "Expertise", "Connect"]
    - Option C: ["Creations", "Story", "Offerings", "Reach Out"]
    - Option D: ["Showcase", "Profile", "Solutions", "Message"]
    - Option E: ["Gallery", "Info", "What I Do", "Let's Talk"]
-
-
 
    RESTAURANT websites (pick a DIFFERENT set each time):
    - Option A: ["Menu", "Reservations", "Gallery", "Contact"]
@@ -7993,16 +6394,12 @@ NAVIGATION GENERATION RULES - MUST VARY EACH TIME:
    - Option D: ["Dishes", "Events", "Interior", "Visit Us"]
    - Option E: ["Specials", "Private Dining", "Ambiance", "Reserve"]
 
-
-
    GYM/FITNESS websites (pick a DIFFERENT set each time):
    - Option A: ["Classes", "Trainers", "Membership", "Schedule"]
    - Option B: ["Workouts", "Coaches", "Plans", "Timetable"]
    - Option C: ["Sessions", "Experts", "Pricing", "Calendar"]
    - Option D: ["Training", "Staff", "Join Now", "Hours"]
    - Option E: ["Programs", "Instructors", "Sign Up", "Class Times"]
-
-
 
 3. NEVER include the full user prompt as button text.
 
@@ -8021,7 +6418,6 @@ CORRECT Navigation (pick RANDOMLY from options):
 WRONG Navigation (NEVER DO THIS):
 - Using the same "Our Coffees, Subscription, Brew Guide, About, Contact" every time
 - Using the full user prompt as button text
-
 
 
 
@@ -8083,9 +6479,6 @@ Example combinations (these are just examples - create your own):
 
 
 
-
-
-
 ================================================================================
 WORD BANKS FOR DYNAMIC GENERATION (USE RANDOMLY):
 ================================================================================
@@ -8118,11 +6511,6 @@ Gym: Fitness, Gym, Training Center, Athletic Club, Strength, Performance, Athlet
 Restaurant: Bistro, Kitchen, Dining, Restaurant, Eatery, Tavern, Grill, Table
 Portfolio: Studio, Creative, Design, Portfolio, Agency, Collective, Lab
 E-commerce: Market, Store, Shop, Goods, Emporium, Marketplace, Boutique
-
-
-
-
-
 
 ================================================================================
 FORCED RANDOMIZATION RULES (MUST FOLLOW):
@@ -8163,6 +6551,18 @@ Example variations for Hotel websites:
 
 
 
+================================================================================
+NAVIGATION COMPONENT - CRITICAL RULES:
+================================================================================
+
+
+
+
+"components/Navigation.tsx": "import Link from 'next/link';\\nimport { ADAPTIVE_ICON } from 'lucide-react';\\n\\nexport default function Navigation() {\\n  return (\\n    <nav className=\\"flex justify-between items-center p-6 container mx-auto\\">\\n      <Link href=\\"/\\" className=\\"flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent\\">\\n        <ADAPTIVE_ICON className=\\"w-6 h-6 text-purple-400\\" />\\n        {{PROJECT_NAME}}\\n      </Link>\\n      <div className=\\"hidden md:flex space-x-6\\">\\n        <Link href=\\"/NAV_LINK_1\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_1</Link>\\n        <Link href=\\"/NAV_LINK_2\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_2</Link>\\n        <Link href=\\"/NAV_LINK_3\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_3</Link>\\n        <Link href=\\"/NAV_LINK_4\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_4</Link>\\n        <Link href=\\"/NAV_LINK_5\\" className=\\"hover:text-purple-400 transition\\">NAV_LABEL_5</Link>\\n      </div>\\n    </nav>\\n  );\\n}"
+
+
+
+
 
 
 
@@ -8176,9 +6576,6 @@ Example variations for Hotel websites:
 - Brand name MUST be a short business name (2-4 words max)
 - Navigation labels MUST be short (1-2 words max)
 - NEVER use the full user prompt as button text
-
-
-
 
 
 
@@ -8243,6 +6640,8 @@ TRAVEL / TOURISM:
 import { Plane } from 'lucide-react';
 <Plane className="w-6 h-6 text-sky-400" />
 
+================================================================================
+
 
 
 
@@ -8283,6 +6682,11 @@ import { Plane } from 'lucide-react';
    - DO NOT use: module.exports
 
 
+ 
+
+
+
+
 3. **tailwind.config.ts** - MUST have correct content paths:
    - content: ['./app/**/*.{js,ts,jsx,tsx,mdx}', './components/**/*.{js,ts,jsx,tsx,mdx}']
 
@@ -8294,11 +6698,6 @@ import { Plane } from 'lucide-react';
 **FAILURE TO FOLLOW THESE RULES WILL CAUSE VERCEL BUILD TO FAIL WITH:**
 - "Cannot find module 'autoprefixer'"
 - "PostCSS config must export a plugins object"
-
-
-
-
-
 
 
 
@@ -8412,7 +6811,6 @@ DO NOT create empty pages or placeholder pages. Each page must have:
 - FAQ section with 3-4 questions
 - Footer with links, social icons, copyright
 
-
 **ABOUT PAGE (app/about/page.tsx):**
 - Hero with mission statement
 - Story section with company history
@@ -8454,16 +6852,12 @@ SCHOOL WEBSITE:
 - Events calendar with upcoming dates
 - Gallery page with 3-5 photos
 
-
-
 COFFEE WEBSITE:
 - Menu page with categories (espresso, cold brew, food, pastries)
 - Shop page with products, prices, add to cart
 - Locations page with store hours, addresses, maps
 - Brew guide with step-by-step tutorials
 - Subscription page with 3 plans
-
-
 
 HOTEL WEBSITE:
 - Rooms page with 3-6 room types (images, amenities, price, book button)
@@ -8472,21 +6866,26 @@ HOTEL WEBSITE:
 - Offers page with 3-5 packages
 - Reviews page with 5-10 testimonials
 
-
-
 RESTAURANT WEBSITE:
 - Menu page with appetizers, mains, desserts, drinks
 - Reservations page with date/time picker, guest count
 - Events page with private dining, catering
 - Gallery with food and interior photos
 
-
-
 GYM WEBSITE:
 - Classes page with schedule, instructor names, times
 - Trainers page with 4-8 profiles (specialties, certs, social)
 - Membership page with 3-4 plans, benefits, pricing
 - Schedule page with weekly calendar
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8498,23 +6897,17 @@ E-COMMERCE WEBSITE:
 
 
 
+
+
+
+
+
+
 PORTFOLIO WEBSITE:
 - Projects page with 6-9 case studies (image, title, category, link)
 - Project detail page with challenge, solution, results, tech stack
 - Services page with 4-6 service cards
 - Testimonials slider with 5-8 quotes
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -8594,26 +6987,12 @@ CRITICAL STYLING RULES - MUST FOLLOW:
          Get Started
        </button>
      </div>
-   </section>
+   </section>............
 
 
 
 
    
-   
-   
-   
-   
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -8695,6 +7074,7 @@ The globals.css MUST contain ALL of the following:
 - ✅ Focus rings for accessibility
 
 **FAILURE TO INCLUDE THE COMPLETE globals.css WILL CAUSE THE BUILD TO FAIL ON VERCEL.**
+================================================================================
 
 
 
@@ -8704,6 +7084,11 @@ The globals.css MUST contain ALL of the following:
 
 
 
+================================================================================
+COMPLETE GLOBALS.CSS TEMPLATE - COPY EXACTLY:
+================================================================================
+
+"app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;\\n\\n@layer base {\\n  :root {\\n    --background: 0 0% 100%;\\n    --foreground: 222.2 84% 4.9%;\\n    --card: 0 0% 100%;\\n    --card-foreground: 222.2 84% 4.9%;\\n    --border: 214.3 31.8% 91.4%;\\n    --ring: 222.2 84% 4.9%;\\n  }\\n\\n  .dark {\\n    --background: 222.2 84% 4.9%;\\n    --foreground: 210 40% 98%;\\n    --card: 222.2 84% 4.9%;\\n    --card-foreground: 210 40% 98%;\\n    --border: 217.2 32.6% 17.5%;\\n    --ring: 212.7 26.8% 83.9%;\\n  }\\n\\n  * {\\n    border-color: hsl(var(--border));\\n  }\\n\\n  body {\\n    @apply bg-zinc-950 text-white antialiased;\\n    font-feature-settings: \\\"rlig\\\" 1, \\\"calt\\\" 1;\\n  }\\n}\\n\\n@layer utilities {\\n  html {\\n    scroll-behavior: smooth;\\n  }\\n\\n  ::-webkit-scrollbar {\\n    width: 10px;\\n    height: 10px;\\n  }\\n\\n  ::-webkit-scrollbar-track {\\n    background: #18181b;\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb {\\n    background: linear-gradient(to bottom, #a855f7, #ec4899);\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb:hover {\\n    background: linear-gradient(to bottom, #c084fc, #f472b6);\\n  }\\n\\n  ::selection {\\n    @apply bg-purple-500 text-white;\\n  }\\n\\n  *:focus-visible {\\n    @apply outline-none ring-2 ring-purple-500 ring-offset-2 ring-offset-zinc-950;\\n  }\\n}\\n\\n@layer components {\\n  .glass {\\n    @apply bg-white/5 backdrop-blur-md border border-white/10;\\n  }\\n\\n  .glass-hover {\\n    @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20;\\n  }\\n\\n  .gradient-text {\\n    @apply bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent;\\n    background-size: 200% auto;\\n    animation: shimmer 3s ease infinite;\\n  }\\n\\n  .card-hover {\\n    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20;\\n  }\\n\\n  .glow {\\n    @apply shadow-lg shadow-purple-500/25;\\n  }\\n\\n  .glow-hover {\\n    @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40;\\n  }\\n\\n  .hero-gradient {\\n    background: radial-gradient(ellipse at top, #1e1b4b, transparent),\\n                radial-gradient(ellipse at bottom, #4c1d95, transparent);\\n  }\\n\\n  .grid-pattern {\\n    background-image: linear-gradient(to right, #ffffff0a 1px, transparent 1px),\\n                      linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);\\n    background-size: 50px 50px;\\n  }\\n}\\n\\n@keyframes shimmer {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n@keyframes float {\\n  0%, 100% { transform: translateY(0px); }\\n  50% { transform: translateY(-20px); }\\n}\\n\\n@keyframes pulse-slow {\\n  0%, 100% { opacity: 0.5; }\\n  50% { opacity: 1; }\\n}\\n\\n@keyframes gradient {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n.animate-float {\\n  animation: float 6s ease-in-out infinite;\\n}\\n\\n.animate-pulse-slow {\\n  animation: pulse-slow 3s ease-in-out infinite;\\n}\\n\\n.animate-gradient {\\n  background-size: 200% auto;\\n  animation: gradient 3s ease infinite;\\n}"
 
 
 
@@ -8713,6 +7098,11 @@ The globals.css MUST contain ALL of the following:
 
 
 
+🚨 CRITICAL - NO PLACEHOLDER PAGES ALLOWED 🚨
+
+NEVER create pages like this:
+❌ export default function Shop() { return <div><h1>Shop</h1><p>Browse our collection.</p></div>; }
+❌ export default function About() { return <div>About Us</div>; }
 
 ALWAYS create COMPLETE pages with:
 ✅ Minimum 3-4 sections (hero, grid, features, CTA, Footer)
@@ -8753,27 +7143,11 @@ export default function Shop() {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 NEVER create placeholder/empty pages. Each page MUST have:
 - Real data (products, services, team members)
 - Proper UI components (cards, grids, forms)
 - No "Coming Soon" or placeholder text
 - Complete functionality (buttons, forms, interactive elements)
-
-
-
-
 
 
 
@@ -8858,19 +7232,6 @@ Wrong imports (NEVER use):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 ================================================================================
 NAVIGATION & PAGE SYNC RULE - CRITICAL:
 ================================================================================
@@ -8896,18 +7257,6 @@ Each page MUST have unique, creative content based on its name and the project t
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 ================================================================================
 DYNAMIC CONTENT GENERATION - CREATE UNIQUE PAGES FOR EACH REQUEST:
 ================================================================================
@@ -8915,15 +7264,11 @@ DYNAMIC CONTENT GENERATION - CREATE UNIQUE PAGES FOR EACH REQUEST:
 **CRITICAL: DO NOT use generic names like "Products" or "Programs" every time.**
 **Generate UNIQUE, CREATIVE names based on the specific project:**
 
-
-
 For SCHOOL websites:
 - "Admissions" → Use: "Apply", "Join Us", "Enrollment", "Be a Student", "Get Started"
 - "Faculty" → Use: "Our Teachers", "Staff", "Mentors", "Instructors", "Academic Team"
 -  "Events" → Use: "Calendar", "Activities", "Announcements", "School Life", "News & Events"
 -  "Contact" → Use: "Visit Us", "Get in Touch", "Reach Out", "Connect"
-
-
 
 For HOTEL websites:
 - Instead of "Rooms" → Use: "Suites", "Accommodations", "Stays", "Lodging", "Guest Rooms"
@@ -8945,14 +7290,10 @@ For PORTFOLIO websites:
 - Instead of "Services" → Use: "What I Do", "Expertise", "Offerings", "Solutions"
 - Instead of "Blog" → Use: "Insights", "Articles", "Thoughts", "Journal", "Updates"
 
-
-
 For RESTAURANT websites:
 - Instead of "Menu" → Use: "Dining", "Cuisine", "Dishes", "Offerings", "Food & Drink"
 - Instead of "Reservations" → Use: "Book a Table", "Dine with Us", "Reserve", "Plan Your Visit"
 - Instead of "Events" → Use: "Private Dining", "Celebrations", "Special Occasions", "Gatherings"
-
-
 
 For GYM/FITNESS websites:
 - Instead of "Classes" → Use: "Workouts", "Sessions", "Training", "Programs", "Fitness Plans"
@@ -9004,12 +7345,16 @@ components/
   CTA.tsx                   # Call to action component
   Newsletter.tsx            # Newsletter signup form
   
+
+  
 components/ui/
   Button.tsx                # Reusable button with variants (primary, outline, ghost)
   Card.tsx                  # Card component with hover effects
   Input.tsx                 # Form input component
   Modal.tsx                 # Modal dialog component
   Dropdown.tsx              # Dropdown menu component
+
+
 
 components/layout/
   Header.tsx                # Header wrapper
@@ -9018,6 +7363,7 @@ components/layout/
 
 lib/
   utils.ts                  # cn utility function for Tailwind merging
+
 
 hooks/
   useScroll.ts              # Scroll position hook
@@ -9037,22 +7383,6 @@ public/
     favicon.ico             # Browser favicon
     logo.svg                # Site logo
   fonts/                    # Custom fonts (if any)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ================================================================================
 ADDITIONAL FILES FOR SPECIFIC PROJECT TYPES:
@@ -9099,6 +7429,15 @@ components/ClassCard.tsx    # Class card
 components/TrainerCard.tsx  # Trainer profile card
 
 
+
+
+
+
+
+
+
+
+
 E-COMMERCE WEBSITE:
 app/products/page.tsx       # Product listing with filters
 app/products/[id]/page.tsx  # Product detail
@@ -9109,22 +7448,19 @@ components/ProductCard.tsx  # Product card
 components/CartItem.tsx     # Cart item component
 
 
+
+
+
+
+
+
+
 PORTFOLIO WEBSITE:
 app/projects/page.tsx       # Project gallery
 app/projects/[slug]/page.tsx # Project case study
 app/services/page.tsx       # Services offered
 components/ProjectCard.tsx  # Project card
 components/SkillBadge.tsx   # Skill/technology badges
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -9144,23 +7480,6 @@ next-env.d.ts                # Next.js TypeScript references
 .env.example                 # Example environment variables
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ================================================================================
 CRITICAL RULES:
 ================================================================================
@@ -9173,8 +7492,6 @@ CRITICAL RULES:
 6. EVERY array .map() Hacing different content for products/Features
 7. ALL pages MUST be responsive (mobile-first design)
 8. EVERY component MUST have proper TypeScript types
-
-
 
 
 
@@ -9250,15 +7567,6 @@ For "/contact" page:
 
 
 
-
-
-
-
-
-
-
-
-
 **NEVER create empty or placeholder pages. Each page must have rich, meaningful content.**
 
 ================================================================================
@@ -9303,8 +7611,20 @@ app/classes/page.tsx = "export default function Classes() { return <div>Classes<
 CSS CONFIGURATION FILES:
 ================================================================================
 
-
 "postcss.config.mjs": "export default {\\n  plugins: {\\n    tailwindcss: {},\\n    autoprefixer: {},\\n  },\\n}"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9319,12 +7639,9 @@ ROOT LAYOUT - WITH RELATIVE IMPORTS:
 ================================================================================
 
 
+
+
 "app/layout.tsx": "import type { Metadata } from 'next';\\nimport './globals.css';\\nimport Navigation from '../components/Navigation';\\n\\nexport const metadata: Metadata = {\\n  title: {\\n    template: '%s | {{PROJECT_NAME}}',\\n    default: '{{PROJECT_NAME}}',\\n  },\\n  description: '[UNIQUE_DESCRIPTION_FROM_REQUEST]',\\n};\\n\\nexport default function RootLayout({\\n  children,\\n}: {\\n  children: React.ReactNode;\\n}) {\\n  return (\\n    <html lang=\\"en\\" className=\\"dark\\">\\n      <body className=\\"bg-zinc-950 text-white antialiased\\">\\n        <Navigation />\\n        <main className=\\"min-h-screen\\">{children}</main>\\n      </body>\\n    </html>\\n  );\\n}"
-
-
-
-
-
 
 
 
@@ -9334,54 +7651,23 @@ BUTTON COMPONENT - WITH RELATIVE IMPORTS:
 
 "components/ui/Button.tsx": "\"use client\";\\n\\nimport { cn } from '../../lib/utils';\\nimport { Slot } from '@radix-ui/react-slot';\\nimport { forwardRef } from 'react';\\n\\ninterface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {\\n  variant?: 'default' | 'primary' | 'outline' | 'ghost';\\n  size?: 'sm' | 'default' | 'lg';\\n  isLoading?: boolean;\\n  fullWidth?: boolean;\\n  asChild?: boolean;\\n}\\n\\nconst Button = forwardRef<HTMLButtonElement, ButtonProps>(\\n  ({ \\n    className, \\n    variant = 'default', \\n    size = 'default',\\n    isLoading = false,\\n    fullWidth = false,\\n    asChild = false,\\n    children, \\n    disabled,\\n    ...props \\n  }, ref) => {\\n    const variants = {\\n      default: 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg shadow-purple-600/25',\\n      primary: 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-600/25',\\n      outline: 'border border-white/20 bg-transparent hover:bg-white/10 text-white',\\n      ghost: 'hover:bg-white/10 text-gray-300 hover:text-white',\\n    };\\n    \\n    const sizes = {\\n      sm: 'h-8 px-3 text-xs rounded-lg',\\n      default: 'h-10 px-4 py-2 text-sm rounded-lg',\\n      lg: 'h-12 px-6 text-base rounded-lg',\\n    };\\n    \\n    const Comp = asChild ? Slot : 'button';\\n    \\n    return (\\n      <Comp\\n        ref={ref}\\n        className={cn(\\n          \\"inline-flex items-center justify-center gap-2 font-medium transition-all duration-200\\",\\n          \\"disabled:opacity-50 disabled:cursor-not-allowed\\",\\n          \\"focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-zinc-950\\",\\n          \\"active:scale-95\\",\\n          variants[variant],\\n          sizes[size],\\n          fullWidth && \\"w-full\\",\\n          className\\n        )}\\n        disabled={disabled || isLoading}\\n        {...props}\\n      >\\n        {isLoading && (\\n          <div className=\\"animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent\\" />\\n        )}\\n        {children}\\n      </Comp>\\n    );\\n  }\\n);\\n\\nButton.displayName = 'Button';\\n\\nexport { Button };"
 
-
-
-
-
-
 ================================================================================
 LIB/UTILS.TS:
 ================================================================================
 
-
-
 "lib/utils.ts": "import { type ClassValue, clsx } from \\"clsx\\";\\nimport { twMerge } from \\"tailwind-merge\\";\\n\\nexport function cn(...inputs: ClassValue[]) {\\n  return twMerge(clsx(inputs));\\n}"
-
-
-
-
-
-
-
-
-
 
 ================================================================================
 TAILWIND CONFIG:
 ================================================================================
 
-
-
 "tailwind.config.ts": "import type { Config } from 'tailwindcss';\\n\\nconst config: Config = {\\n  darkMode: 'class',\\n  content: [\\n    './pages/**/*.{js,ts,jsx,tsx,mdx}',\\n    './components/**/*.{js,ts,jsx,tsx,mdx}',\\n    './app/**/*.{js,ts,jsx,tsx,mdx}',\\n  ],\\n  theme: {\\n    extend: {\\n      colors: {\\n        border: 'hsl(var(--border))',\\n        background: 'hsl(var(--background))',\\n        foreground: 'hsl(var(--foreground))',\\n      },\\n      animation: {\\n        'gradient': 'gradient 3s ease infinite',\\n        'shimmer': 'shimmer 3s ease infinite',\\n        'float': 'float 6s ease-in-out infinite',\\n        'pulse-slow': 'pulse-slow 3s ease-in-out infinite',\\n      },\\n      keyframes: {\\n        gradient: {\\n          '0%, 100%': { backgroundPosition: '0% 50%' },\\n          '50%': { backgroundPosition: '100% 50%' },\\n        },\\n        shimmer: {\\n          '0%': { backgroundPosition: '0% 50%' },\\n          '50%': { backgroundPosition: '100% 50%' },\\n          '100%': { backgroundPosition: '0% 50%' },\\n        },\\n        float: {\\n          '0%, 100%': { transform: 'translateY(0px)' },\\n          '50%': { transform: 'translateY(-20px)' },\\n        },\\n        'pulse-slow': {\\n          '0%, 100%': { opacity: '0.5' },\\n          '50%': { opacity: '1' },\\n        },\\n      },\\n    },\\n  },\\n  plugins: [],\\n};\\n\\nexport default config;"
-
-
-
-
-
-
-
-
 
 ================================================================================
 TSCONFIG.JSON - NO PATH ALIASES:
 ================================================================================
 
-
 "tsconfig.json": "{\\n  \\"compilerOptions\\": {\\n    \\"lib\\": [\\"dom\\", \\"dom.iterable\\", \\"esnext\\"],\\n    \\"allowJs\\": true,\\n    \\"skipLibCheck\\": true,\\n    \\"strict\\": true,\\n    \\"noEmit\\": true,\\n    \\"module\\": \\"esnext\\",\\n    \\"moduleResolution\\": \\"bundler\\",\\n    \\"resolveJsonModule\\": true,\\n    \\"isolatedModules\\": true,\\n    \\"jsx\\": \\"preserve\\",\\n    \\"incremental\\": true,\\n    \\"plugins\\": [{\\"name\\": \\"next\\"}],\\n    \\"esModuleInterop\\": true\\n  },\\n  \\"include\\": [\\"next-env.d.ts\\", \\".next/types/**/*.ts\\", \\"**/*.ts\\", \\"**/*.tsx\\"],\\n  \\"exclude\\": [\\"node_modules\\"]\\n}"
-
-
-
-
 
 
 
@@ -9393,49 +7679,57 @@ PACKAGE.JSON:
 ================================================================================
 
 
+
+
 "package.json": "{\\n  \\"name\\": \\"scorpio-app\\",\\n  \\"version\\": \\"0.1.0\\",\\n  \\"private\\": true,\\n  \\"scripts\\": {\\n    \\"dev\\": \\"next dev\\",\\n    \\"build\\": \\"next build\\",\\n    \\"start\\": \\"next start\\"\\n  },\\n  \\"dependencies\\": {\\n    \\"next\\": \\"14.2.35\\",\\n    \\"react\\": \\"^18.3.1\\",\\n    \\"react-dom\\": \\"^18.3.1\\",\\n    \\"lucide-react\\": \\"^0.446.0\\",\\n    \\"@radix-ui/react-slot\\": \\"^1.1.0\\",\\n    \\"clsx\\": \\"^2.1.1\\",\\n    \\"tailwind-merge\\": \\"^2.5.0\\"\\n  },\\n  \\"devDependencies\\": {\\n    \\"@types/node\\": \\"^22.9.0\\",\\n    \\"@types/react\\": \\"^18.3.12\\",\\n    \\"@types/react-dom\\": \\"^18.3.1\\",\\n    \\"autoprefixer\\": \\"^10.4.20\\",\\n    \\"postcss\\": \\"^8.4.49\\",\\n    \\"tailwindcss\\": \\"^3.4.15\\",\\n    \\"typescript\\": \\"^5.6.3\\"\\n  }\\n}"
-
-
-
-
-
-
-
-
-
-================================================================================
-COMPLETE GLOBALS.CSS TEMPLATE
-================================================================================
-
-"app/globals.css": "@tailwind base;\\n@tailwind components;\\n@tailwind utilities;\\n\\n@layer base {\\n  :root {\\n    --background: 0 0% 100%;\\n    --foreground: 222.2 84% 4.9%;\\n    --card: 0 0% 100%;\\n    --card-foreground: 222.2 84% 4.9%;\\n    --border: 214.3 31.8% 91.4%;\\n    --ring: 222.2 84% 4.9%;\\n  }\\n\\n  .dark {\\n    --background: 222.2 84% 4.9%;\\n    --foreground: 210 40% 98%;\\n    --card: 222.2 84% 4.9%;\\n    --card-foreground: 210 40% 98%;\\n    --border: 217.2 32.6% 17.5%;\\n    --ring: 212.7 26.8% 83.9%;\\n  }\\n\\n  * {\\n    border-color: hsl(var(--border));\\n  }\\n\\n  body {\\n    @apply bg-zinc-950 text-white antialiased;\\n    font-feature-settings: \\\"rlig\\\" 1, \\\"calt\\\" 1;\\n  }\\n}\\n\\n@layer utilities {\\n  html {\\n    scroll-behavior: smooth;\\n  }\\n\\n  ::-webkit-scrollbar {\\n    width: 10px;\\n    height: 10px;\\n  }\\n\\n  ::-webkit-scrollbar-track {\\n    background: #18181b;\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb {\\n    background: linear-gradient(to bottom, #a855f7, #ec4899);\\n    border-radius: 5px;\\n  }\\n\\n  ::-webkit-scrollbar-thumb:hover {\\n    background: linear-gradient(to bottom, #c084fc, #f472b6);\\n  }\\n\\n  ::selection {\\n    @apply bg-purple-500 text-white;\\n  }\\n\\n  *:focus-visible {\\n    @apply outline-none ring-2 ring-purple-500 ring-offset-2 ring-offset-zinc-950;\\n  }\\n}\\n\\n@layer components {\\n  .glass {\\n    @apply bg-white/5 backdrop-blur-md border border-white/10;\\n  }\\n\\n  .glass-hover {\\n    @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20;\\n  }\\n\\n  .gradient-text {\\n    @apply bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent;\\n    background-size: 200% auto;\\n    animation: shimmer 3s ease infinite;\\n  }\\n\\n  .card-hover {\\n    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20;\\n  }\\n\\n  .glow {\\n    @apply shadow-lg shadow-purple-500/25;\\n  }\\n\\n  .glow-hover {\\n    @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40;\\n  }\\n\\n  .hero-gradient {\\n    background: radial-gradient(ellipse at top, #1e1b4b, transparent),\\n                radial-gradient(ellipse at bottom, #4c1d95, transparent);\\n  }\\n\\n  .grid-pattern {\\n    background-image: linear-gradient(to right, #ffffff0a 1px, transparent 1px),\\n                      linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);\\n    background-size: 50px 50px;\\n  }\\n}\\n\\n@keyframes shimmer {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n@keyframes float {\\n  0%, 100% { transform: translateY(0px); }\\n  50% { transform: translateY(-20px); }\\n}\\n\\n@keyframes pulse-slow {\\n  0%, 100% { opacity: 0.5; }\\n  50% { opacity: 1; }\\n}\\n\\n@keyframes gradient {\\n  0% { background-position: 0% 50%; }\\n  50% { background-position: 100% 50%; }\\n  100% { background-position: 0% 50%; }\\n}\\n\\n.animate-float {\\n  animation: float 6s ease-in-out infinite;\\n}\\n\\n.animate-pulse-slow {\\n  animation: pulse-slow 3s ease-in-out infinite;\\n}\\n\\n.animate-gradient {\\n  background-size: 200% auto;\\n  animation: gradient 3s ease infinite;\\n}"
-
-
-
-
-
-
-
-
-
-================================================================================
-NAVIGATION COMPONENT - CRITICAL RULES:
-================================================================================
-
-
-"components/Navigation.tsx": "'use client';\\n\\nimport { useState, useEffect } from 'react';\\nimport Link from 'next/link';\\nimport { ADAPTIVE_ICON, ShoppingBag, Menu, X, Search, User } from 'lucide-react';\\n\\nexport default function Navigation() {\\n  const [isScrolled, setIsScrolled] = useState(false);\\n  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);\\n\\n  useEffect(() => {\\n    const handleScroll = () => {\\n      setIsScrolled(window.scrollY > 50);\\n    };\\n    window.addEventListener('scroll', handleScroll);\\n    return () => window.removeEventListener('scroll', handleScroll);\\n  }, []);\\n\\n  return (\\n    <>\\n      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${\\n        isScrolled \\n          ? 'bg-black/95 backdrop-blur-xl border-b border-white/10 shadow-2xl' \\n          : 'bg-transparent'\\n      }`}>\\n        <div className=\\"max-w-7xl mx-auto px-4 sm:px-6 lg:px-8\\">\\n          <div className=\\"flex items-center justify-between h-16 md:h-20\\">\\n            {/* Logo */}\\n            <Link href=\\"/\\" className=\\"flex items-center gap-2 group\\">\\n              <div className=\\"w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/25 group-hover:scale-110 transition-transform\\">\\n                <ADAPTIVE_ICON className=\\"w-4 h-4 md:w-5 md:h-5 text-white\\" />\\n              </div>\\n              <div className=\\"flex flex-col\\">\\n                <span className=\\"text-lg md:text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent\\">\\n                  {{PROJECT_NAME}}\\n                </span>\\n                <span className=\\"text-[9px] md:text-[10px] tracking-[0.2em] text-purple-400/60 uppercase\\">\\n                  PREMIUM\\n                </span>\\n              </div>\\n            </Link>\\n\\n            {/* Desktop Navigation */}\\n            <div className=\\"hidden md:flex items-center gap-1\\">\\n              <Link href=\\"/shop\\" className=\\"px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all\\">\\n                Shop\\n              </Link>\\n              <Link href=\\"/catalog\\" className=\\"px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all\\">\\n                Catalog\\n              </Link>\\n              <Link href=\\"/cart\\" className=\\"px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all flex items-center gap-1\\">\\n                <ShoppingBag className=\\"w-4 h-4\\" />\\n                Cart\\n                <span className=\\"ml-1 bg-purple-500 text-white text-xs px-1.5 py-0.5 rounded-full\\">0</span>\\n              </Link>\\n            </div>\\n\\n            {/* Desktop Right Icons */}\\n            <div className=\\"hidden md:flex items-center gap-2\\">\\n              <button className=\\"p-2 rounded-lg hover:bg-white/10 transition-colors\\">\\n                <Search className=\\"w-5 h-5 text-gray-300\\" />\\n              </button>\\n              <button className=\\"p-2 rounded-lg hover:bg-white/10 transition-colors\\">\\n                <User className=\\"w-5 h-5 text-gray-300\\" />\\n              </button>\\n            </div>\\n\\n            {/* Mobile Menu Button */}\\n            <button\\n              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}\\n              className=\\"md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors\\"\\n            >\\n              {isMobileMenuOpen ? <X className=\\"w-6 h-6\\" /> : <Menu className=\\"w-6 h-6\\" />}\\n            </button>\\n          </div>\\n        </div>\\n\\n        {/* Mobile Menu */}\\n        <div className={`md:hidden fixed inset-x-0 top-16 bg-black/95 backdrop-blur-xl border-b border-white/10 transition-all duration-300 ${\\n          isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'\\n        }`}>\\n          <div className=\\"px-4 py-4 space-y-2\\">\\n            <Link href=\\"/shop\\" className=\\"block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all\\\" onClick={() => setIsMobileMenuOpen(false)}>\\n              Shop\\n            </Link>\\n            <Link href=\\"/catalog\\" className=\\"block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all\\" onClick={() => setIsMobileMenuOpen(false)}>\\n              Catalog\\n            </Link>\\n            <Link href=\\"/cart\\" className=\\"block px-4 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-all flex items-center gap-2\\" onClick={() => setIsMobileMenuOpen(false)}>\\n              <ShoppingBag className=\\"w-4 h-4\\" /> Cart\\n            </Link>\\n          </div>\\n        </div>\\n      </nav>\\n      <div className=\\"h-16 md:h-20\\" /> {/* Spacer for fixed header */}\\n    </>\\n  );\\n}"
-
-
-
-
-
-
-
 
 
 
 
 ================================================================================
 Now generate the complete project for this request: [USER_PROMPT_HERE]"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
