@@ -3509,11 +3509,13 @@ export default function Footer() {
                     Shipping Info
                   </Link>
                 </div>
+                
+                
                 <p className="text-gray-500 text-sm flex items-center gap-1">
-                  © {currentYear} {{PROJECT_NAME}}. Crafted with 
-                  <Heart className="w-3 h-3 text-red-500 inline animate-pulse mx-1" /> 
-                  in Nairobi
-                </p>
+    © {currentYear} {project_name}. Crafted by 
+    <span className="text-purple-400 font-semibold">EagleCode</span>
+</p>
+                
               </div>
             </div>
           </div>
@@ -4646,7 +4648,7 @@ Requirements:
 - Quick Links and Company sections: Use Next.js Link components with hover effects that change to purple-400.
 - Contact section: Include email, phone, and location with Lucide icons (Mail, Phone, MapPin).
 - Newsletter signup: A beautiful glass card with email input and a gradient "Subscribe" button (from-purple-600 to-pink-600).
-- Bottom bar: Copyright with current year, legal links (Privacy, Terms), and a small "Crafted in Nairobi" note.
+- Bottom bar: Copyright with current year, legal links (Privacy, Terms), and a small "Crafted by Eaglecode" note.
 - Add subtle decorative elements: soft glowing orbs, grid pattern overlay (opacity 10-20%), and a thin gradient line at the very bottom.
 - Make it fully responsive (stack on mobile).
 - Use Tailwind classes only, no extra libraries except Lucide icons.

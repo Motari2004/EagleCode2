@@ -841,7 +841,7 @@ async def generate_preview_internal(
                     </div>
                 </div>
                 <div class="text-center mt-8 text-sm text-gray-600">
-                    © {datetime.now().year} {brand_name}. Crafted with <i class="fas fa-heart text-red-400"></i> in Nairobi
+                    © {datetime.now().year} {brand_name}. Crafted by Eaglecode
                 </div>
             </footer>
             '''
@@ -4893,7 +4893,7 @@ EXTRACTED FOOTER HTML (USE THIS EXACTLY):
         </div>
     </div>
     <div class="text-center mt-8 pt-8 border-t border-white/10 text-sm text-gray-500">
-        © 2026 {brand_name}. Crafted with <i class="fas fa-heart text-red-500"></i> in Nairobi
+        © 2026 {brand_name}. Crafted by Eaglecode
     </div>
 </footer>
 ''' if not footer_html else ''}
