@@ -1,0 +1,7198 @@
+from typing import Dict, Any, Optional
+
+import re
+import json
+import os
+
+from datetime import datetime
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def clean_html_response(text: str) -> str:
+    """Aggressively clean HTML response from AI"""
+    text = text.strip()
+    
+    # Remove markdown code blocks
+    if text.startswith("```html"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    
+    text = text.strip()
+    
+    # Remove any standalone "html" word at the beginning
+    if text.lower().startswith("html"):
+        text = text[4:].strip()
+    elif text.lower().startswith("html\n"):
+        text = text[5:].strip()
+    elif text.lower().startswith("html\r\n"):
+        text = text[6:].strip()
+    
+    # Unescape common characters
+    text = text.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace("\\'", "'")
+    
+    # Remove leading/trailing whitespace
+    text = text.strip()
+    
+    # Ensure it starts with proper HTML doctype
+    if not text.startswith("<!DOCTYPE") and not text.lower().startswith("<html"):
+        html_match = re.search(r'<!DOCTYPE\s+html[\s\S]*|<\s*html[\s\S]*', text, re.IGNORECASE)
+        if html_match:
+            text = html_match.group(0)
+        else:
+            # Fallback wrapper
+            text = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scorpio Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    {text}
+</body>
+</html>"""
+    
+    # Final cleanup of "html" artifacts
+    text = re.sub(r'^\s*html\s*[\n\r]', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^\s*"html"\s*[\n\r]', '', text, flags=re.IGNORECASE)
+    
+    return text.strip()
+
+
+
+
+
+
+
+
+
+
+
+
+
+def enforce_body_background(html: str) -> str:
+    """Force correct body background gradient - replace solid black with gradient"""
+    
+    # Replace solid black background with gradient
+    # Pattern 1: background: #000;
+    html = re.sub(
+        r'body\s*\{\s*[^}]*background:\s*#000;?\s*[^}]*\}',
+        '''body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }''',
+        html,
+        flags=re.DOTALL
+    )
+    
+    # Pattern 2: background: #000000;
+    html = re.sub(
+        r'body\s*\{\s*[^}]*background:\s*#000000;?\s*[^}]*\}',
+        '''body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }''',
+        html,
+        flags=re.DOTALL
+    )
+    
+    # Pattern 3: bg-black class
+    html = re.sub(
+        r'<body\s+class="[^"]*bg-black[^"]*"',
+        '<body',
+        html
+    )
+    html = re.sub(
+        r'<body\s+class="[^"]*bg-zinc-900[^"]*"',
+        '<body',
+        html
+    )
+    
+    # Pattern 4: If no proper background exists, inject the style
+    if 'linear-gradient(135deg, #0f0f12' not in html and 'from-purple-950' not in html:
+        # Find the style tag and add body style
+        style_match = re.search(r'(<style[^>]*>)(.*?)(</style>)', html, re.DOTALL)
+        if style_match:
+            body_style = '''
+body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+}
+'''
+            new_css = style_match.group(1) + body_style + style_match.group(2) + style_match.group(3)
+            html = html.replace(style_match.group(0), new_css)
+    
+    return html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async def generate_preview_internal(
+    files: Dict[str, Any],
+    project_name: str,
+    existing_image_url: str = None,
+    user_prompt: str = "",
+    model_router=None,           # ← add this
+    get_cloudinary_url_for_preview=None  # ← add this
+) -> Dict[str, Any]:
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # ========== BRAND STYLING CONFIGURATION ==========
+    BRAND_ICON_COLOR = "#d8a219"  # Golden color
+    BRAND_ICON_TAILWIND = "text-amber-500"
+    BRAND_NAME_COLOR = "text-white"
+    BRAND_NAME_SIZE = "text-xl font-bold"
+    # ================================================ 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    import re  # ⭐ ADD THIS LINE - MUST BE FIRST
+    """Generate beautiful HTML preview - extracts ALL pages and footer content"""
+    
+    
+    
+    
+    
+      # ========== ADD THIS HELPER FUNCTION HERE ==========
+    def inject_cart_icon_into_html(html_content: str, user_prompt: str = "") -> str:
+        """Force inject cart icon into navigation only for e-commerce websites"""
+        
+        # ========== CHECK IF THIS IS E-COMMERCE ==========
+        is_ecommerce = False
+        
+        # Check HTML for shop page (not just cart)
+        has_shop_div = 'id="page_shop"' in html_content or 'data-page="shop"' in html_content
+        has_cart_div = 'id="page_cart"' in html_content or 'data-page="cart"' in html_content
+        
+        if has_shop_div and has_cart_div:
+            is_ecommerce = True
+            print("🛒 E-commerce detected: Shop and Cart divs found")
+        
+        # Check user prompt for gym keywords (skip injection)
+        if user_prompt:
+            gym_keywords = ['gym', 'fitness', 'workout', 'trainer', 'classes', 'membership', 'yoga', 'hiit', 'pilates']
+            if any(keyword in user_prompt.lower() for keyword in gym_keywords):
+                print("🚫 Gym/Fitness website detected - skipping cart icon injection")
+                return html_content
+        
+        # If not e-commerce, return unchanged
+        if not is_ecommerce:
+            print("🚫 Not an e-commerce website - skipping cart icon injection")
+            return html_content
+        
+        print("✅ E-commerce confirmed - injecting cart icon")
+        
+        # Pattern to find the cart link
+        cart_link_pattern = r'<a[^>]*data-page="cart"[^>]*>(.*?)</a>'
+        
+        def fix_cart_link(match):
+            cart_html = match.group(0)
+            
+            # Check if icon already exists
+            if 'data-lucide="shopping-cart"' in cart_html:
+                return cart_html  # Already has icon, leave it
+            
+            # Check if it has href="cart"
+            if 'href="cart"' not in cart_html:
+                cart_html = cart_html.replace('href="#"', 'href="cart"')
+            
+            # Check if it has flex classes
+            if 'flex' not in cart_html and 'items-center' not in cart_html:
+                if 'class="' in cart_html:
+                    cart_html = cart_html.replace('class="', 'class="flex items-center gap-2 group ')
+                else:
+                    cart_html = cart_html.replace('<a ', '<a class="flex items-center gap-2 group" ')
+            
+            # Extract the text content (usually "Cart")
+            text_match = re.search(r'>\s*(Cart|cart|CART)\s*<', cart_html, re.IGNORECASE)
+            cart_text = text_match.group(1) if text_match else "Cart"
+            
+            # Extract badge if exists
+            badge_match = re.search(r'<span[^>]*data-cart-count[^>]*>.*?</span>', cart_html, re.DOTALL)
+            badge_html = badge_match.group(0) if badge_match else '<span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>'
+            
+            # Build the corrected cart link
+            corrected_link = f'''<a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">
+                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>
+                <span class="text-gray-300 group-hover:text-purple-400">{cart_text}</span>
+                {badge_html}
+            </a>'''
+            
+            return corrected_link
+        
+        # Apply the fix
+        fixed_html = re.sub(cart_link_pattern, fix_cart_link, html_content, flags=re.DOTALL)
+        return fixed_html
+  
+  
+  
+  
+  
+    
+    
+    
+    try:
+        print(f"🤖 AI generating beautiful HTML preview for: {project_name}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== ADD FONT AWESOME CDN TO HEAD ==========
+        font_awesome_cdn = '''
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+        '''
+        
+        
+        
+          # ========== FUNCTION TO CONVERT FOOTER TO FONT AWESOME ==========
+        def convert_footer_to_fontawesome(footer_html: str) -> str:
+            """Convert Lucide icons in footer to Font Awesome icons"""
+            if not footer_html:
+                return footer_html
+            
+            # Map React/Lucide icon names to Font Awesome classes
+            icon_map = {
+                'Instagram': 'fab fa-instagram',
+                'Facebook': 'fab fa-facebook',
+                'Twitter': 'fab fa-twitter',
+                'Mail': 'fas fa-envelope',
+                'Phone': 'fas fa-phone',
+                'MapPin': 'fas fa-map-marker-alt',
+                'Send': 'fas fa-paper-plane',
+                'Heart': 'fas fa-heart',
+                'Sparkles': 'fas fa-sparkles',
+            }
+            
+            # Replace <IconName /> with Font Awesome <i>
+            for react_icon, fa_class in icon_map.items():
+                # Handle <IconName /> pattern
+                footer_html = re.sub(
+                    rf'<{react_icon}\s*/>',
+                    f'<i class="{fa_class} text-purple-400"></i>',
+                    footer_html
+                )
+                # Handle <IconName></IconName> pattern
+                footer_html = re.sub(
+                    rf'<{react_icon}>\s*</{react_icon}>',
+                    f'<i class="{fa_class} text-purple-400"></i>',
+                    footer_html
+                )
+                # Handle <IconName className="..." />
+                footer_html = re.sub(
+                    rf'<{react_icon}\s+className="([^"]*)"\s*/>',
+                    lambda m: f'<i class="{fa_class} {m.group(1)} text-purple-400"></i>',
+                    footer_html
+                )
+            
+            return footer_html
+
+
+
+
+
+
+
+
+
+
+
+
+        def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
+            """Convert Next.js Navigation component to HTML with Lucide icons - with cart badge support"""
+            
+            # ========== DYNAMIC ICON EXTRACTION ==========
+            icon_name = "Sparkles"  # default
+            icon_size = "w-8 h-8"
+            icon_color = "text-purple-500"
+            
+            # Method 1: Extract from JSX with any className pattern
+            jsx_pattern = r'<(\w+)\s+className="([^"]*)"'
+            jsx_matches = re.findall(jsx_pattern, nav_content)
+            for match in jsx_matches:
+                potential_icon = match[0]
+                class_str = match[1]
+                # Check if it's likely an icon (not a div or span)
+                if potential_icon[0].isupper() and len(potential_icon) > 1:
+                    icon_name = potential_icon
+                    # Extract size from className
+                    size_match = re.search(r'w-(\d+)\s+h-(\d+)', class_str)
+                    if size_match:
+                        icon_size = f"w-{size_match.group(1)} h-{size_match.group(2)}"
+                    # Extract color from className
+                    color_match = re.search(r'text-(\w+-\d+)', class_str)
+                    if color_match:
+                        icon_color = f"text-{color_match.group(1)}"
+                    break
+            
+            # Method 2: Extract from imports if JSX extraction failed
+            if icon_name == "Sparkles":
+                import_match = re.search(r'import\s+\{\s*(\w+)\s*\}\s+from\s+[\'"]lucide-react[\'"]', nav_content)
+                if import_match:
+                    icon_name = import_match.group(1)
+            
+            print(f"🎨 Extracted icon: {icon_name}")
+            print(f"   Size: {icon_size}")
+            print(f"   Color: {icon_color}")
+            
+            # Map icon name to Lucide data-lucide attribute
+            lucide_icon = icon_name.lower()
+            special_mappings = {
+                "graduationcap": "graduation-cap",
+                "shoppingbag": "shopping-bag",
+                "shoppingcart": "shopping-cart",
+                "sparkles": "sparkles",
+                "dumbbell": "dumbbell",
+            }
+            lucide_icon = special_mappings.get(lucide_icon, lucide_icon)
+            
+            # Extract brand text gradient className
+            brand_text_class = "text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"
+            text_match = re.search(r'<span[^>]*className="([^"]*)"[^>]*>[^<]*</span>', nav_content)
+            if text_match:
+                brand_text_class = text_match.group(1)
+            
+            # ========== BUILD NAVIGATION BUTTONS WITH CART BADGE SUPPORT ==========
+            nav_buttons_html = ""
+            cart_link_html = ""  # Store cart link separately for badge
+            print(f"📋 Building navigation for {len(nav_links)} links: {nav_links}")
+            
+            # E-commerce keywords that should have icons
+            ECOMMERCE_KEYWORDS = ["shop", "store", "catalog", "catalogue", "cart", "basket", "products", "checkout"]
+            
+            for href, label in nav_links:
+                label_lower = label.lower()
+                
+                # Check if this is the CART link (special handling for badge)
+                is_cart = 'cart' in label_lower or href == '/cart'
+                
+                # Check if this is an e-commerce link (should have icon)
+                is_ecommerce = any(keyword in label_lower for keyword in ECOMMERCE_KEYWORDS)
+                
+                if is_cart:
+                    # Special cart link WITH badge
+                    if "shop" in label_lower or "store" in label_lower:
+                        item_icon = "shopping-bag"
+                    elif "catalog" in label_lower or "catalogue" in label_lower:
+                        item_icon = "grid"
+                    else:
+                        item_icon = "shopping-cart"
+                    
+                    base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
+                    hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
+                    
+                    cart_link_html = f'''
+                        <a href="{href}" class="nav-link relative flex items-center gap-2 group" data-page="{href.replace('/', '')}">
+                            <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                            <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
+                        </a>'''
+                elif is_ecommerce:
+                    # Regular e-commerce link WITH icon (no badge)
+                    if "shop" in label_lower or "store" in label_lower:
+                        item_icon = "shopping-bag"
+                    elif "catalog" in label_lower or "catalogue" in label_lower:
+                        item_icon = "grid"
+                    elif "products" in label_lower:
+                        item_icon = "package"
+                    elif "checkout" in label_lower:
+                        item_icon = "credit-card"
+                    else:
+                        item_icon = "circle"
+                    
+                    base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
+                    hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
+                    
+                    nav_buttons_html += f'''
+                        <a href="{href}" class="nav-link flex items-center gap-2 group" data-page="{href.replace('/', '')}">
+                            <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                        </a>'''
+                else:
+                    # Build non-e-commerce link WITHOUT icon (text only)
+                    nav_buttons_html += f'''
+                        <a href="{href}" class="nav-link group" data-page="{href.replace('/', '')}">
+                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                        </a>'''
+            
+            # ========== GENERATE MOBILE NAV BUTTONS WITH CART BADGE ==========
+            mobile_nav_html = nav_buttons_html.replace('class="nav-link flex items-center gap-2 group"', 'class="mobile-nav-link flex items-center gap-3 group w-full px-4 py-2 rounded-lg hover:bg-white/10"')
+            mobile_nav_html = mobile_nav_html.replace('class="nav-link group"', 'class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10"')
+            
+            # Add mobile cart link with badge
+            mobile_cart_html = f'''
+                        <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
+                            <a href="/cart" class="mobile-nav-link flex items-center gap-3" data-page="cart">
+                                <i data-lucide="shopping-cart" class="w-4 h-4 {icon_color}"></i>
+                                <span class="text-gray-300">Cart</span>
+                            </a>
+                            <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+                        </div>'''
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+# ========== GENERATE FINAL NAVIGATION HTML ==========
+# CRITICAL FIX: Brand link uses href="#" with onclick handler (prevents page refresh)
+            return f'''
+            <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
+                <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+                    <i data-lucide="{lucide_icon}" class="w-8 h-8" style="color: #d8a219;"></i>
+                    <span class="text-white text-xl font-bold">{brand_name}</span>
+                </a>
+                <div class="hidden md:flex space-x-2 items-center">
+                    {nav_buttons_html}
+                    {cart_link_html}
+                </div>
+                <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+                    <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
+                </button>
+            </nav>
+
+            <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+                {mobile_nav_html}
+                {mobile_cart_html}
+            </div>
+
+            <style>
+                /* Cart Badge Animation */
+                .cart-count-badge {{
+                    animation: bounceIn 0.3s ease-out;
+                }}
+                @keyframes bounceIn {{
+                    0% {{ transform: scale(0); opacity: 0; }}
+                    50% {{ transform: scale(1.2); }}
+                    100% {{ transform: scale(1); opacity: 1; }}
+                }}
+            </style>
+
+            <script>
+                document.getElementById('mobile-menu-button')?.addEventListener('click', function() {{
+                    const menu = document.getElementById('mobile-menu');
+                    if (menu) menu.classList.toggle('hidden');
+                }});
+                lucide.createIcons();
+            </script>
+            '''
+                    
+                    
+                    
+                    
+                    
+                    
+
+
+
+
+
+
+
+
+
+
+
+        def clean_onError_handlers(html: str) -> str:
+            """Convert string onError handlers to actual JavaScript"""
+            import re
+            
+            # Count how many fixes were made
+            fixes_count = 0
+            
+            # ⭐ NEW: Fix broken onError that appears as text with double braces
+            # Pattern: onError="{{ (e) => { ... } }}" 
+            pattern0 = r'onError="\{\{\s*\(e\)\s*=>\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}\s*\}\}"'
+            html, count = re.subn(pattern0, r'onError={(e) => { \1 }}', html)
+            fixes_count += count
+            
+            # Fix pattern with optional chaining and double braces
+            pattern0b = r'onError="\{\{\s*\(e\)\s*=>\s*\{([^}]+?\.parentElement\?\.classList[^}]+)\}\s*\}\}"'
+            html, count = re.subn(pattern0b, r'onError={(e) => { \1 }}', html)
+            fixes_count += count
+            
+            # Fix pattern: onError="{(e) => { ... }}"
+            pattern = r'onError="\{\(e\)\s*=>\s*\{([^}]+)\}\}"'
+            html, count = re.subn(pattern, r'onError={(e) => { \1 }}', html)
+            fixes_count += count
+            
+            # Fix any onError with quotes
+            pattern2 = r'onError="([^"]+)"'
+            def fix_handler(match):
+                handler = match.group(1)
+                handler = handler.strip()
+                if handler.startswith('{') and handler.endswith('}'):
+                    handler = handler[1:-1]
+                return f'onError={{{handler}}}'
+            html, count = re.subn(pattern2, fix_handler, html)
+            fixes_count += count
+            
+            # Fix escaped characters
+            html = html.replace('&quot;', '"')
+            html = html.replace('&#39;', "'")
+            html = html.replace('&#123;', '{')
+            html = html.replace('&#125;', '}')
+            
+            # Fix double braces
+            html, count = re.subn(r'onError=\{\{(.+?)\}\}', r'onError={\1}', html)
+            fixes_count += count
+            
+            # ⭐ NEW: Remove any remaining broken onError that might render as text
+            html = re.sub(
+                r'onError="[^"]*parentElement\?\.classList[^"]*"\s*/>',
+                'onError={(e) => { e.currentTarget.style.display = "none"; }} />',
+                html
+            )
+            
+            if fixes_count > 0:
+                print(f"🔧 Fixed {fixes_count} onError handler(s) in preview HTML")
+            
+            return html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== COLLECT NAVIGATION ==========
+        nav_links = []
+        nav_content = ""
+        brand_name = project_name
+        
+        nav_paths = [
+            "components/Navigation.tsx",
+            "components/Navigation.jsx", 
+            "components/Navbar.tsx",
+            "components/Navbar.jsx",
+            "app/components/Navigation.tsx",
+            "components/Header.tsx"
+        ]
+        
+        for fp in nav_paths:
+            if fp in files:
+                nav_content = files[fp]
+                break
+        
+        if not nav_content:
+            for fp, content in files.items():
+                if any(x in fp for x in ["Navigation", "Navbar", "Header"]) and fp.endswith((".tsx", ".jsx")):
+                    nav_content = content
+                    break
+        
+        # ========== EXTRACT BRAND AND NAVIGATION LINKS ==========
+        print(f"🔍 DEBUG - nav_content length: {len(nav_content) if nav_content else 0}")
+        print(f"🔍 DEBUG - nav_content preview: {nav_content[:500] if nav_content else 'EMPTY'}")
+        
+        if nav_content:
+            brand_patterns = [
+                r'<Link\s+href="/"[^>]*>(.*?)</Link>',
+                r'<div\s+className="[^"]*brand[^"]*"[^>]*>(.*?)</div>',
+            ]
+            for pattern in brand_patterns:
+                match = re.search(pattern, nav_content, re.DOTALL)
+                if match:
+                    brand_name = re.sub(r'<[^>]+>', '', match.group(1)).strip()
+                    if brand_name:
+                        break
+            
+            # Extract ALL hrefs first (captures cart with icon)
+            href_pattern = r'<Link\s+href="/([^"]+)"'
+            all_hrefs = re.findall(href_pattern, nav_content)
+            href_pattern2 = r"<Link\s+href='/([^']+)'"
+            all_hrefs.extend(re.findall(href_pattern2, nav_content))
+            
+            print(f"🔍 Found hrefs: {all_hrefs}")
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_hrefs = []
+            for href in all_hrefs:
+                if href not in seen:
+                    seen.add(href)
+                    unique_hrefs.append(href)
+            
+            print(f"🔍 Unique hrefs: {unique_hrefs}")
+            
+            # Generate labels from hrefs
+            for href in unique_hrefs:
+                if href != "/" and href.lower() != brand_name.lower():
+                    # Try to extract label from the link content first
+                    label_pattern = rf'<Link\s+href="/{href}"[^>]*>(.*?)</Link>'
+                    label_match = re.search(label_pattern, nav_content, re.DOTALL)
+                    if label_match:
+                        label_content = label_match.group(1)
+                        # Remove icon tags to get text
+                        clean_label = re.sub(r'<[^>]+>', '', label_content).strip()
+                        if clean_label:
+                            label = clean_label
+                        else:
+                            label = href.capitalize()
+                    else:
+                        label = href.capitalize()
+                    
+                    nav_links.append((href, label))
+                    print(f"🔍 Added link: {href} -> {label}")
+            
+            # If still no links, fallback to old patterns
+            if not nav_links:
+                link_patterns = [
+                    r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
+                    r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
+                ]
+                for pattern in link_patterns:
+                    matches = re.findall(pattern, nav_content, re.DOTALL)
+                    for href, text in matches:
+                        clean_text = re.sub(r'<[^>]+>', '', text).strip()
+                        if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
+                            nav_links.append((href, clean_text))
+                    if nav_links:
+                        break
+        
+        if not nav_links:
+            nav_links = [("shop", "Shop"), ("catalog", "Catalog"), ("cart", "Cart")]
+            print("🔍 Using default nav_links")
+
+        print(f"📍 Navigation: {brand_name} -> {nav_links}")
+        
+        # ========== CONVERT NAVIGATION TO HTML ==========
+        navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
+        navigation_html_for_prompt = navigation_html
+
+
+
+
+
+
+
+
+
+
+
+
+        
+        # ========== EXTRACT FOOTER CONTENT ==========
+        footer_html = ""
+        footer_paths = [
+            "components/Footer.tsx",
+            "components/Footer.jsx",
+            "app/components/Footer.tsx",
+        ]
+        
+        for fp in footer_paths:
+            if fp in files:
+                footer_content = files[fp]
+                # Extract the JSX return content
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', footer_content)
+                if match:
+                    footer_html = match.group(1)
+                else:
+                    footer_html = footer_content
+                
+                # Convert JSX to HTML
+                footer_html = re.sub(r'className=', 'class=', footer_html)
+                footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
+                footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                
+                # Convert icons to Font Awesome
+                footer_html = convert_footer_to_fontawesome(footer_html)
+                print(f"✅ Footer extracted and converted to Font Awesome")
+                break
+        
+        # If no footer found, use default
+        if not footer_html:
+            from datetime import datetime
+            footer_html = f'''
+            <footer class="bg-zinc-950 border-t border-zinc-800 py-12">
+                <div class="container mx-auto grid md:grid-cols-4 gap-8 px-4">
+                    <div>
+                        <h4 class="font-bold mb-4">{brand_name}</h4>
+                        <p class="text-sm text-gray-400">Premium lifestyle goods.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4">Links</h4>
+                        <p class="text-sm text-gray-400">Shop | Catalog | Cart</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold mb-4">Contact</h4>
+                        <p class="text-sm text-gray-400">info@{brand_name.lower().replace(' ', '')}.com</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <i class="fab fa-instagram text-gray-400 hover:text-purple-400"></i>
+                        <i class="fab fa-facebook text-gray-400 hover:text-purple-400"></i>
+                        <i class="fab fa-twitter text-gray-400 hover:text-purple-400"></i>
+                    </div>
+                </div>
+                <div class="text-center mt-8 text-sm text-gray-600">
+                    © {datetime.now().year} {brand_name}. Crafted with <i class="fas fa-heart text-red-400"></i> in Nairobi
+                </div>
+            </footer>
+            '''
+        
+        # ========== INCLUDE FONT AWESOME CDN IN PREVIEW ==========
+        # Make sure to add this to your final preview HTML <head> section
+        font_awesome_cdn = '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">'
+        
+        # Continue with the rest of your preview generation...
+        # Make sure to add {font_awesome_cdn} to your <head> section
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== EXTRACT FOOTER CONTENT ==========
+        footer_html = ""
+        footer_paths = [
+            "components/Footer.tsx",
+            "components/Footer.jsx",
+            "app/components/Footer.tsx",
+            "components/Footer/index.tsx",
+            "components/Layout/Footer.tsx"
+        ]
+        
+        for fp in footer_paths:
+            if fp in files:
+                content = files[fp]
+                # Remove 'use client' and imports first
+                clean_footer = re.sub(r'^["\']use client["\'];\s*$', '', content, flags=re.MULTILINE)
+                clean_footer = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', clean_footer, flags=re.MULTILINE)
+                
+                # Extract JSX return content
+                match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', clean_footer, re.DOTALL)
+                if match:
+                    footer_html = match.group(1)
+                else:
+                    match = re.search(r'<footer[\s\S]*?</footer>', content, re.DOTALL)
+                    if match:
+                        footer_html = match.group(0)
+                
+                if footer_html:
+                    # Clean up footer HTML (preserve content)
+                    footer_html = re.sub(r'className=', 'class=', footer_html)
+                    footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
+                    footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                    footer_html = re.sub(r'\s+key=["\'][^"\']*["\']', '', footer_html)
+                    # Don't remove curly braces in footer
+                    # footer_html = re.sub(r'\{[^}]+\}', '', footer_html)  # COMMENTED OUT
+                    print(f"✅ Footer extracted: {len(footer_html)} chars")
+                    break
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+
+
+        
+        
+        
+        
+        
+        
+        
+        # ========== EXTRACT ALL PAGE CONTENTS ==========
+        page_contents = {}
+        
+        
+        
+        
+
+
+
+
+
+
+
+
+
+
+        def render_arrays_from_source(extracted: str, content: str) -> str:
+            """Render JavaScript arrays from source into HTML - handles filtered arrays too"""
+            
+            # Pattern for const arrayName = [...] at top level
+            array_def_pattern = r'const\s+(\w+)\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+            
+            for match in re.finditer(array_def_pattern, content, re.DOTALL):
+                array_name = match.group(1)
+                array_content = match.group(2)
+                
+                # Extract items from the array
+                items = []
+                
+                # More flexible pattern for class objects
+                class_pattern = r'\{\s*id:\s*(\d+)\s*,\s*name:\s*["\']([^"\']+)["\']\s*,\s*description:\s*["\']([^"\']+)["\']\s*,\s*instructor:\s*["\']([^"\']+)["\']\s*,\s*time:\s*["\']([^"\']+)["\']\s*,\s*duration:\s*["\']([^"\']+)["\']\s*,\s*level:\s*["\']([^"\']+)["\']'
+                
+                item_matches = re.findall(class_pattern, array_content)
+                
+                for m in item_matches:
+                    items.append({
+                        'id': m[0],
+                        'name': m[1],
+                        'description': m[2],
+                        'instructor': m[3],
+                        'time': m[4],
+                        'duration': m[5],
+                        'level': m[6]
+                    })
+                
+                if items:
+                    # Look for BOTH direct map and filtered map
+                    map_patterns = [
+                        rf'{array_name}\.map\(\([^)]+\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*\)',  # classes.map
+                        rf'filtered{array_name.capitalize()}s?\.map\(\([^)]+\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*\)',  # filteredClasses.map
+                        rf'{array_name}\.filter\([^)]+\)\.map\(\([^)]+\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*\)',  # classes.filter().map
+                    ]
+                    
+                    template = None
+                    for pattern in map_patterns:
+                        map_match = re.search(pattern, extracted, re.DOTALL)
+                        if map_match:
+                            template = map_match.group(1)
+                            break
+                    
+                    if template:
+                        rendered_items = []
+                        for item in items:
+                            rendered = template
+                            rendered = rendered.replace('{cls.name}', item['name'])
+                            rendered = rendered.replace('{cls.description}', item['description'])
+                            rendered = rendered.replace('{cls.instructor}', item['instructor'])
+                            rendered = rendered.replace('{cls.time}', item['time'])
+                            rendered = rendered.replace('{cls.duration}', item['duration'])
+                            rendered = rendered.replace('{cls.level}', item['level'])
+                            rendered_items.append(rendered)
+                        
+                        # Replace the entire section containing the map with rendered items
+                        # Find the parent div that contains the grid
+                        grid_pattern = r'(<div\s+class="[^"]*grid[^"]*">)([\s\S]*?)(</div>)'
+                        grid_match = re.search(grid_pattern, extracted, re.DOTALL)
+                        if grid_match:
+                            # Replace just the map block inside the grid
+                            map_block_pattern = r'\{[^{}]*\.map\([^{}]*\)[^{}]*\}'
+                            new_grid = grid_match.group(1) + '\n'.join(rendered_items) + grid_match.group(3)
+                            extracted = extracted.replace(grid_match.group(0), new_grid)
+                        
+                        print(f"   ✅ Rendered {len(items)} items from {array_name} array")
+            
+            return extracted
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              # Helper function to extract content from TSX/JSX files
+        def extract_page_content(content: str, route_name: str) -> str:
+            """Extract meaningful content from page component - captures ALL sections including arrays and maps"""
+            print(f"\n{'='*60}")
+            print(f"🔍 EXTRACTING: {route_name}")
+            print(f"{'='*60}")
+            print(f"📦 Original content length: {len(content)} chars")
+            
+            if not content:
+                  print(f"❌ Content is empty!")
+                  return ""
+            
+            # Remove imports and exports (but keep the JSX structure)
+            print(f"\n📌 STEP 1: Removing imports and exports...")
+            clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)
+            clean = re.sub(r'^export\s+default\s+\w+;?\s*$', '', clean, flags=re.MULTILINE)
+            clean = re.sub(r'^export\s+const\s+\w+\s*=\s*', '', clean, flags=re.MULTILINE)
+            clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
+            print(f"   ✅ Length after import removal: {len(clean)} chars")
+            
+            # Remove 'use client' directive
+            print(f"\n📌 STEP 2: Removing 'use client' directive...")
+            clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
+            print(f"   ✅ Length after 'use client' removal: {len(clean)} chars")
+            
+            # ⭐ NEW: Check for image in cleaned content
+            if 'image_1.jpg' in clean or 'image_' in clean:
+                  print(f"   ✅ Image found in cleaned content")
+            
+            # Check for key sections in cleaned content
+            print(f"\n📌 STEP 3: Checking for key sections in cleaned content...")
+            if 'Our Core Pillars' in clean or 'Core Features' in clean:
+                  print(f"   ✅ Features/Pillars section FOUND")
+                  features_pos = clean.find('Our Core Pillars') if 'Our Core Pillars' in clean else clean.find('Core Features')
+                  print(f"   📍 Section at position: {features_pos}")
+                  print(f"   📄 Preview around section:")
+                  print(f"      {clean[features_pos-50:features_pos+100]}...")
+            else:
+                  print(f"   ❌ Features/Pillars section NOT FOUND")
+            
+            # Check for inline array
+            print(f"\n📌 STEP 4: Checking for inline array (.map())...")
+            if '.map(' in clean:
+                  print(f"   ✅ .map() found in cleaned content")
+            else:
+                  print(f"   ❌ .map() NOT found in cleaned content")
+            
+            # Extract return JSX using bracket counting
+            print(f"\n📌 STEP 5: Extracting return JSX...")
+            start_match = re.search(r'return\s*\(', clean)
+            if not start_match:
+                  start_match = re.search(r'return\s+', clean)
+                  if not start_match:
+                        print(f"   ❌ No return statement found!")
+                        return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1></div>'
+            
+            print(f"   ✅ Return statement found at position {start_match.start()}")
+            start_pos = start_match.end()
+            print(f"   📍 Start position: {start_pos}")
+            
+            # Count brackets to find the matching closing parenthesis
+            open_count = 1
+            i = start_pos
+            extracted = ""
+            bracket_count = 0
+            
+            print(f"   🔄 Counting brackets to find matching closing parenthesis...")
+            while i < len(clean) and open_count > 0:
+                  char = clean[i]
+                  extracted += char
+                  if char == '(':
+                        open_count += 1
+                        bracket_count += 1
+                  elif char == ')':
+                        open_count -= 1
+                        bracket_count += 1
+                  i += 1
+            
+            print(f"   ✅ Extraction complete. Processed {bracket_count} brackets")
+            print(f"   📏 Extracted length: {len(extracted)} chars")
+            
+            # ⭐ CRITICAL FIX: DO NOT truncate at semicolons!
+            print(f"   📏 Keeping full extracted content (no semicolon truncation): {len(extracted)} chars")
+            
+            extracted = extracted.strip()
+            print(f"   📏 Final extracted length: {len(extracted)} chars")
+            
+            # ⭐ Check if image was preserved in extracted content
+            if 'image_1.jpg' in extracted:
+                  print(f"   ✅ Image preserved in extracted content")
+            else:
+                  print(f"   ⚠️ Image NOT found in extracted content")
+            
+            # Show preview of extracted content
+            print(f"\n📌 STEP 6: Preview of extracted content (first 500 chars):")
+            print(f"{'-'*60}")
+            print(extracted[:500])
+            print(f"{'-'*60}")
+            
+            if extracted:
+                
+                
+                  # ⭐ ADD THIS LINE - Render arrays from source first
+                  extracted = render_arrays_from_source(extracted, content)
+                  
+                  
+                  # Process inline arrays inside JSX
+                  print(f"\n📌 STEP 7: Processing inline arrays...")
+                  
+                  # Find and render the pillars/features array
+                  array_pattern = r'\{\s*\[([\s\S]*?)\]\s*\.map\(\(([^,]+),\s*([^)]+)\)\s*=>\s*\(\s*([\s\S]*?)\s*\)\s*\)\s*\}'
+                  
+                  def render_array(match):
+                        array_items_str = match.group(1)
+                        item_var = match.group(2).strip()
+                        index_var = match.group(3).strip()
+                        template = match.group(4).strip()
+                        
+                        print(f"      📦 Found array with {array_items_str.count('title:')} items")
+                        print(f"      🏷️ Item variable: {item_var}, Index variable: {index_var}")
+                        
+                        items = []
+                        object_pattern = r'\{\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']\s*\}'
+                        object_matches = re.findall(object_pattern, array_items_str)
+                        
+                        for title, desc in object_matches:
+                              items.append({"title": title, "desc": desc})
+                              print(f"         📌 Item: '{title}' -> '{desc[:40]}...'")
+                        
+                        if items:
+                              rendered_items = []
+                              for idx, item in enumerate(items):
+                                    rendered_html = template
+                                    rendered_html = rendered_html.replace(f'{{{item_var}.title}}', item['title'])
+                                    rendered_html = rendered_html.replace(f'{{{item_var}.desc}}', item['desc'])
+                                    rendered_html = rendered_html.replace(f'{{{index_var}}}', str(idx))
+                                    rendered_items.append(rendered_html)
+                                    # Fix icon class for ShieldCheck
+                                    rendered_html = rendered_html.replace('fa-shield-check', 'fa-shield-alt')
+                              
+                              print(f"      ✅ Rendered {len(rendered_items)} items")
+                              return '\n'.join(rendered_items)
+                        
+                        return match.group(0)
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  extracted = re.sub(array_pattern, render_array, extracted, flags=re.DOTALL)
+                  
+                  if '.map(' in extracted:
+                        print(f"   ⚠️ Some .map() patterns may not have been processed")
+                        
+                        
+                        
+                        
+                        
+                        
+                  # ========== Extract products array from shop page ==========
+                  products_array_pattern = r'const\s+products\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+                  products_match = re.search(products_array_pattern, content, re.DOTALL)
+                  
+                  if products_match and route_name == 'shop':
+                      products_content = products_match.group(1)
+                      # Extract each product
+                      product_pattern = r'\{\s*id:\s*["\']([^"\']+)["\']\s*,\s*name:\s*["\']([^"\']+)["\']\s*,\s*price:\s*([\d.]+)'
+                      product_items = re.findall(product_pattern, products_content)
+                      
+                      if product_items:
+                          # Build the products grid HTML
+                          products_html = '<div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">'
+                          
+                          for product_id, product_name, product_price in product_items:
+                              products_html += f'''
+                          <div class="group relative bg-gradient-to-br from-white/5 to-white/3 rounded-2xl overflow-hidden backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1">
+                              <div class="relative h-64 bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+                                  <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400/50 group-hover:scale-110 transition-transform duration-300"></i>
+                                  <button class="absolute top-3 right-3 p-2 rounded-full bg-black/50 hover:bg-purple-600 transition-colors">
+                                      <i data-lucide="heart" class="w-4 h-4 text-white"></i>
+                                  </button>
+                              </div>
+                              <div class="p-5">
+                                  <h3 class="text-lg font-bold mb-1">{product_name}</h3>
+                                  <p class="text-sm text-gray-400 mb-3">Product</p>
+                                  <div class="flex items-center justify-between">
+                                      <span class="text-2xl font-bold text-purple-400">${product_price}</span>
+                                      <button class="add-to-cart-btn px-4 py-2 bg-purple-600/20 rounded-full text-purple-400 hover:bg-purple-600 hover:text-white transition-all text-sm" data-id="{product_id}" data-name="{product_name}" data-price="{product_price}">Add to Cart</button>
+                                  </div>
+                              </div>
+                          </div>'''
+                          
+                          products_html += '</div>'
+                          
+                          # Replace the products grid
+                          extracted = re.sub(
+                              r'<div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">[\s\S]*?</div>',
+                              products_html,
+                              extracted
+                          )
+                          print(f"   ✅ Rendered {len(product_items)} products for shop page")
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                          
+                  # ========== Extract and render filter buttons ==========
+                  # Pattern for filter buttons array
+                  filter_pattern = r'\{\s*\[\s*([^\]]+?)\s*\]\s*\.map\(\(([^,]+),\s*([^)]+)\)\s*=>\s*\(\s*<button[^>]*>\s*\{[^}]+\}\s*<\/button>\s*\)\s*\)\s*\}'
+                  
+                  def render_filters(match):
+                        categories_str = match.group(1)
+                        # Extract quoted strings from the array
+                        categories = re.findall(r'["\']([^"\']+)["\']', categories_str)
+                        
+                        if categories:
+                            buttons_html = '<div class="flex flex-wrap justify-center gap-3">'
+                            for i, cat in enumerate(categories):
+                                active_class = 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25' if i == 0 else 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                                display_name = cat.capitalize()
+                                buttons_html += f'''
+                            <button class="filter-btn px-4 py-2 rounded-full text-sm font-medium transition-all {active_class}" data-filter="{cat}">{display_name}</button>'''
+                            buttons_html += '</div>'
+                            print(f"      ✅ Rendered {len(categories)} filter buttons")
+                            return buttons_html
+                        
+                        # Fallback: generate default filter buttons
+                        default_cats = ['all', 'coffee', 'blends', 'accessories']
+                        buttons_html = '<div class="flex flex-wrap justify-center gap-3">'
+                        for i, cat in enumerate(default_cats):
+                            active_class = 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25' if i == 0 else 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                            display_name = cat.capitalize()
+                            buttons_html += f'''
+                        <button class="filter-btn px-4 py-2 rounded-full text-sm font-medium transition-all {active_class}" data-filter="{cat}">{display_name}</button>'''
+                        buttons_html += '</div>'
+                        print(f"      ✅ Generated {len(default_cats)} default filter buttons")
+                        return buttons_html
+                  
+                  # Apply filter pattern replacement
+                  extracted = re.sub(filter_pattern, render_filters, extracted, flags=re.DOTALL)                          
+                          
+                          
+                          
+                                                 
+                        
+                        
+                        
+                        
+                        
+                        
+                  
+                  # Convert JSX to HTML
+                  print(f"\n📌 STEP 8: Converting JSX to HTML...")
+                  extracted = re.sub(r'className=', 'class=', extracted)
+                  
+                  
+                  extracted = extracted.replace('fa-shield-check', 'fa-shield-alt')
+                  
+                  
+                  extracted = re.sub(r'htmlFor=', 'for=', extracted)
+                  extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
+                  extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
+                  extracted = re.sub(r'</Link>', '</a>', extracted)
+                  extracted = re.sub(r'<Image\s+src="([^"]+)"[^>]*/?>', r'<img src="\1" alt="" />', extracted)
+                  extracted = re.sub(r'<Image\s+src=\'([^\']+)\'[^>]*/?>', r'<img src="\1" alt="" />', extracted)
+                  extracted = re.sub(r'<>', '<div>', extracted)
+                  extracted = re.sub(r'</>', '</div>', extracted)
+                  extracted = re.sub(r'\s+key=["\'][^"\']*["\']', '', extracted)
+                  extracted = re.sub(r'\s+priority\s*', '', extracted)
+                  extracted = re.sub(r'\s+loading="lazy"\s*', '', extracted)
+                  extracted = re.sub(r'<Fragment>', '', extracted)
+                  extracted = re.sub(r'</Fragment>', '', extracted)
+                  extracted = re.sub(r'>\s+<', '><', extracted)
+                  extracted = re.sub(r'\n{3,}', '\n\n', extracted)
+                  
+                  # ⭐ FINAL CHECK: If image was lost, manually inject it
+                  if 'image_1.jpg' not in extracted and 'image_' in str(files.keys()):
+                        print(f"\n   🔧 Image lost during conversion - manually injecting...")
+                        # Find the hero section and add the image
+                        if '<section class="relative h-screen' in extracted:
+                              # Inject image right after section opening
+                              image_tag = '<img src="/images/image_1.jpg" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />'
+                              extracted = extracted.replace(
+                                    '<section class="relative h-screen',
+                                    f'<section class="relative h-screen">{image_tag}'
+                              )
+                              # Also add the dark overlay
+                              overlay = '<div class="absolute inset-0 bg-black/50"></div>'
+                              extracted = extracted.replace(image_tag, f'{image_tag}\n    {overlay}')
+                              print(f"   ✅ Image injected into hero section")
+                  
+                  # Final verification
+                  print(f"\n📌 STEP 9: Final verification...")
+                  if 'Core Features' in extracted or 'Our Core Pillars' in extracted:
+                        print(f"   ✅ Features/Pillars section present in final extracted content")
+                        card_count = extracted.count('rounded-xl')
+                        print(f"   📊 Cards found: {card_count}")
+                        
+                        if card_count >= 3:
+                              print(f"   ✅ All features successfully extracted!")
+                  else:
+                        print(f"   ❌ Features section MISSING from final extracted content!")
+                  
+                  # ⭐ Final image check
+                  if 'image_1.jpg' in extracted:
+                        print(f"   ✅ Image present in final output!")
+                  else:
+                        print(f"   ⚠️ Image missing from final output!")
+                  
+                  print(f"\n✅ Extraction complete for {route_name}")
+                  print(f"{'='*60}\n")
+                  return extracted.strip()
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            print(f"❌ No JSX extracted, using fallback")
+            return f'<div class="container"><h1 class="gradient-text">{route_name.replace("_", " ").title()}</h1><p>Content from {route_name}</p></div>'
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # Scan all files for page components
+        for file_path, content in files.items():
+            # Match Next.js page patterns
+            if file_path.endswith((".tsx", ".jsx", ".js")) and ("/app/" in file_path or file_path.startswith("app/")):
+                # Skip non-page files
+                if "layout" in file_path.lower() or "error" in file_path.lower() or "loading" in file_path.lower():
+                    continue
+                
+                # Extract route name
+                route = file_path.replace("app/", "").replace("/page.tsx", "").replace("/page.jsx", "").replace("/page.js", "")
+                route = route.replace(".tsx", "").replace(".jsx", "").replace(".js", "")
+                route_name = route if route else "home"
+                route_name = route_name.replace("/", "_")
+                
+                print(f"\n📄 Found page: {file_path} -> {route_name}")
+                
+
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                extracted_content = extract_page_content(content, route_name)
+                
+                
+                
+                
+                
+                
+                
+                
+                # ========== DEBUG: Log extracted content for home page ==========
+                if route_name == 'page' or route_name == 'home':
+                    print(f"\n{'='*60}")
+                    print(f"🔍 DEBUGGING EXTRACTED CONTENT FOR HOME PAGE")
+                    print(f"{'='*60}")
+                    print(f"📏 Extracted content length: {len(extracted_content)} chars")
+                    print(f"\n📄 FIRST 500 CHARACTERS:")
+                    print("-" * 40)
+                    print(extracted_content[:500])
+                    print("-" * 40)
+                    
+                    print(f"\n🔎 SEARCHING FOR KEY SECTIONS:")
+                    print("-" * 40)
+                    
+                    # Check for hero section
+                    if 'relative h-screen' in extracted_content or 'hero' in extracted_content.lower():
+                        print("✅ Hero section found")
+                    else:
+                        print("❌ Hero section MISSING")
+                    
+                    # Check for features section
+                    if 'Our Features' in extracted_content:
+                        print("✅ 'Our Features' heading found")
+                    else:
+                        print("❌ 'Our Features' heading MISSING")
+                    
+                    # Check for grid
+                    if 'grid md:grid-cols-3' in extracted_content:
+                        print("✅ Grid container found")
+                    else:
+                        print("❌ Grid container MISSING")
+                    
+                    # Check for individual feature cards
+                    card_count = extracted_content.count('rounded-xl bg-white/5')
+                    print(f"📊 Feature cards found: {card_count}")
+                    
+                    # Check for specific feature titles
+                    if 'Cloud Analytics' in extracted_content:
+                        print("✅ 'Cloud Analytics' found")
+                    else:
+                        print("❌ 'Cloud Analytics' MISSING")
+                    
+                    if 'Team Sync' in extracted_content:
+                        print("✅ 'Team Sync' found")
+                    else:
+                        print("❌ 'Team Sync' MISSING")
+                    
+                    if 'Security First' in extracted_content:
+                        print("✅ 'Security First' found")
+                    else:
+                        print("❌ 'Security First' MISSING")
+                    
+                    # Check if the inline array pattern exists
+                    if 'map((f, i)' in extracted_content or '.map(' in extracted_content:
+                        print("⚠️ Raw .map() still present (not rendered)")
+                        # Find and show the map pattern
+                        import re
+                        map_match = re.search(r'\{[^}]*\.map\([^)]*\)[^}]*\}', extracted_content)
+                        if map_match:
+                            print(f"   Map pattern found: {map_match.group(0)[:150]}...")
+                    else:
+                        print("✅ No raw .map() found (should be rendered)")
+                    
+                    # Check for any JavaScript expressions left
+                    if '{' in extracted_content and '}' in extracted_content:
+                        # Count remaining JS expressions
+                        js_exprs = re.findall(r'\{[^{}]*\}', extracted_content)
+                        if js_exprs:
+                            print(f"⚠️ Remaining JS expressions: {len(js_exprs)}")
+                            for expr in js_exprs[:3]:
+                                print(f"   - {expr[:80]}")
+                    
+                    print(f"\n📄 LAST 500 CHARACTERS:")
+                    print("-" * 40)
+                    print(extracted_content[-500:])
+                    print("-" * 40)
+                    print(f"{'='*60}\n")
+                               
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+             # ========== ADD THIS AUTH OVERRIDE RIGHT HERE ==========
+                # Override signup/login pages with backend HTML forms
+                if route_name in ['signup', 'login', 'auth']:
+                    if route_name == 'signup':
+                        page_contents[route_name] = '''
+                        <div class="min-h-screen flex items-center justify-center py-12 px-4">
+                            <div class="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+                                <div>
+                                    <h2 class="text-center text-3xl font-extrabold text-white">Create your account</h2>
+                                    <p class="mt-2 text-center text-sm text-gray-400">
+                                        Already have an account? <a href="#" onclick="showPage('login'); return false;" class="font-medium text-purple-400 hover:text-purple-300">Sign in</a>
+                                    </p>
+                                </div>
+                                <form id="signup-form" class="mt-8 space-y-6">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <input type="text" name="name" required placeholder="Full name" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="email" name="email" required placeholder="Email address" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="password" name="password" required placeholder="Password (min. 6 characters)" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="password" name="confirmPassword" required placeholder="Confirm password" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full flex justify-center py-3 px-4 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">Sign up</button>
+                                </form>
+                            </div>
+                        </div>
+                        '''
+                        print(f"  ✅ Using backend HTML form for signup")
+                    elif route_name == 'login':
+                        page_contents[route_name] = '''
+                        <div class="min-h-screen flex items-center justify-center py-12 px-4">
+                            <div class="max-w-md w-full space-y-8 bg-white/5 backdrop-blur-sm p-8 rounded-2xl border border-white/10">
+                                <div>
+                                    <h2 class="text-center text-3xl font-extrabold text-white">Sign in to your account</h2>
+                                    <p class="mt-2 text-center text-sm text-gray-400">
+                                        Or <a href="#" onclick="showPage('signup'); return false;" class="font-medium text-purple-400 hover:text-purple-300">create a new account</a>
+                                    </p>
+                                </div>
+                                <form id="login-form" class="mt-8 space-y-6">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <input type="email" name="email" required placeholder="Email address" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                        <div>
+                                            <input type="password" name="password" required placeholder="Password" class="w-full px-4 py-3 border border-white/10 bg-white/5 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-gray-500" />
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full flex justify-center py-3 px-4 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">Sign in</button>
+                                </form>
+                            </div>
+                        </div>
+                        '''
+                        print(f"  ✅ Using backend HTML form for login")
+                # ========== END OF AUTH OVERRIDE ==========
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                # ========== CHANGE THIS PART - USE ELIF ==========
+                elif extracted_content and len(extracted_content) > 50:
+                    page_contents[route_name] = extracted_content[:1000000]  # Limit size
+                    print(f"  ✅ Extracted {len(extracted_content)} chars")
+                else:
+                    # Create meaningful fallback content based on route name
+                    display_name = route_name.replace("_", " ").title()
+                    page_contents[route_name] = f'''
+                    <div class="container">
+                        <div class="hero" style="min-height: 40vh; margin: 2rem;">
+                            <div class="hero-content">
+                                <h1 class="gradient-text">{display_name}</h1>
+                                <p>Welcome to our {display_name.lower()} page. Explore what we have to offer.</p>
+                                <button class="btn" onclick="showPage('home')">Back to Home</button>
+                            </div>
+                        </div>
+                        <div class="grid">
+                            <div class="card">
+                                <h3>About {display_name}</h3>
+                                <p>Learn more about our {display_name.lower()} offerings and how we can help you.</p>
+                                <button class="btn" style="margin-top: 1rem;">Learn More</button>
+                            </div>
+                            <div class="card">
+                                <h3>Our {display_name} Services</h3>
+                                <p>Discover the range of services we provide in {display_name.lower()}.</p>
+                                <button class="btn" style="margin-top: 1rem;">View Services</button>
+                            </div>
+                            <div class="card">
+                                <h3>Contact Us About {display_name}</h3>
+                                <p>Have questions? Reach out to our team for more information.</p>
+                                <button class="btn" style="margin-top: 1rem;">Get in Touch</button>
+                            </div>
+                        </div>
+                    </div>
+                    '''
+                    print(f"  ⚠️ Using fallback content for {route_name}")
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+        # Print summary
+        print(f"\n📊 EXTRACTION SUMMARY:")
+        print(f"  - Brand: {brand_name}")
+        print(f"  - Navigation links: {len(nav_links)}")
+        print(f"  - Pages extracted: {len(page_contents)}")
+        for route, content in page_contents.items():
+            print(f"    • {route}: {len(content)} chars")
+        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== BUILD DYNAMIC PAGES SECTION FOR PROMPT ==========
+        pages_section = ""
+        for route, content in page_contents.items():
+            pages_section += f"""
+--- PAGE: {route} ---
+{content[:50000]}
+--- END OF PAGE: {route} ---
+
+"""
+        
+        print(f"📄 Built pages section for routes: {list(page_contents.keys())}")       
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        # ========== DEBUG: CHECK WHAT WAS EXTRACTED ==========
+        print(f"\n🔍 DEBUG - page_contents keys: {list(page_contents.keys())}")
+        for key in page_contents.keys():
+            preview = page_contents[key][:100] if page_contents[key] else "(empty)"
+            print(f"  Key: '{key}' - Content preview: {preview}...")
+        # ====================================================
+
+        # ========== COLLECT AVAILABLE IMAGES ==========
+        first_image = None        
+                           
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+
+        # Ensure all navigation pages have content
+        for href, label in nav_links:
+            route_key = href.replace("/", "_")
+            if route_key not in page_contents:
+                page_contents[route_key] = f'''
+                <div class="container">
+                    <div class="hero" style="min-height: 40vh; margin: 2rem;">
+                        <div class="hero-content">
+                            <h1 class="gradient-text">{label}</h1>
+                            <p>Welcome to our {label.lower()} page. Explore our offerings and find what suits you best.</p>
+                            <button class="btn" onclick="showPage('home')">Back to Home</button>
+                        </div>
+                    </div>
+                    <div class="grid">
+                        <div class="card">
+                            <h3>Featured {label}</h3>
+                            <p>Discover amazing opportunities in our {label.lower()} section.</p>
+                            <button class="btn" style="margin-top: 1rem;">Learn More</button>
+                        </div>
+                        <div class="card">
+                            <h3>Upcoming {label}</h3>
+                            <p>Stay updated with the latest news and events in {label.lower()}.</p>
+                            <button class="btn" style="margin-top: 1rem;">View Details</button>
+                        </div>
+                        <div class="card">
+                            <h3>Contact Us About {label}</h3>
+                            <p>Have questions? Reach out to our team for more information.</p>
+                            <button class="btn" style="margin-top: 1rem;">Get in Touch</button>
+                        </div>
+                    </div>
+                </div>
+                '''
+
+        # Print summary
+        print(f"\n📊 EXTRACTION SUMMARY:")
+        print(f"  - Brand: {brand_name}")
+        print(f"  - Navigation links: {len(nav_links)}")
+        print(f"  - Pages extracted: {len(page_contents)}")
+        for route, content in page_contents.items():
+            print(f"    • {route}: {len(content)} chars")
+        print(f"  - Footer: {'✅ Extracted' if footer_html else '❌ Not found (will generate default)'}")
+
+        # ========== COLLECT AVAILABLE IMAGES ==========
+        first_image = None
+        for file_path in files.keys():
+            if file_path.startswith("public/images/") and file_path.endswith((".jpg", ".png", ".jpeg")):
+                first_image = "/" + file_path.replace("public/", "")
+                break
+
+        print(f"\n🖼️ First image: {first_image}")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== DETECT PROJECT TYPE ==========
+        has_shop_page = any('shop' in f.lower() or 'products' in f.lower() or 'store' in f.lower() for f in files.keys())
+        has_cart_page = any('cart' in f.lower() for f in files.keys())
+        is_ecommerce = has_shop_page and has_cart_page
+        
+        # Detect gym/fitness website
+        is_gym = any('gym' in f.lower() or 'fitness' in f.lower() or 'workout' in f.lower() or 'trainer' in f.lower() or 'classes' in f.lower() or 'membership' in f.lower() for f in files.keys())
+        
+        print(f"📊 Project detection: ecommerce={is_ecommerce}, gym={is_gym}, shop={has_shop_page}, cart={has_cart_page}")       
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        # ========== PREPARE DATA FOR PROMPT ==========
+        nav_links_json = json.dumps(nav_links)
+        page_contents_json = json.dumps(page_contents, indent=2)[:15000]
+        
+        # Get home page content
+        home_content = page_contents.get('page', f'<div class="hero-content"><h1 class="gradient-text">{brand_name}</h1><p>Welcome to our website</p><button class="btn">Get Started</button></div>')
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== ADD THIS CODE HERE - EXTRACT PRODUCTS DATA ==========
+        products_data = ""
+        shop_content = files.get("app/shop/page.tsx", "")
+        if shop_content:
+            products_match = re.search(r'const\s+products\s*=\s*\[\s*([\s\S]*?)\s*\]', shop_content)
+            if products_match:
+                products_data = products_match.group(1)
+                print(f"📦 Extracted products data: {products_data[:200]}...")
+            else:
+                # Try alternative pattern for products array
+                products_match = re.search(r'const\s+products\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]', shop_content, re.DOTALL)
+                if products_match:
+                    products_data = products_match.group(1)
+                    print(f"📦 Extracted products data (alt pattern): {products_data[:200]}...")
+        
+        # Also extract cart items if needed
+        cart_content = files.get("app/cart/page.tsx", "")       
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # Fix ShieldCheck icon to use correct Font Awesome class
+        home_content = home_content.replace('fa-shield-check', 'fa-shield-alt')       
+        
+        
+        
+        
+        
+        
+        # Get backend URL
+        BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+         # ========== FORCE EXTRACT FAQ AND STATS FROM SOURCE FILES ==========
+        homepage_source = files.get("app/page.tsx", "")
+        faq_component_source = files.get("components/FAQ.tsx", "")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+         # ========== STRONG FAQ EXTRACTION - HANDLES ALL FORMATS ==========
+        faq_html = ""
+        stats_html = ""
+        
+        # Combine all source files to search
+        all_source = homepage_source + "\n" + faq_component_source
+        
+        # METHOD 1: Extract from inline map array (most common in your code)
+        # Pattern: {[ { q: "text", a: "text" }, { q: "text", a: "text" } ].map(...)}
+        inline_map_pattern = r'\{\s*\[\s*\{\s*(?:q|question):\s*["\']([^"\']+)["\']\s*,\s*(?:a|answer):\s*["\']([^"\']+)["\']\s*\}'
+        inline_items = re.findall(inline_map_pattern, homepage_source)
+        
+        if inline_items:
+            print(f"✅ Found {len(inline_items)} FAQ items from inline map")
+            for question, answer in inline_items:
+                faq_html += f'''
+            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
+                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                    <span class="font-semibold text-white">{question}</span>
+                    <i class="fas fa-plus text-purple-400"></i>
+                </button>
+                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                    {answer}
+                </div>
+            </div>'''
+        
+        # METHOD 2: Extract from React component state array
+        # Pattern: const [openFaq, setOpenFaq] = useState... and array defined above
+        if not faq_html:
+            # Look for faqs array with q/a properties
+            const_faq_pattern = r'(?:const|let)\s+faqs\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+            const_match = re.search(const_faq_pattern, all_source, re.DOTALL)
+            
+            if const_match:
+                faq_content = const_match.group(1)
+                # Match both { q: "...", a: "..." } and { question: "...", answer: "..." }
+                item_pattern = r'\{\s*(?:q|question):\s*["\']([^"\']+)["\']\s*,\s*(?:a|answer):\s*["\']([^"\']+)["\']\s*\}'
+                faq_items = re.findall(item_pattern, faq_content)
+                
+                if faq_items:
+                    for question, answer in faq_items:
+                        faq_html += f'''
+            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
+                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                    <span class="font-semibold text-white">{question}</span>
+                    <i class="fas fa-plus text-purple-400"></i>
+                </button>
+                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                    {answer}
+                </div>
+            </div>'''
+                    print(f"✅ Extracted {len(faq_items)} FAQ items from const faqs array")
+        
+        # METHOD 3: Extract from JSX directly (for inline FAQ without array variable)
+        if not faq_html:
+            # Look for FAQ items in the JSX structure
+            jsx_faq_pattern = r'<div[^>]*className="[^"]*faq[^"]*"[^>]*>.*?<span[^>]*>([^<]+)</span>.*?<p[^>]*>([^<]+)</p>'
+            jsx_matches = re.findall(jsx_faq_pattern, homepage_source, re.DOTALL)
+            
+            if jsx_matches:
+                for question, answer in jsx_matches:
+                    faq_html += f'''
+            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
+                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                    <span class="font-semibold text-white">{question.strip()}</span>
+                    <i class="fas fa-plus text-purple-400"></i>
+                </button>
+                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                    {answer.strip()}
+                </div>
+            </div>'''
+                    print(f"✅ Extracted {len(jsx_matches)} FAQ items from JSX structure")
+        
+        # METHOD 4: Extract as last resort using simple search
+        if not faq_html:
+            # Search for patterns like "question:" and "answer:" in the source
+            simple_pattern = r'(?:q|question)[:\s]+["\']([^"\']+)["\']\s*,\s*(?:a|answer)[:\s]+["\']([^"\']+)["\']'
+            simple_matches = re.findall(simple_pattern, all_source, re.IGNORECASE)
+            
+            if simple_matches:
+                print(f"✅ Found {len(simple_matches)} FAQ items using simple pattern")
+                for question, answer in simple_matches:
+                    faq_html += f'''
+            <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
+                <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                    <span class="font-semibold text-white">{question}</span>
+                    <i class="fas fa-plus text-purple-400"></i>
+                </button>
+                <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                    {answer}
+                </div>
+            </div>'''
+        
+        if not faq_html:
+            faq_html = '<p class="text-gray-400 text-center">No FAQ items found</p>'
+            print("⚠️ No FAQ section found in source")
+        else:
+            print(f"📊 Total FAQ items extracted: {faq_html.count('faq-btn')}")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ========== EXTRACT FOOTER FROM SOURCE ==========
+        footer_html = ""
+        
+        # Check for Footer.tsx component file
+        footer_component = files.get("components/Footer.tsx", "")
+        
+        if footer_component:
+            print("🔍 Extracting footer from components/Footer.tsx")
+            
+            # Extract the JSX content from return statement
+            return_match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', footer_component, re.DOTALL)
+            
+            if return_match:
+                footer_html = return_match.group(1)
+                
+                # Convert React/JSX to HTML
+                footer_html = re.sub(r'className=', 'class=', footer_html)
+                footer_html = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', footer_html)
+                footer_html = re.sub(r'</Link>', '</a>', footer_html)
+                
+                # Convert Lucide icons to Font Awesome
+                footer_html = re.sub(r'<Sparkles\s*/>', '<i class="fas fa-sparkles text-purple-500"></i>', footer_html)
+                footer_html = re.sub(r'<Mail\s*/>', '<i class="fas fa-envelope"></i>', footer_html)
+                footer_html = re.sub(r'<Phone\s*/>', '<i class="fas fa-phone"></i>', footer_html)
+                footer_html = re.sub(r'<Send\s*/>', '<i class="fas fa-paper-plane"></i>', footer_html)
+                footer_html = re.sub(r'<ArrowUp\s*/>', '<i class="fas fa-arrow-up"></i>', footer_html)
+                
+                # Remove useState and useEffect hooks
+                footer_html = re.sub(r'\{showScroll \&\& \(', '', footer_html)
+                footer_html = re.sub(r'\)\}', '', footer_html)
+                
+                print(f"✅ Footer extracted from component: {len(footer_html)} chars")
+        
+        # Fallback to default footer if component not found
+        if not footer_html:
+            from datetime import datetime
+            footer_html = f'''
+            <footer class="bg-zinc-950 border-t border-white/10 py-12">
+                <div class="container mx-auto px-4 grid md:grid-cols-4 gap-8">
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-2"><i class="fas fa-sparkles text-purple-500"></i><span class="font-bold">{brand_name}</span></div>
+                        <p class="text-sm text-gray-400">Premium digital solutions.</p>
+                    </div>
+                    <div><h4 class="font-bold mb-4">Quick Links</h4><ul class="space-y-2 text-sm text-gray-400"><li>Courses</li><li>Admissions</li></ul></div>
+                    <div><h4 class="font-bold mb-4">Contact</h4><ul class="space-y-2 text-sm text-gray-400"><li>support@example.com</li><li>+1 (555) 123-4567</li></ul></div>
+                    <div><h4 class="font-bold mb-4">Newsletter</h4><div class="flex gap-2"><input class="bg-white/5 p-2 rounded w-full" placeholder="Email" /><button class="bg-purple-600 p-2 rounded"><i class="fas fa-paper-plane"></i></button></div></div>
+                </div>
+                <div class="text-center mt-8 text-sm text-gray-600">© {datetime.now().year} {brand_name}. All rights reserved.</div>
+            </footer>
+            '''
+        
+        # Also extract scroll to top button JavaScript
+        scroll_script = """
+        <script>
+        // Scroll to Top Functionality
+        let scrollBtn = document.getElementById('scrollToTop');
+        if(scrollBtn) {
+            window.addEventListener('scroll', () => {
+                if(window.scrollY > 500) {
+                    scrollBtn.classList.remove('hidden');
+                } else {
+                    scrollBtn.classList.add('hidden');
+                }
+            });
+            scrollBtn.addEventListener('click', () => {
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            });
+        }
+        </script>
+        """       
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+         # ========== EXTRACT TESTIMONIALS FROM SOURCE ==========
+        testimonials_html = ""
+        
+        # Check for testimonials array in homepage
+        testimonials_pattern = r'const\s+testimonials\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+        testimonials_match = re.search(testimonials_pattern, homepage_source, re.DOTALL)
+        
+        if not testimonials_match:
+            # Also check if testimonials are defined as a variable
+            alt_pattern = r'const\s+testimonials\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+            testimonials_match = re.search(alt_pattern, homepage_source, re.DOTALL)
+        
+        if testimonials_match:
+            testimonials_content = testimonials_match.group(1)
+            
+            # Try format 1: { name: "...", role: "...", quote: "..." }
+            pattern1 = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*role:\s*["\']([^"\']+)["\']\s*,\s*quote:\s*["\']([^"\']+)["\']\s*\}'
+            testimonial_items = re.findall(pattern1, testimonials_content)
+            
+            # If not found, try format 2: { name: "...", text: "..." } (no role)
+            if not testimonial_items:
+                pattern2 = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*text:\s*["\']([^"\']+)["\']\s*\}'
+                items = re.findall(pattern2, testimonials_content)
+                for name, text in items:
+                    testimonial_items.append((name, "", text))
+                print(f"📝 Found testimonials without roles")
+            
+            if testimonial_items:
+                for name, role, quote in testimonial_items:
+                    if role:
+                        testimonials_html += f'''
+            <div class="bg-gray-900 p-8 rounded-2xl border border-white/10">
+                <p class="text-gray-300 mb-6 italic">"{quote}"</p>
+                <div class="font-bold text-white">{name}</div>
+                <div class="text-sm text-purple-400">{role}</div>
+            </div>'''
+                    else:
+                        testimonials_html += f'''
+            <div class="bg-gray-900 p-8 rounded-2xl border border-white/10">
+                <p class="text-gray-300 mb-6 italic">"{quote}"</p>
+                <div class="font-bold text-purple-400">- {name}</div>
+            </div>'''
+                print(f"✅ Extracted {len(testimonial_items)} testimonials from source")
+            else:
+                testimonials_html = '<p class="text-gray-400 text-center">No testimonials found</p>'
+        else:
+            # Also check for inline testimonials in JSX
+            inline_testimonial_pattern = r'<div[^>]*className="[^"]*testimonial[^"]*"[^>]*>.*?<p[^>]*>([^<]+)</p>.*?<h[34][^>]*>([^<]+)</h[34]>'
+            inline_matches = re.findall(inline_testimonial_pattern, homepage_source, re.DOTALL)
+            if inline_matches:
+                for quote, name in inline_matches:
+                    testimonials_html += f'''
+            <div class="bg-gray-900 p-8 rounded-2xl border border-white/10">
+                <p class="text-gray-300 mb-6 italic">"{quote.strip()}"</p>
+                <div class="font-bold text-purple-400">- {name.strip()}</div>
+            </div>'''
+                print(f"✅ Extracted {len(inline_matches)} testimonials from inline JSX")
+            else:
+                testimonials_html = '<p class="text-gray-400 text-center">No testimonials section found</p>'
+                print("⚠️ No testimonials section found in source")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+         # ⭐⭐⭐ CRITICAL: Use Cloudinary URL for images (NO base64) ⭐⭐⭐
+        # Get the Cloudinary URL for the image
+        image_url = existing_image_url  # Use existing URL if provided during edit
+        
+        # Also check if there's a Cloudinary URL in the files
+        if not image_url and "__cloudinary_image_url__" in files:
+            image_url = files["__cloudinary_image_url__"]
+            print(f"📸 Found Cloudinary URL in files: {image_url[:80]}...")
+        
+        if not image_url:
+            # No existing URL, upload new image
+            for file_key, content in files.items():
+                if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
+                    # Upload to Cloudinary and get cached URL
+                    image_url = await get_cloudinary_url_for_preview(file_key, content, files)
+                    if image_url:
+                        print(f"📸 Using Cloudinary URL: {image_url[:80]}...")
+                    else:
+                        # Fallback to placeholder if Cloudinary fails
+                        image_url = "https://placehold.co/1920x1080/1a1a2e/white?text=Image"
+                        print(f"⚠️ Cloudinary failed, using placeholder")
+                    break
+        else:
+            print(f"📸 Using existing Cloudinary URL (preserved from original): {image_url[:80]}...")
+            # Store the existing URL in files for database
+            files["__cloudinary_image_url__"] = image_url
+        
+        # ⭐⭐⭐ CRITICAL FIX: ALWAYS use image_url for first_image_display ⭐⭐⭐
+        # During EDIT: Use Cloudinary URL from database
+        # During INITIAL BUILD: Use uploaded Cloudinary URL
+        if image_url and image_url.startswith('https://res.cloudinary.com'):
+            first_image_display = image_url
+            print(f"🖼️ ✅ Using Cloudinary URL for hero: {first_image_display[:80]}...")
+        elif first_image:
+            first_image_display = first_image
+            print(f"🖼️ Using local image path: {first_image_display}")
+        else:
+            first_image_display = 'None - use gradient background'
+            print(f"🖼️ No image available, using gradient")
+        
+        # If we have an image URL, force it into the home content
+        if image_url:
+            # Replace any image path with the Cloudinary URL
+            home_content = home_content.replace('/images/image_1.jpg', image_url)
+            home_content = home_content.replace('/images/image_2.jpg', image_url)
+            home_content = re.sub(r'src=["\']/images/[^"\']+\.jpg["\']', f'src="{image_url}"', home_content)
+            home_content = re.sub(r"src=['\']/images/[^'\']+\.jpg['\']", f'src="{image_url}"', home_content)
+            
+            # Also ensure the hero section has the image tag
+            if '<img' not in home_content:
+                # Inject the image into the hero section
+                home_content = f'''
+        <section class="relative h-screen w-full overflow-hidden">
+            <img src="{image_url}" class="absolute inset-0 w-full h-full object-cover" />
+            <div class="absolute inset-0 bg-black/50"></div>
+            <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+                <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">{brand_name}</h1>
+                <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Welcome to {brand_name}</p>
+                <button class="btn">Get Started</button>
+            </div>
+        </section>
+        '''
+                print(f"  ✅ Injected Cloudinary image into home content")
+        
+        # Update the first_image display for the prompt
+        first_image_display = image_url if image_url else (first_image if first_image else 'None - use gradient background')
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        prompt = f"""CRITICAL: You MUST include Tailwind CSS CDN in the <head> tag:
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: BODY BACKGROUND - NEVER USE SOLID BLACK 🚨🚨🚨
+================================================================================
+
+❌ FORBIDDEN - NEVER generate:
+background: #000;
+background: #000000;
+bg-black
+bg-zinc-900
+bg-gray-900
+
+✅ REQUIRED - ALWAYS use this gradient:
+background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+
+This gradient creates a rich, dark theme with subtle purple/blue tones.
+Solid black backgrounds are FORBIDDEN and will be rejected.
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: MODERN PREMIUM NAVIGATION - NO FLOATING 🚨🚨🚨
+================================================================================
+
+The navigation MUST use a glass pill container for links - NEVER floating individual links.
+
+================================================================================
+✅ CORRECT NAVIGATION STRUCTURE (GROUNDED):
+================================================================================
+<header>
+    <nav class="nav-container">
+        <a href="#" class="brand" onclick="handleBrandClick(event)">
+            <i data-lucide="cpu" class="w-6 h-6" style="color: #d8a219;"></i>
+            <span>{brand_name}</span>
+        </a>
+        <div class="nav-links">  <!-- ← GLASS PILL CONTAINER -->
+            <a href="#" class="nav-link" data-page="features">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span>Features</span>
+            </a>
+            <a href="#" class="nav-link" data-page="pricing">
+                <i data-lucide="credit-card" class="w-4 h-4"></i>
+                <span>Pricing</span>
+            </a>
+        </div>
+        <button class="hamburger" id="hamburgerBtn">
+            <span></span><span></span><span></span>
+        </button>
+    </nav>
+</header>
+
+================================================================================
+❌ WRONG NAVIGATION STRUCTURE (FLOATING):
+================================================================================
+
+<header>
+    <nav class="flex justify-between">
+        <a href="#">Brand</a>
+        <div class="flex space-x-2">  <!-- ← NO GLASS CONTAINER -->
+            <a href="#">Features</a>   <!-- ← FLOATING INDIVIDUAL LINKS -->
+            <a href="#">Pricing</a>
+        </div>
+    </nav>
+</header>
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: NO GAPS BETWEEN NAVIGATION AND HERO 🚨🚨🚨
+================================================================================
+
+The hero section MUST touch the navigation bar with ZERO gap.
+
+================================================================================
+❌ FORBIDDEN PATTERNS (CAUSE GAPS):
+================================================================================
+
+1. NO pt-* classes wrapping hero:
+   <div class="pt-20">  ← FORBIDDEN
+   <div class="pt-32">  ← FORBIDDEN
+
+2. NO padding-top on .page for home:
+   .page {{ padding-top: 72px; }}  ← FORBIDDEN for home
+
+3. NO margin-top on hero section:
+   <section class="mt-20">  ← FORBIDDEN
+
+4. NO extra divs with padding:
+   <div class="pt-16">  ← FORBIDDEN
+
+================================================================================
+✅ REQUIRED CSS (MUST USE EXACTLY):
+================================================================================
+
+<style>
+/* Pages have NO default padding */
+.page {{ 
+    display: none; 
+    min-height: calc(100vh - 72px); 
+    padding-top: 0;  /* ← CRITICAL: MUST BE 0 */
+}}
+
+.page.active {{ display: block; }}
+
+/* Home page - ABSOLUTELY NO padding */
+#page_home {{ 
+    padding-top: 0 !important; 
+}}
+
+/* Other pages need padding to clear fixed header */
+#page_features, #page_pricing, #page_contact, #page_about {{ 
+    padding-top: 72px; 
+}}
+</style>
+
+================================================================================
+✅ REQUIRED HERO STRUCTURE (NO GAPS):
+================================================================================
+
+<div id="page_home" class="page active">
+    <!-- NO div with pt-* classes here! -->
+    <section class="relative h-screen w-full overflow-hidden">
+        <img src="[IMAGE_URL]" class="absolute inset-0 w-full h-full object-cover" />
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="relative z-10 flex flex-col items-center justify-center w-full h-full text-center px-4">
+            <h1 class="text-5xl md:text-7xl font-bold mb-6" 
+                style="color: transparent; -webkit-text-stroke: 2px #d8a219;">
+                {brand_name}
+            </h1>
+            <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Your tagline</p>
+            <button onclick="showPage('features')" class="btn">Get Started</button>
+        </div>
+    </section>
+    <!-- Rest of content sections -->
+</div>
+
+================================================================================
+✅ COMPLETE CSS THAT PREVENTS GAPS:
+================================================================================
+
+<style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    
+    header {{
+        background: rgba(10, 10, 12, 0.75);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        height: 72px;
+    }}
+    
+    /* CRITICAL: No padding on pages */
+    .page {{
+        display: none;
+        min-height: calc(100vh - 72px);
+        padding-top: 0;
+    }}
+    
+    .page.active {{ display: block; }}
+    
+    /* Home page: NO padding */
+    #page_home {{ padding-top: 0 !important; }}
+    
+    /* Other pages: Add padding to clear header */
+    #page_features, #page_pricing, #page_contact, #page_about {{
+        padding-top: 72px;
+    }}
+    
+    /* Footer: NO margin */
+    footer {{
+        margin-top: 0;
+    }}
+</style>
+
+================================================================================
+🚨 VERIFICATION CHECKLIST FOR AI:
+================================================================================
+
+Before outputting HTML, VERIFY:
+- [ ] .page has padding-top: 0 (NOT 72px)
+- [ ] #page_home has padding-top: 0 !important
+- [ ] NO <div class="pt-20"> wrapping the hero section
+- [ ] NO <div class="pt-32"> anywhere in page_home
+- [ ] Hero section uses class="relative h-screen w-full overflow-hidden"
+- [ ] Hero has dark overlay: <div class="absolute inset-0 bg-black/50"></div>
+- [ ] Footer has NO mt-* class
+- [ ] Non-home pages have padding-top: 72px
+
+================================================================================
+🔧 AUTO-FIX IF GAPS ARE DETECTED:
+================================================================================
+
+If you see any of these patterns, REMOVE THEM:
+- pt-20, pt-32, pt-16, pt-24, mt-20, mt-32
+- padding-top: 72px in .page (change to 0)
+- Missing #page_home rule
+
+================================================================================
+
+
+
+
+
+
+
+
+
+================================================================================
+✅ CORRECT FOOTER HTML (NO GAP):
+================================================================================
+
+<!-- GOOD - NO mt-20, NO margin-top -->
+<footer class="py-12 border-t border-white/10 bg-zinc-950 text-center">
+    <p>© 2026 Company Name</p>
+</footer>
+
+❌ WRONG - CREATES GAP:
+<footer class="py-12 border-t border-white/10 bg-zinc-950 text-center mt-20">
+
+
+
+
+
+
+
+================================================================================
+🚨 HERO H1 HEADING - MUST USE EXACT STYLING 🚨
+================================================================================
+
+The main hero heading H1 MUST use this EXACT styling:
+
+<h1 class="text-5xl md:text-7xl font-bold mb-6" 
+    style="color: transparent; -webkit-text-stroke: 2px #d8a219; text-stroke: 2px #d8a219;">
+    {project_name}
+</h1>
+
+RULES:
+1. Text color: transparent (creates outline effect)
+2. Outline stroke: 2px solid #d8a219 (golden color)
+3. Font size: text-5xl on mobile, text-7xl on desktop
+4. Font weight: bold
+5. Margin bottom: mb-6
+
+OPTIONAL: Add animation for subtle glow effect
+<h1 class="text-5xl md:text-7xl font-bold mb-6 animate-glow" 
+    style="color: transparent; -webkit-text-stroke: 2px #d8a219; text-stroke: 2px #d8a219;">
+    {project_name}
+</h1>
+
+================================================================================
+🚨 CSS FOR GLOW ANIMATION (OPTIONAL) 🚨
+================================================================================
+
+<style>
+@keyframes glowPulse {{
+    0% {{ text-shadow: 0 0 0px rgba(216, 162, 25, 0); }}
+    50% {{ text-shadow: 0 0 20px rgba(216, 162, 25, 0.5); }}
+    100% {{ text-shadow: 0 0 0px rgba(216, 162, 25, 0); }}
+}}
+
+.animate-glow {{
+    animation: glowPulse 3s ease-in-out infinite;
+}}
+</style>
+
+================================================================================
+🚨 EXAMPLE - COMPLETE HERO SECTION 🚨
+================================================================================
+
+<section class="relative h-screen flex items-center justify-center overflow-hidden">
+    <img src="[IMAGE_URL]" class="absolute inset-0 w-full h-full object-cover" />
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative z-10 flex flex-col items-center justify-center w-full h-full text-center px-4">
+        <h1 class="text-5xl md:text-7xl font-bold mb-6" 
+            style="color: transparent; -webkit-text-stroke: 2px #d8a219; text-stroke: 2px #d8a219;">
+            {project_name}
+        </h1>
+        <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Your tagline here</p>
+        <button onclick="showPage('features')" class="px-8 py-3 bg-gradient-to-r from-amber-500 to-yellow-600 rounded-full font-bold text-white hover:opacity-90 transition">
+            Get Started
+        </button>
+    </div>
+</section>
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 BRAND STYLING - MUST USE EXACTLY THIS 🚨
+================================================================================
+
+The brand/logo MUST use this EXACT structure:
+
+<a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+    <i data-lucide="[ICON_NAME]" class="w-8 h-8" style="color: #d8a219;"></i>
+    <span class="text-white text-xl font-bold">{brand_name}</span>
+</a>
+
+RULES:
+- Icon color: #d8a219 (golden) using inline style
+- Brand name: white text with text-xl font-bold
+- Icon size: w-8 h-8
+- No gradient on brand name (keep it white)
+
+================================================================================
+
+
+
+
+
+
+================================================================================
+🚨 PREMIUM NAVIGATION STYLES - MUST USE EXACTLY 🚨
+================================================================================
+
+Use these EXACT CSS classes for navigation styling:
+
+<style>
+/* Premium Sidebar Navigation Styles */
+.nav-links {{
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: stretch;
+    padding: 0 0.75rem;
+}}
+
+.nav-link {{
+    position: relative;
+    color: #94a3b8;
+    text-decoration: none;
+    padding: 0.7rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+}}
+
+/* Hover State - subtle lift and glow */
+.nav-link:hover {{
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    transform: translateX(4px);
+}}
+
+/* Active State - Premium look */
+.nav-link.active {{
+    color: #ffffff;
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}}
+
+/* Vertical indicator pill for active link */
+.nav-link.active::before {{
+    content: "";
+    position: absolute;
+    left: -4px;
+    height: 60%;
+    width: 3px;
+    background: #8b5cf6;
+    border-radius: 99px;
+    box-shadow: 0 0 10px #8b5cf6;
+}}
+
+/* Desktop navigation - horizontal layout */
+@media (min-width: 769px) {{
+    .nav-links {{
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0;
+    }}
+    
+    .nav-link:hover {{
+        transform: translateY(-2px);
+    }}
+    
+    .nav-link.active::before {{
+        bottom: -4px;
+        left: 50%;
+        transform: translateX(-50%);
+        top: auto;
+        height: 3px;
+        width: 60%;
+    }}
+}}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+⚠️⚠️⚠️ CRITICAL HTML RULES - MUST FOLLOW ⚠️⚠️⚠️
+================================================================================
+
+1. CSS RULES: Always use {{ }} braces
+   ✅ .page {{ display: none; }}
+   ❌ .page 
+
+2. HERO SECTION: Must be centered with overlay
+   ✅ <section class="relative h-screen w-full overflow-hidden">
+        <img class="absolute inset-0 w-full h-full object-cover" />
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="relative z-10 flex flex-col items-center justify-center w-full h-full text-center px-4">
+          <h1>Title</h1>
+        </div>
+      </section>
+   ❌ Missing overlay or flex centering
+
+3. HOME PAGE: No padding-top
+   ✅ #page_home {{ padding-top: 0 !important; }}
+   ❌ .page {{ padding-top: 72px; }} (affects home)
+
+4. NO JSX: Convert all .map() to actual HTML
+   ❌ {{features.map(f => <div>{{f.title}}</div>)}}
+   ✅ <div><h3>Feature 1</h3></div><div><h3>Feature 2</h3></div>
+
+5. NO onError JSX:
+   ❌ onError={{ (e) => ... }}
+   ✅ onerror="this.style.display='none'"
+
+================================================================================
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: USE EXACT EXTRACTED CONTENT - NO GENERIC PLACEHOLDERS 🚨
+================================================================================
+
+The extracted content below is FROM YOUR ACTUAL NEXT.JS FILES.
+You MUST use THIS EXACT content. DO NOT generate new content.
+
+EXTRACTED HOME PAGE CONTENT (USE THIS EXACTLY):
+{home_content}
+
+EXTRACTED FAQ CONTENT (USE THESE EXACT QUESTIONS AND ANSWERS):
+{faq_html}
+
+EXTRACTED FOOTER HTML (USE THIS EXACTLY):
+{footer_html}
+
+EXTRACTED TESTIMONIALS (USE THESE EXACTLY):
+{testimonials_html}
+
+================================================================================
+🚨 NAVIGATION RULES - NO "HOME" BUTTON 🚨
+================================================================================
+
+The brand/logo IS the home button. DO NOT add a separate "Home" link.
+
+✅ CORRECT navigation:
+<nav>
+    <a href="#" class="brand" onclick="handleBrandClick(event)">Brand Name</a>
+    <a href="#" data-page="features">Features</a>
+    <a href="#" data-page="pricing">Pricing</a>
+</nav>
+
+❌ WRONG - DO NOT add:
+<a href="#" data-page="home">Home</a>  <!-- NO! Brand is home -->
+
+================================================================================
+🚨 FOOTER - MUST INCLUDE EXTRACTED HTML 🚨
+================================================================================
+
+You MUST include the EXACT footer HTML from the extraction above.
+DO NOT generate a generic footer.
+
+================================================================================
+🚨 FAQ - MUST USE EXTRACTED QUESTIONS & ANSWERS 🚨
+================================================================================
+
+The FAQ section MUST use the EXACT questions and answers from:
+{faq_html}
+
+================================================================================
+🚨 HERO SECTION - NO GAP AT TOP 🚨
+================================================================================
+
+CSS MUST have:
+.page {{ display: none; min-height: calc(100vh - 72px); }}
+#page_home {{ padding-top: 0 !important; }}
+
+================================================================================
+RETURN ONLY COMPLETE HTML with <!DOCTYPE html>
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+📋 GENERAL INSTRUCTION - WHAT TO GENERATE
+================================================================================
+
+Based on the source files provided below, generate a COMPLETE HTML preview that:
+
+1. **Preserves ALL content** from the extracted pages exactly as provided
+2. **Converts React JSX to HTML** (change className to class, Link to a, etc.)
+3. **Includes working navigation** with showPage() function for page switching
+4. **Has mobile responsive design** with hamburger menu on smaller screens
+5. **Uses dark theme** with purple/pink gradients for modern look
+
+================================================================================
+🎨 REQUIRED CSS (ALWAYS INCLUDE)
+================================================================================
+
+- Tailwind CSS for utility classes
+- Custom styles for navigation, pages, cards, buttons
+- Mobile menu styles (hamburger animation, slide-in menu)
+- Smooth transitions and hover effects
+- Glass morphism effects (backdrop-blur, semi-transparent backgrounds)
+
+================================================================================
+🔧 REQUIRED JAVASCRIPT (ALWAYS INCLUDE)
+================================================================================
+
+- showPage(pageId) - switches between pages
+- handleBrandClick(event) - navigates to home when logo clicked
+- Mobile menu toggle functionality
+- Lucide icons initialization
+- FAQ accordion functionality (if FAQ section exists)
+- Scroll to top button (if present)
+
+================================================================================
+🛒 CART FUNCTIONALITY (ONLY IF E-COMMERCE DETECTED)
+================================================================================
+
+If the source files contain shop and cart pages, INCLUDE:
+- Add to Cart buttons with data-id, data-name, data-price attributes
+- Cart sidebar (#cart-sidebar)
+- Cart toast notifications (#cart-toast)
+- Checkout modal (#checkout-modal)
+- Success modal (#success-modal)
+- Complete cart JavaScript (addToCart, removeFromCart, updateQuantity, etc.)
+
+================================================================================
+📄 PAGE STRUCTURE
+================================================================================
+
+Create a div for EACH page extracted:
+<div id="page_[route_name]" class="page">
+    [EXACT CONTENT FROM EXTRACTION - DO NOT MODIFY]
+</div>
+
+The home page must be active by default (class="page active")
+
+================================================================================
+⚠️ CRITICAL RULES
+================================================================================
+
+1. DO NOT add placeholder text - USE THE EXACT extracted content
+2. DO NOT add extra pages that don't exist in the source
+3. DO NOT modify wording, headings, or button text
+4. DO preserve ALL sections (hero, features, testimonials, FAQ, footer)
+5. DO make sure navigation links match the actual pages that exist
+
+================================================================================
+✅ FINAL VERIFICATION
+================================================================================
+
+Before outputting, ensure:
+- [ ] Complete HTML document with <!DOCTYPE html>
+- [ ] All CSS and JS in one file
+- [ ] Navigation matches extracted links
+- [ ] All pages have their exact content
+- [ ] Mobile menu works
+- [ ] Lucide icons are initialized
+- [ ] Footer is included
+
+================================================================================
+RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## CRITICAL: NAVIGATION STRUCTURE - NO "HOME" BUTTON
+
+**The brand/logo IS the home button. There is NO separate "Home" link in the navigation.**
+
+### Correct Navigation Structure:
+
+```html
+<header>
+    <nav class="nav-container">
+        <!-- Brand/Logo - THIS IS THE HOME LINK -->
+        <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+            <i data-lucide="sparkles" class="w-8 h-8 text-purple-500"></i>
+            <span>[BRAND_NAME]</span>
+        </a>
+        
+        <!-- Navigation Links - NO "Home" link here -->
+        <div class="hidden md:flex space-x-2 items-center">
+            <a href="#" class="nav-link" data-page="shop">Shop</a>
+            <a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">
+                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>
+                <span class="text-gray-300 group-hover:text-purple-400">Cart</span>
+                <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
+            </a>
+        </div>
+    </nav>
+</header>
+
+
+
+
+
+## CRITICAL: NAVIGATION CART LINK - MUST HAVE ICON AND CORRECT HREF
+
+The cart link in the navigation MUST use this EXACT structure:
+
+```html
+<a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">
+    <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>
+    <span class="text-gray-300 group-hover:text-purple-400">Cart</span>
+    <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
+</a>
+
+
+
+
+## CRITICAL REQUIREMENTS - ADD TO CART BUTTONS
+
+**EVERY Add to Cart button MUST have these 4 things:**
+
+1. **Class name:** `class="add-to-cart-btn"` (NOT "btn", NOT "button", EXACTLY this)
+2. **data-id:** `data-id="unique_product_id"` (string, e.g., "prod_001")
+3. **data-name:** `data-name="Product Name"` (the product name)
+4. **data-price:** `data-price="49.99"` (the price as a number)
+
+**Example of CORRECT Add to Cart button:**
+```html
+<button class="add-to-cart-btn" data-id="hoodie_001" data-name="Premium Hoodie" data-price="79.99">
+    Add to Cart
+</button>
+
+Navigation Cart Link - MUST have this exact structure:
+<a href="#" class="nav-link relative" data-page="cart">
+    Cart
+    <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1">0</span>
+</a>
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: DO NOT GENERATE CART JAVASCRIPT 🚨
+================================================================================
+
+The cart JavaScript will be injected automatically by the backend.
+DO NOT generate any script that starts with "// ========== CART SYSTEM =========="
+
+If you see this pattern in your output, REMOVE IT:
+<script>
+// ========== CART SYSTEM ==========
+let cart = [];
+...
+</script>
+
+The backend provides a working cart system. Your job is only to generate:
+- app/shop/page.tsx (with add-to-cart buttons)
+- app/cart/page.tsx (with empty containers)
+- components/Navigation.tsx (with cart link and badge)
+
+DO NOT generate cart JavaScript or cart CSS.
+
+
+
+
+
+
+
+
+================================================================================
+🚨 HTML PREVIEW - ONLY USE PAGES FROM THE NEXT.JS PROJECT 🚨
+================================================================================
+
+When generating the HTML preview, you MUST ONLY create page divs for routes that ACTUALLY EXIST in the Next.js project files.
+
+DO NOT create extra pages like:
+- catalog (unless app/catalog/page.tsx exists)
+- about (unless app/about/page.tsx exists)
+- contact (unless app/contact/page.tsx exists)
+
+The navigation should ONLY contain links to pages that exist.
+
+For an e-commerce website, if the Next.js project only has:
+- app/page.tsx (home)
+- app/shop/page.tsx (shop)
+- app/cart/page.tsx (cart)
+
+Then the HTML preview MUST ONLY have:
+- page_home
+- page_shop
+- page_cart
+
+And navigation MUST ONLY have:
+- Shop link
+- Cart link
+
+DO NOT add a Catalog link or page if it doesn't exist in the source files.
+
+
+
+
+
+
+================================================================================
+🚨 CART PAGE - CRITICAL ID MATCHING 🚨
+================================================================================
+
+The JavaScript `updateCartPage()` function MUST use the EXACT same IDs as the HTML:
+
+✅ HTML:
+```html
+<div id="cart-items-list"></div>
+<div id="empty-cart-message-cart"></div>
+<div id="cart-summary"></div>
+<span id="cart-total-count"></span>
+<span id="cart-page-subtotal"></span>
+<span id="cart-page-total"></span>
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 NAVIGATION COMPONENT - CRITICAL FIXES 🚨
+================================================================================
+
+The Navigation component MUST have:
+
+1. **VISIBLE BRAND NAME** - NEVER hide the brand name with absolute positioning
+2. **CART LINK WITH PROPER TEXT** - Show "Cart" text, NOT the item count
+3. **SEPARATE CART BADGE** - Item count goes in a badge span, NOT replacing the cart text
+
+================================================================================
+FORBIDDEN PATTERNS - NEVER GENERATE:
+================================================================================
+
+❌ WRONG - Brand name hidden with absolute positioning:
+```tsx
+<a href="/" class="brand">
+    <i data-lucide="sparkles" class="w-8 h-8"></i>
+    <span class="absolute -top-2 -right-2">Brand Name</span> {{/* ← HIDDEN OFF-SCREEN */}}
+</a>
+
+
+
+
+================================================================================
+CORRECT PATTERNS - ALWAYS GENERATE:
+================================================================================
+
+✅ CORRECT - Brand name visible with gradient text:
+<a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
+    <i data-lucide="sparkles" class="w-8 h-8 text-purple-500 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
+    <span class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        Brand Name
+    </span>
+</a>
+
+
+✅ CORRECT - Cart link with "Cart" text AND separate badge:
+
+<a href="/cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">
+    <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400 group-hover:text-purple-600 group-hover:scale-110 transition-all duration-300"></i>
+    <span class="text-gray-300 group-hover:text-purple-500 transition-colors duration-300">Cart</span>
+    <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">
+        0
+    </span>
+</a>
+
+
+================================================================================
+CART BADGE RULES:
+================================================================================
+
+The cart badge MUST:
+
+    Have data-cart-count attribute
+
+    Start with hidden class
+
+    Be positioned absolutely (absolute -top-2 -right-2)
+
+    Have badge styling (rounded-full, gradient background)
+
+    Show item count, NOT replace the cart text
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: CART PAGE RENDERING - NO .map() IN FINAL HTML 🚨🚨🚨
+================================================================================
+
+When generating the HTML preview for the Cart page, you MUST render ACTUAL HTML elements, NOT the React .map() function.
+
+THE PROBLEM:
+❌ WRONG (AI outputs this):
+```html
+<div id="cart-items-list">
+  {{items.map((item) => (
+    <div key={{item.id}}>...</div>
+  ))}}
+</div>
+
+✅ CORRECT (AI must output this):
+<div id="cart-items-list">
+  <!-- This will be populated dynamically by JavaScript -->
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+HOW THE CART PAGE SHOULD BE STRUCTURED:
+================================================================================
+The Cart page MUST have:
+
+1. Cart title with item count:
+<h1 class="text-3xl font-bold mb-8 gradient-text">Shopping Cart (<span id="cart-total-count">0</span> items)</h1>
+
+2. Empty state container (visible when cart is empty):
+<div id="empty-cart-message-cart" class="text-center py-12">
+    <i data-lucide="shopping-bag" class="w-20 h-20 text-gray-600 mx-auto mb-6"></i>
+    <h2 class="text-2xl font-bold mb-4">Your Cart is Empty</h2>
+    <button onclick="showPage('shop')" class="btn">Continue Shopping</button>
+</div>
+
+3. Items container (hidden when empty, shown when items exist):
+<div id="cart-items-list" class="space-y-4"></div>
+
+4. Order summary with PROCEED TO CHECKOUT BUTTON (hidden when empty):
+<div id="cart-summary" class="bg-white/5 rounded-xl p-6 border border-white/10 h-fit hidden">
+    <h3 class="text-xl font-bold mb-4 gradient-text">Order Summary</h3>
+    
+    <div class="space-y-2">
+        <div class="flex justify-between">
+            <span class="text-gray-400">Subtotal</span>
+            <span id="cart-page-subtotal" class="font-semibold">$0.00</span>
+        </div>
+        <div class="flex justify-between">
+            <span class="text-gray-400">Shipping</span>
+            <span class="text-green-400">Free</span>
+        </div>
+    </div>
+    
+    <div class="border-t border-white/10 my-4"></div>
+    
+    <div class="flex justify-between font-bold text-lg mb-6">
+        <span>Total</span>
+        <span id="cart-page-total" class="text-purple-400">$0.00</span>
+    </div>
+    
+    <!-- PROCEED TO CHECKOUT BUTTON - MUST BE INCLUDED -->
+    <button onclick="openCheckoutModal()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300">
+        Proceed to Checkout →
+    </button>
+    
+    <!-- OPTIONAL: Clear Cart Button -->
+    <button onclick="clearCart()" class="w-full mt-3 py-2 text-gray-400 hover:text-white transition text-sm">
+        Clear Cart
+    </button>
+</div>
+
+================================================================================
+CRITICAL REQUIREMENTS FOR CART PAGE:
+================================================================================
+
+✅ MUST have the "Proceed to Checkout" button inside #cart-summary
+✅ MUST have onclick="openCheckoutModal()" on the checkout button
+✅ MUST have #cart-total-count for displaying item count
+✅ MUST have #cart-page-subtotal and #cart-page-total for totals
+✅ MUST have #cart-items-list for dynamic items
+✅ MUST have #empty-cart-message-cart for empty state
+
+================================================================================
+WHAT THE FINAL CART PAGE HTML SHOULD LOOK LIKE:
+================================================================================
+
+<div id="page_cart" class="page">
+    <div class="min-h-screen pt-24 container mx-auto px-4">
+        <h1 class="text-3xl font-bold mb-8 gradient-text">Shopping Cart (<span id="cart-total-count">0</span> items)</h1>
+        
+        <div class="lg:grid lg:grid-cols-3 lg:gap-8">
+            
+            <!-- Left: Cart Items -->
+            <div class="lg:col-span-2">
+                <div id="cart-items-list" class="space-y-4">
+                    <!-- Cart items injected here by JavaScript -->
+                </div>
+                
+                <div id="empty-cart-message-cart" class="text-center py-12">
+                    <i data-lucide="shopping-bag" class="w-20 h-20 text-gray-600 mx-auto mb-6"></i>
+                    <h2 class="text-2xl font-bold mb-4">Your Cart is Empty</h2>
+                    <button onclick="showPage('shop')" class="btn">Continue Shopping</button>
+                </div>
+            </div>
+            
+            <!-- Right: Order Summary -->
+            <div class="lg:col-span-1 mt-8 lg:mt-0">
+                <div id="cart-summary" class="bg-white/5 rounded-xl p-6 border border-white/10 h-fit hidden">
+                    <h3 class="text-xl font-bold mb-4 gradient-text">Order Summary</h3>
+                    
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Subtotal</span>
+                            <span id="cart-page-subtotal" class="font-semibold">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Shipping</span>
+                            <span class="text-green-400">Free</span>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-white/10 my-4"></div>
+                    
+                    <div class="flex justify-between font-bold text-lg mb-6">
+                        <span>Total</span>
+                        <span id="cart-page-total" class="text-purple-400">$0.00</span>
+                    </div>
+                    
+                    <button onclick="openCheckoutModal()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300">
+                        Proceed to Checkout →
+                    </button>
+                    
+                    <button onclick="clearCart()" class="w-full mt-3 py-2 text-gray-400 hover:text-white transition text-sm">
+                        Clear Cart
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+================================================================================
+VERIFICATION CHECKLIST:
+================================================================================
+
+✅ Cart page has NO .map() in the HTML
+✅ Cart page has <div id="cart-items-list"> (empty container, JS injects items)
+✅ Cart page has <div id="empty-cart-message-cart"> (empty state message)
+✅ Cart page has <div id="cart-summary"> (order summary, hidden by default)
+✅ Cart page has <button onclick="openCheckoutModal()"> (Proceed to Checkout)
+✅ Cart page has <span id="cart-total-count"> (item count in title)
+✅ Cart page has <span id="cart-page-subtotal"> (subtotal value)
+✅ Cart page has <span id="cart-page-total"> (total value)
+✅ Cart page uses lg:grid lg:grid-cols-3 layout (items left, summary right)
+✅ Cart page has NO hardcoded cart items — JavaScript renders all items
+✅ Cart page has NO checkout form — checkout is always a modal
+✅ JavaScript has updateCartPage() function
+✅ JavaScript has openCheckoutModal() function
+✅ JavaScript has processPayment() function
+✅ JavaScript has clearCart() function
+✅ updateCartPage() is called inside saveCart() and on page load
+✅ updateCartPage() updates #cart-total-count, #cart-page-subtotal, #cart-page-total
+✅ updateCartPage() toggles hidden class on #cart-summary and #empty-cart-message-cart
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+SUMMARY - WHAT THE AI MUST DO:
+================================================================================
+
+# ❌ DO NOT output {{items.map(...)}} in the HTML
+
+✅ Output empty containers with IDs: #empty-cart-message-cart, #cart-items-list, #cart-summary
+
+✅ Output #cart-total-count for displaying item count
+
+✅ Output #cart-page-subtotal and #cart-page-total for totals
+
+✅ Ensure the JavaScript updateCartPage() function exists in the page
+
+✅ Call updateCartPage() on page load and whenever cart changes
+
+================================================================================
+VERIFICATION CHECKLIST:
+================================================================================
+
+Cart page has NO .map() in the HTML
+
+Cart page has <div id="cart-items-list"> (empty container)
+
+Cart page has <div id="empty-cart-message-cart"> (empty state)
+
+Cart page has <div id="cart-summary"> (order summary)
+
+Cart page has <span id="cart-total-count"> (item count)
+
+JavaScript has updateCartPage() function
+
+updateCartPage() is called in saveCart() and on page load
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 SHOP PAGE RENDERING - CRITICAL 🚨
+================================================================================
+
+When you see a shop page with `products.map(p => (...))`, you MUST:
+
+1. Extract the products array from the code
+2. Render EACH product as an individual HTML div
+3. DO NOT output `.map()` in the final HTML
+
+
+
+Example products array in code:
+```javascript
+const products = [
+  {{ id: "1", name: "Premium Hoodie", price: 49.99 }},
+  {{ id: "2", name: "Scholar Tee", price: 29.99 }},
+  {{ id: "3", name: "Leather Notebook", price: 19.99 }},
+  {{ id: "4", name: "Canvas Tote", price: 24.99 }},
+  {{ id: "5", name: "Ceramic Mug", price: 15.99 }},
+  {{ id: "6", name: "Varsity Jacket", price: 89.99 }}
+];
+
+
+MUST OUTPUT (all 6 products as separate HTML):
+
+<div class="grid md:grid-cols-3 gap-8">
+    <!-- Product 1 -->
+    <div class="p-6 bg-white/5 rounded-xl">
+        <h3 class="text-xl font-bold">Premium Hoodie</h3>
+        <p class="text-purple-400">$49.99</p>
+        <button class="add-to-cart-btn mt-4 px-4 py-2 bg-purple-600 rounded" data-id="1" data-name="Premium Hoodie" data-price="49.99">Add to Cart</button>
+    </div>
+    <!-- Product 2 -->
+    <div class="p-6 bg-white/5 rounded-xl">
+        <h3 class="text-xl font-bold">Scholar Tee</h3>
+        <p class="text-purple-400">$29.99</p>
+        <button class="add-to-cart-btn mt-4 px-4 py-2 bg-purple-600 rounded" data-id="2" data-name="Scholar Tee" data-price="29.99">Add to Cart</button>
+    </div>
+    <!-- Continue for products 3-6 -->
+</div>
+
+
+CRITICAL:
+
+ALL 6 products MUST be rendered
+
+Each product button MUST have correct data-id, data-name, data-price
+
+NO .map() in the final HTML
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+PRODUCTS DATA FOR SHOP PAGE (USE THESE EXACT VALUES):
+================================================================================
+{products_data}
+
+Render ALL products from this array as individual HTML elements.
+DO NOT use .map() in the output - write each product div manually.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+PRODUCT CARD FORMAT FOR SHOP PAGE:
+================================================================================
+
+When generating shop page products, use this EXACT format for Add to Cart buttons:
+
+<div class="product-card">
+    <div class="product-image">
+        <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+    </div>
+    <div class="product-info">
+        <h3 class="product-title">Product Name</h3>
+        <p class="product-price">$49.99</p>
+        <button class="add-to-cart-btn" 
+                data-id="prod_unique_id" 
+                data-name="Product Name" 
+                data-price="49.99">
+            Add to Cart
+        </button>
+    </div>
+</div>
+
+CRITICAL: Every product button MUST have:
+- class="add-to-cart-btn"
+- data-id (unique for each product)
+- data-name (product name)
+- data-price (product price as number)
+
+================================================================================
+CART BADGE IN NAVIGATION:
+================================================================================
+
+Add this to your cart navigation link:
+
+<a href="#" class="nav-link relative" data-page="cart">
+    <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+    Cart
+    <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+</a>
+
+
+
+
+
+
+
+
+================================================================================
+🚨 AI INSTRUCTION: HANDLING NAVIGATION LINKS WITH ICONS 🚨
+================================================================================
+
+When you see navigation links with icons inside the Link component, you MUST:
+
+1. Extract BOTH the href and the text label
+2. Preserve the icon by converting it to HTML
+3. ONLY add icons to E-COMMERCE links (Shop, Catalog, Cart, Products, Store, Basket, Checkout)
+4. Keep OTHER links (About, Contact, Projects, Services, Blog, etc.) as TEXT-ONLY
+
+================================================================================
+PATTERNS TO RECOGNIZE:
+================================================================================
+
+React pattern for E-COMMERCE links (WITH icon):
+```jsx
+<Link href="/cart" className="flex items-center gap-2">
+    <ShoppingBag className="w-5 h-5" /> Cart
+</Link>
+
+HTML output MUST be:
+<a href="/cart" class="nav-link flex items-center gap-2 group" data-page="cart">
+    <i data-lucide="shopping-bag" class="w-4 h-4 text-purple-400 group-hover:text-pink-500 group-hover:scale-110 transition-all duration-300"></i>
+    <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Cart</span>
+</a>
+
+
+
+================================================================================
+ICON MAPPING FOR NAVIGATION LINKS:
+================================================================================
+
+- ShoppingBag → shopping-bag
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 FAQ SECTION - USE THIS EXACT HTML (DO NOT MODIFY) 🚨
+================================================================================
+
+The following FAQ HTML has been pre-built from your source file.
+You MUST include this EXACT HTML in the FAQ section.
+
+{faq_html}
+
+DO NOT generate new FAQ items. DO NOT add or remove any questions.
+Simply place this HTML inside the FAQ section div.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+CRITICAL: YOU MUST USE THE EXACT CONTENT BELOW FOR EACH PAGE
+================================================================================
+
+{pages_section}
+
+================================================================================
+NOW GENERATE THE HTML PREVIEW USING THE EXACT CONTENT ABOVE
+================================================================================
+
+For EACH page in the extraction above, create:
+<div id="page_{route}" class="page">
+    <div class="container mx-auto px-4 py-20">
+        [PASTE THE EXACT CONTENT FROM THE PAGE EXTRACTION ABOVE - DO NOT MODIFY]
+    </div>
+</div>
+
+DO NOT write "Welcome to our about page" or any other placeholder text.
+USE THE EXACT CONTENT PROVIDED ABOVE.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 NAVIGATION STYLING REQUIREMENTS - MUST INCLUDE EXACT CLASSES 🚨
+================================================================================
+
+When generating navigation HTML, you MUST include these exact classes for the brand icon:
+
+BRAND ICON REQUIREMENTS:
+- MUST have: class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"
+- MUST have: data-lucide="[THE_ICON_NAME_EXTRACTED_FROM_SOURCE]" 
+- MUST be wrapped in: <a class="brand flex items-center gap-2 group">
+
+EXAMPLE - CORRECT BRAND HTML:
+```html
+<a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
+    <i data-lucide="sparkles" class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
+    <span class="text-xl font-bold bg-gradient-to-r from-yellow-400 to-purple-500 bg-clip-text text-transparent">Brand Name</span>
+</a>
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 ABSOLUTE REQUIREMENT - YOU MUST INCLUDE THIS EXACT CSS 🚨🚨🚨
+================================================================================
+
+FAILURE TO INCLUDE THE CSS BELOW WILL CAUSE THE PREVIEW TO BREAK.
+
+YOU HAVE NO CHOICE. YOU MUST COPY AND PASTE THIS EXACT CSS INTO YOUR <style> TAG.
+
+DO NOT MODIFY IT.
+DO NOT SIMPLIFY IT.
+DO NOT WRITE YOUR OWN CSS.
+DO NOT OMIT ANY PART OF IT.
+
+================================================================================
+MANDATORY CSS - COPY THIS EXACTLY:
+================================================================================
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ font-family: 'Inter', system-ui, sans-serif; 
+    background: linear-gradient(135deg, #0a0a0c 0%, #2d1b4e 100%); 
+    color: #f8fafc; 
+    min-height: 100vh;}}
+
+
+
+header {{
+    /* 1. Use a slightly more transparent background to let the blur shine */
+    background: rgba(10, 10, 12, 0.75); 
+    
+    /* 2. Standard and Safari-specific blur */
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    
+    /* 3. High-definition border */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08); 
+    
+    /* 4. Layout & Positioning */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    height: 72px;
+    
+    /* 5. Smooth transition for scroll effects */
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}}
+
+
+
+
+
+header::after {{
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #c084fc, #f472b6, transparent);
+    opacity: 0.3;
+}}
+
+
+
+
+
+.nav-container {{ max-width: 1280px; margin: 0 auto; height: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 1.5rem; }}
+.brand {{ font-size: 1.5rem; font-weight: 800; text-decoration: none; background: linear-gradient(135deg, #c084fc, #f472b6); -webkit-background-clip: text; background-clip: text; color: transparent; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }}
+
+
+
+
+
+
+
+.nav-links {{
+    display: flex;
+    flex-direction: column; /* Stacked for sidebar layout */
+    gap: 0.4rem;
+    align-items: stretch; /* Fills the width of the sidebar */
+    padding: 0 0.75rem;
+}}
+
+.nav-link {{
+    position: relative;
+    color: #94a3b8; /* Slightly softer blue-gray */
+    text-decoration: none;
+    padding: 0.7rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+}}
+
+/* Hover State: Suble lift and glow */
+.nav-link:hover {{
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+    transform: translateX(4px); /* Slight slide-in effect */
+}}
+
+/* Active State: The "Premium" look */
+.nav-link.active {{
+    color: #ffffff;
+    background: linear-gradient(
+        90deg, 
+        rgba(139, 92, 246, 0.15) 0%, 
+        rgba(139, 92, 246, 0.05) 100%
+    );
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}}
+
+/* The vertical indicator pill for the active link */
+.nav-link.active::before {{
+    content: "";
+    position: absolute;
+    left: -4px;
+    height: 60%;
+    width: 3px;
+    background: #8b5cf6;
+    border-radius: 99px;
+    box-shadow: 0 0 10px #8b5cf6;
+}}
+
+
+
+
+
+
+
+.hamburger {{ display: none; flex-direction: column; gap: 4px; background: transparent; border: none; cursor: pointer; padding: 0.5rem; }}
+.hamburger span {{ width: 25px; height: 3px; background: #9ca3af; border-radius: 2px; transition: all 0.3s ease; }}
+.hamburger.active span:nth-child(1) {{ transform: rotate(45deg) translate(5px, 5px); }}
+.hamburger.active span:nth-child(2) {{ opacity: 0; }}
+.hamburger.active span:nth-child(3) {{ transform: rotate(-45deg) translate(5px, -5px); }}
+
+.mobile-menu {{ position: fixed; top: 72px; right: -100%; width: 280px; height: calc(100vh - 72px); background: #1a1a1e; z-index: 200; transition: right 0.3s ease; padding: 24px; border-left: 1px solid rgba(255,255,255,0.1); }}
+.mobile-menu.active {{ right: 0; }}
+.mobile-overlay {{ position: fixed; top: 72px; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 199; display: none; }}
+.mobile-overlay.active {{ display: block; }}
+.mobile-nav-link {{ display: block; padding: 12px 16px; color: #9ca3af; text-decoration: none; border-radius: 0.5rem; margin-bottom: 8px; transition: all 0.2s; cursor: pointer; }}
+.mobile-nav-link:hover, .mobile-nav-link.active {{ color: #c084fc; background: rgba(192,132,252,0.1); }}
+
+.page {{ display: none; min-height: calc(100vh - 72px); padding-top: 0; }}
+.page.active {{ display: block; }}
+.container {{ max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }}
+
+@media (max-width: 768px) {{ .nav-links {{ display: none; }} .hamburger {{ display: flex; }} }}
+
+
+
+
+
+
+
+/* Yellow Icon Styles for Navigation */
+.nav-link i, 
+.mobile-nav-link i {{
+    filter: drop-shadow(0 0 3px rgba(234, 179, 8, 0.5));
+    transition: all 0.3s ease;
+}}
+
+.nav-link:hover i, 
+.mobile-nav-link:hover i {{
+    filter: drop-shadow(0 0 8px rgba(234, 179, 8, 0.8));
+    transform: scale(1.1);
+}}
+
+.nav-link:hover span, 
+.mobile-nav-link:hover span {{
+    color: #eab308;
+}}
+
+.nav-link.active i, 
+.mobile-nav-link.active i {{
+    color: #fbbf24;
+    filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.8));
+}}
+
+.nav-link.active span, 
+.mobile-nav-link.active span {{
+    color: #fbbf24;
+}}
+
+.brand i {{
+    filter: drop-shadow(0 0 5px rgba(234, 179, 8, 0.5));
+}}
+
+.brand:hover i {{
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 10px rgba(234, 179, 8, 0.8));
+}}
+
+
+
+
+
+/* ========== PRODUCT CARD STYLES ========== */
+.product-card {{
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}}
+
+.product-card:hover {{
+    {{transform}}: translateY(-4px);
+    border-color: #c084fc;
+    box-shadow: 0 10px 25px -5px rgba(192, 132, 252, 0.3);
+}}
+
+.product-image {{
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2));
+    border-radius: 0.75rem;
+    transition: all 0.3s ease;
+}}
+
+.product-card:hover .product-image i {{
+    {{transform}}: scale(1.1);
+}}
+
+.product-title {{
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: white;
+}}
+
+.product-price {{
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #c084fc;
+    margin-bottom: 1rem;
+}}
+
+.add-to-cart-btn {{
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: white;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}}
+
+.add-to-cart-btn:hover {{
+    opacity: 0.9;
+    {{transform}}: scale(0.98);
+}}
+
+/* ========== CART SIDEBAR STYLES ========== */
+#cart-sidebar {{
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 100%;
+    max-width: 420px;
+    background: linear-gradient(135deg, #1a1a2e, #0f0f12);
+    box-shadow: -5px 0 30px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    {{transform}}: translateX(100%);
+    transition: {{transform}} 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}}
+
+#cart-sidebar.active {{
+    {{transform}}: translateX(0);
+}}
+
+/* ========== CART PAGE STYLES ========== */
+#cart-page-items {{
+    max-height: 60vh;
+    overflow-y: auto;
+}}
+
+#cart-page-items .flex {{
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    transition: all 0.3s ease;
+}}
+
+#cart-page-items .flex:hover {{
+    border-color: #c084fc;
+    background: rgba(255, 255, 255, 0.08);
+}}
+
+#cart-summary {{
+    animation: fadeInUp 0.4s ease-out;
+}}
+
+/* ========== CART BADGE STYLES ========== */
+.cart-count-badge {{
+    animation: bounceIn 0.3s ease-out;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+}}
+
+/* ========== TOAST NOTIFICATION ========== */
+#cart-toast {{
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    {{transform}}: translateX(-50%);
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 1001;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+}}
+
+#cart-toast.show {{
+    opacity: 1;
+}}
+
+/* ========== MODAL STYLES ========== */
+#checkout-modal, #success-modal {{
+    animation: fadeIn 0.2s ease-out;
+}}
+
+#checkout-modal input, #success-modal input {{
+    transition: all 0.2s ease;
+}}
+
+#checkout-modal input:focus, #success-modal input:focus {{
+    border-color: #c084fc;
+    box-shadow: 0 0 0 2px rgba(192, 132, 252, 0.2);
+}}
+
+/* ========== ANIMATIONS ========== */
+@keyframes bounceIn {{
+    0% {{ {{transform}}: scale(0); opacity: 0; }}
+    50% {{ {{transform}}: scale(1.2); }}
+    100% {{ {{transform}}: scale(1); opacity: 1; }}
+}}
+
+@keyframes fadeIn {{
+    from {{ opacity: 0; }}
+    to {{ opacity: 1; }}
+}}
+
+@keyframes fadeInUp {{
+    from {{
+        opacity: 0;
+        {{transform}}: translateY(20px);
+    }}
+    to {{
+        opacity: 1;
+        {{transform}}: translateY(0);
+    }}
+}}
+
+@keyframes spin {{
+    to {{ {{transform}}: rotate(360deg); }}
+}}
+
+.fa-spinner {{
+    animation: spin 1s linear infinite;
+}}
+
+/* ========== SCROLLBAR STYLES ========== */
+#cart-items::-webkit-scrollbar,
+#cart-page-items::-webkit-scrollbar {{
+    width: 6px;
+}}
+
+#cart-items::-webkit-scrollbar-track,
+#cart-page-items::-webkit-scrollbar-track {{
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}}
+
+#cart-items::-webkit-scrollbar-thumb,
+#cart-page-items::-webkit-scrollbar-thumb {{
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    border-radius: 3px;
+}}
+
+#cart-items::-webkit-scrollbar-thumb:hover,
+#cart-page-items::-webkit-scrollbar-thumb:hover {{
+    background: linear-gradient(135deg, #a855f7, #f472b6);
+}}
+
+/* ========== BUTTON HOVER EFFECTS ========== */
+button {{
+    transition: all 0.2s ease;
+}}
+
+button:active {{
+    {{transform}}: scale(0.98);
+}}
+
+/* ========== EMPTY CART MESSAGE ========== */
+#empty-cart-message i {{
+    opacity: 0.5;
+}}
+
+/* ========== GRID LAYOUT FOR PRODUCTS ========== */
+.grid {{
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}}
+
+@media (min-width: 768px) {{
+    .grid {{
+        grid-template-columns: repeat(3, 1fr);
+    }}
+}}
+
+/* ========== RESPONSIVE ADJUSTMENTS ========== */
+@media (max-width: 768px) {{
+    #cart-sidebar {{
+        max-width: 100%;
+    }}
+    
+    .product-card {{
+        padding: 1rem;
+    }}
+    
+    .product-title {{
+        font-size: 1rem;
+    }}
+    
+    .product-price {{
+        font-size: 1.25rem;
+    }}
+    
+    #cart-toast {{
+        font-size: 0.75rem;
+        padding: 0.5rem 1rem;
+        white-space: nowrap;
+    }}
+}}
+
+/* ========== CHECKOUT FORM STYLES ========== */
+#checkout-form input {{
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}}
+
+#checkout-form input:focus {{
+    outline: none;
+    border-color: #c084fc;
+    ring: 2px solid rgba(192, 132, 252, 0.3);
+}}
+
+/* ========== SUCCESS MODAL ICON ========== */
+#success-modal .fa-check {{
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: PROPER CONTAINER STRUCTURE - MUST FOLLOW EXACTLY 🚨
+================================================================================
+
+You MUST wrap ALL section content in a proper container with mx-auto for centering.
+
+================================================================================
+HERO SECTION - CORRECT STRUCTURE (MUST USE THIS EXACTLY):
+================================================================================
+
+```html
+<section class="relative h-screen flex items-center justify-center overflow-hidden">
+    <!-- Background Image -->
+    <img src="[IMAGE_URL]" alt="Hero" class="absolute inset-0 w-full h-full object-cover" />
+    
+    <!-- Overlay -->
+    <div class="absolute inset-0 bg-black/50"></div>
+    
+    <!-- Content Container - THIS IS THE KEY -->
+    <div class="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <!-- ALL hero content goes INSIDE this div -->
+        <span class="inline-block px-4 py-1 rounded-full bg-purple-500/20 text-purple-300 text-sm mb-4">BADGE TEXT</span>
+        <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">[BRAND_NAME]</h1>
+        <p class="text-lg md:text-xl text-gray-200 mb-8 max-w-2xl mx-auto">[DESCRIPTION]</p>
+        <div class="flex gap-4 justify-center">
+            <a href="/shop" class="btn">Shop Now →</a>
+            <a href="/catalog" class="btn">View Collection</a>
+        </div>
+    </div>
+</section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 NAVIGATION & MOBILE MENU CSS REQUIREMENTS - MUST INCLUDE EXACTLY 🚨
+================================================================================
+
+You MUST include these COMPLETE navigation styles in your <style> tag:
+
+```css
+/* ========== HEADER & NAVIGATION ========== */
+header {{
+    background: rgba(26, 26, 30, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    height: 72px;
+}}
+
+.nav-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+}}
+
+.brand {{
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-decoration: none;
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}}
+
+.nav-links {{
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}}
+
+.nav-link {{
+    color: #9ca3af;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+    cursor: pointer;
+}}
+
+.nav-link:hover,
+.nav-link.active {{
+    color: #c084fc;
+    background: rgba(192, 132, 252, 0.1);
+}}
+
+/* ========== MOBILE MENU ========== */
+.hamburger {{
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+}}
+
+.hamburger span {{
+    width: 25px;
+    height: 3px;
+    background: #9ca3af;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}}
+
+/* Hamburger animation to X when open */
+.hamburger.active span:nth-child(1) {{
+    transform: rotate(45deg) translate(5px, 5px);
+}}
+
+.hamburger.active span:nth-child(2) {{
+    opacity: 0;
+}}
+
+.hamburger.active span:nth-child(3) {{
+    transform: rotate(-45deg) translate(5px, -5px);
+}}
+
+.mobile-menu {{
+    position: fixed;
+    top: 72px;
+    right: -100%;
+    width: 280px;
+    height: calc(100vh - 72px);
+    background: #1a1a1e;
+    z-index: 200;
+    transition: right 0.3s ease;
+    padding: 24px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}}
+
+.mobile-menu.active {{
+    right: 0;
+}}
+
+.mobile-overlay {{
+    position: fixed;
+    top: 72px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
+    display: none;
+}}
+
+.mobile-overlay.active {{
+    display: block;
+}}
+
+.mobile-nav-link {{
+    display: block;
+    padding: 12px 16px;
+    color: #9ca3af;
+    text-decoration: none;
+    border-radius: 0.5rem;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+    cursor: pointer;
+}}
+
+.mobile-nav-link:hover,
+.mobile-nav-link.active {{
+    color: #c084fc;
+    background: rgba(192, 132, 252, 0.1);
+}}
+
+/* Responsive */
+@media (max-width: 768px) {{
+    .nav-links {{
+        display: none;
+    }}
+    .hamburger {{
+        display: flex;
+    }}
+}}
+
+
+
+
+
+
+================================================================================
+🚨 AI INSTRUCTIONS FOR HTML PREVIEW GENERATION 🚨
+================================================================================
+
+You are generating a COMPLETE HTML preview from Next.js React components.
+
+================================================================================
+CRITICAL RULES FOR NAVIGATION:
+================================================================================
+
+1. Navigation links MUST NOT have inline onclick attributes:
+   ✅ CORRECT: <a href="#" class="nav-link" data-page="courses">Courses</a>
+   ❌ WRONG: <a href="#" onclick="handleNavClick()" data-page="courses">Courses</a>
+
+2. The JavaScript handles all clicks via event listeners - do NOT add onclick to nav links
+
+3. Each page div MUST have id="page_pagename" where pagename matches data-page attribute
+
+4. Active page MUST have class="active", others should not
+
+
+
+================================================================================
+EXACT HOME PAGE CONTENT - CONVERT THIS JSX TO HTML (PRESERVE EVERYTHING):
+================================================================================
+{home_content}
+
+================================================================================
+EXACT FAQ CONTENT - USE THIS EXACT HTML (DO NOT MODIFY):
+================================================================================
+{faq_html}
+
+================================================================================
+EXACT STATS CONTENT - USE THIS EXACT HTML (DO NOT MODIFY):
+================================================================================
+{faq_html}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: FAQ SECTION - PRESERVE ALL EXTRACTED ITEMS 🚨
+================================================================================
+
+You have been provided with FAQ content extracted from the source file below.
+The number of FAQ items will vary based on what exists in the source.
+
+EXTRACTED FAQ CONTENT (use ALL items below - do not add or remove):
+================================================================================
+{faq_html if faq_html else 'No FAQ items found in source'}
+================================================================================
+
+CRITICAL RULES FOR FAQ:
+1. Use EVERY FAQ item in the HTML above - preserve ALL questions and answers
+2. DO NOT add new FAQ items that don't exist
+3. DO NOT remove any FAQ items
+4. Each FAQ item MUST have working accordion toggle functionality
+5. The answer must be hidden initially and shown when clicking the question
+
+If there are 4 items in the extracted content → generate 4 items in HTML
+If there are 3 items → generate 3 items
+If there are 2 items → generate 2 items
+If there is 1 item → generate 1 item
+If there are 0 items → skip the FAQ section entirely
+
+================================================================================
+EXTRACTED FAQ HTML (USE THESE EXACT QUESTIONS AND ANSWERS):
+================================================================================
+{faq_html}
+
+
+
+
+
+
+
+
+
+================================================================================
+EXACT TESTIMONIALS CONTENT - USE THIS EXACT HTML:
+================================================================================
+{testimonials_html}
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 PREVIEW GENERATION INSTRUCTION - INCLUDE ALL SECTIONS FROM SOURCE FILES 🚨
+================================================================================
+
+
+Generate a complete HTML preview that includes EVERY section found in the source files.
+
+CRITICAL RULES:
+1. **ALWAYS include** the Navigation component (from components/Navigation.tsx)
+2. **ALWAYS include** the Hero section (from app/page.tsx)
+3. **ALWAYS include** the Features section (from app/page.tsx) - if present
+4. **ALWAYS include** the Testimonials section (from app/page.tsx) - if present
+5. **ALWAYS include** the Stats section (from app/page.tsx) - if present
+6. **ALWAYS include** the FAQ section (from app/page.tsx) - if present
+7. **ALWAYS include** the Footer (from components/Footer.tsx)
+
+For EACH section found in the source files:
+- Copy the EXACT content (same text, same images, same layout)
+- Convert React components to HTML
+- Preserve all styling classes
+- Keep the same order as the original page
+
+If a section does NOT exist in the source files → DO NOT generate it
+
+The final HTML preview should be a TRUE representation of the Next.js project, containing ALL sections that exist in the original code.
+
+================================================================================
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: USE EXACT NAVIGATION HTML - DO NOT MODIFY 🚨
+================================================================================
+
+You MUST use the navigation HTML provided below EXACTLY as is.
+DO NOT add, remove, or modify any links.
+
+The brand/logo is the ONLY home link. There is NO separate "Home" button.
+
+================================================================================
+EXACT NAVIGATION HTML - USE THIS EXACTLY (DO NOT MODIFY):
+================================================================================
+{navigation_html}
+
+================================================================================
+RULES FOR THIS NAVIGATION:
+================================================================================
+1. ✅ The brand/logo clicks to home page (already has onclick="handleBrandClick(event)")
+2. ✅ Only these links exist: Projects, About, Contact (or whatever is in the HTML above)
+3. ❌ DO NOT add a "Home" link - it does not exist in the source
+4. ❌ DO NOT add any extra links that aren't in the HTML above
+5. ✅ Keep ALL classes, icons, and styling exactly as shown
+
+================================================================================
+IF THE NAVIGATION ABOVE IS EMPTY OR MISSING, USE THIS FALLBACK (WITHOUT HOME):
+================================================================================
+<nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
+    <a href="/" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event)">
+        <i data-lucide="sparkles" class="w-6 h-6 text-yellow-400 drop-shadow-lg group-hover:scale-110 transition-all duration-300"></i>
+        <span class="text-xl font-bold bg-gradient-to-r from-yellow-400 to-purple-500 bg-clip-text text-transparent">{brand_name}</span>
+    </a>
+    <div class="hidden md:flex space-x-2">
+        <a href="/projects" class="nav-link flex items-center gap-2 group" data-page="projects">
+            <i data-lucide="folder" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
+            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">Projects</span>
+        </a>
+        <a href="/about" class="nav-link flex items-center gap-2 group" data-page="about">
+            <i data-lucide="info" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
+            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">About</span>
+        </a>
+        <a href="/contact" class="nav-link flex items-center gap-2 group" data-page="contact">
+            <i data-lucide="mail" class="w-4 h-4 text-yellow-400 group-hover:text-amber-500 group-hover:scale-110 transition-all duration-300"></i>
+            <span class="text-gray-300 group-hover:text-yellow-400 transition-colors duration-300">Contact</span>
+        </a>
+    </div>
+    <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+        <i data-lucide="menu" class="w-6 h-6 text-yellow-400"></i>
+    </button>
+</nav>
+
+
+
+
+================================================================================
+VERIFICATION: The final HTML MUST NOT contain any "Home" link in the navigation.
+================================================================================
+
+
+
+This ensures the AI:
+1. Uses your exact navigation HTML (with the correct links and icons)
+2. Never adds a "Home" link
+3. Preserves all icons and styling
+4. Only shows Projects, About, Contact (or whatever is in your source)
+
+
+
+
+
+
+
+
+================================================================================
+MOBILE MENU REQUIREMENTS
+================================================================================
+- Hamburger button must exist and be clickable
+- Mobile menu must slide in from right
+- Clicking overlay or link must close menu
+- Hamburger must animate to X when open
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: HERO BACKGROUND IMAGE URL - MUST USE CLOUDINARY URL 🚨🚨🚨
+================================================================================
+
+The hero background image MUST use EXACTLY this Cloudinary URL:
+
+{image_url if image_url else first_image_display}
+
+ABSOLUTE RULES - YOU MUST FOLLOW:
+1. DO NOT replace this URL with "/images/image_1.jpg"
+2. DO NOT use any local path like "/images/image_1.jpg"  
+3. DO NOT use placeholder images or gradients
+4. MUST use the EXACT Cloudinary URL provided above
+
+CORRECT hero section (MUST USE THIS EXACT STRUCTURE):
+<section class="relative h-screen flex items-center justify-center overflow-hidden">
+    <img src="{image_url if image_url else first_image_display}" alt="Hero background" class="absolute inset-0 w-full h-full object-cover" />
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative z-10 text-center px-4">
+        <h1 class="text-6xl md:text-7xl font-bold text-white mb-6">{brand_name}</h1>
+        <p class="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Your tagline here</p>
+        <a href="#" class="btn">Get Started</a>
+    </div>
+</section>
+
+WRONG - NEVER DO THIS:
+❌ <img src="/images/image_1.jpg" ...>
+❌ <img src="./image.jpg" ...>
+❌ <div class="bg-gradient"></div> (without the image)
+❌ Using any local path that starts with "/images/"
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: BRAND ICON REQUIREMENT - MUST INCLUDE LUCIDE ICON
+================================================================================
+
+STATEMENT: The brand/logo link in the navigation MUST include a Lucide icon next to the brand name.
+
+REQUIREMENT: Every brand link MUST have this structure:
+- Use <a> tag (NOT <div>)
+- Include flex classes: class="flex items-center gap-2"
+- Add Lucide icon: <i data-lucide="icon-name" class="w-6 h-6 text-purple-400"></i>
+- Add brand name text
+
+✅ CORRECT HTML:
+<a href="/" class="flex items-center gap-2 text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" onclick="handleBrandClick(event)">
+    <i data-lucide="hotel" class="w-6 h-6 text-purple-400"></i>
+    Lodge Hub
+</a>
+
+❌ WRONG HTML (missing icon):
+<div class="brand" onclick="handleBrandClick(event)">Lodge Hub</div>
+
+❌ WRONG HTML (missing flex classes):
+<a href="/" class="brand" onclick="handleBrandClick(event)">
+    <i data-lucide="hotel"></i> Lodge Hub
+</a>
+
+CONSEQUENCE: Without the proper icon structure, the brand will have no visual icon and will not align correctly.
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: BRAND/LOGO CLICK HANDLER - MUST INCLUDE
+================================================================================
+
+STATEMENT: The brand/logo link MUST have an onclick handler that navigates to the home page.
+
+
+
+
+
+
+================================================================================
+🚨 MANDATORY CSS INSTRUCTION - DO NOT IGNORE 🚨
+================================================================================
+
+You MUST include the COMPLETE CSS code below in EVERY HTML preview you generate.
+This CSS is REQUIRED for proper navigation, mobile menu, and page transitions.
+NEVER skip CSS. 
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: YOU ARE AN HTML CONVERTER, NOT A CONTENT GENERATOR 🚨🚨🚨
+================================================================================
+
+Your ONLY job is to convert the EXACT React JSX content below into HTML.
+DO NOT write new content. DO NOT change wording. DO NOT add or remove sections.
+
+================================================================================
+ICON REQUIREMENTS:
+================================================================================
+- Navigation brand: Use Lucide icons with <i data-lucide="icon-name">
+- Footer social icons: Use Font Awesome with <i class="fab fa-icon-name">
+- Feature cards: Use regular HTML/SVG, NOT Lucide icons
+- Initialize Lucide with: lucide.createIcons()
+
+================================================================================
+EXACT NAVIGATION HTML - USE THIS EXACTLY (DO NOT MODIFY):
+================================================================================
+{navigation_html_for_prompt}
+
+================================================================================
+EXACT HOME PAGE CONTENT - CONVERT THIS JSX TO HTML (PRESERVE EVERYTHING):
+================================================================================
+{home_content}
+
+================================================================================
+EXACT OTHER PAGES CONTENT - CONVERT THESE TO HTML (PRESERVE EVERYTHING):
+================================================================================
+{page_contents_json}
+
+================================================================================
+EXACT BRAND NAME (use this exactly):
+================================================================================
+{brand_name}
+
+================================================================================
+EXACT NAVIGATION LINKS (use these exactly):
+================================================================================
+{nav_links_json}
+
+
+
+
+
+================================================================================
+EXACT FOOTER HTML - USE THE EXTRACTED CONTENT BELOW (DO NOT GENERATE NEW FOOTER)
+================================================================================
+
+The footer HTML below has been EXTRACTED from your components/Footer.tsx file.
+You MUST use this EXACT HTML. DO NOT modify, simplify, or replace it.
+
+EXTRACTED FOOTER HTML (USE THIS EXACTLY):
+================================================================================
+{footer_html}
+
+================================================================================
+🚨 CRITICAL: IF EXTRACTED FOOTER IS MISSING OR EMPTY, USE THIS FALLBACK 🚨
+================================================================================
+{f'''
+<footer class="relative mt-20 bg-gradient-to-b from-zinc-950 to-black border-t border-white/10 py-12">
+    <div class="container mx-auto px-4 grid md:grid-cols-4 gap-8">
+        <div class="space-y-4">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-sparkles text-purple-500"></i>
+                <h3 class="font-bold text-lg">{brand_name}</h3>
+            </div>
+            <p class="text-sm text-gray-400">Premium digital solutions for modern businesses.</p>
+            <div class="flex gap-4">
+                <i class="fab fa-facebook-f text-gray-400 hover:text-purple-400 transition-colors cursor-pointer"></i>
+                <i class="fab fa-twitter text-gray-400 hover:text-purple-400 transition-colors cursor-pointer"></i>
+                <i class="fab fa-instagram text-gray-400 hover:text-purple-400 transition-colors cursor-pointer"></i>
+            </div>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">Quick Links</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+                <li><a href="/shop" class="hover:text-purple-400 transition-colors">Shop</a></li>
+                <li><a href="/catalog" class="hover:text-purple-400 transition-colors">Catalog</a></li>
+                <li><a href="/about" class="hover:text-purple-400 transition-colors">About Us</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">Contact</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+                <li class="flex items-center gap-2"><i class="fas fa-envelope"></i> support@{brand_name.lower().replace(' ', '')}.com</li>
+                <li class="flex items-center gap-2"><i class="fas fa-phone"></i> +1 (555) 123-4567</li>
+                <li class="flex items-center gap-2"><i class="fas fa-map-marker-alt"></i> 123 Innovation Drive, NY 10001</li>
+            </ul>
+        </div>
+        <div>
+            <h4 class="font-bold mb-4">Newsletter</h4>
+            <p class="text-sm text-gray-400 mb-3">Get 10% off your first order</p>
+            <form class="flex gap-2" onsubmit="handleNewsletter(event)">
+                <input type="email" placeholder="Your email address" class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 transition-colors" />
+                <button type="submit" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all"><i class="fas fa-paper-plane"></i></button>
+            </form>
+        </div>
+    </div>
+    <div class="text-center mt-8 pt-8 border-t border-white/10 text-sm text-gray-500">
+        © 2026 {brand_name}. Crafted with <i class="fas fa-heart text-red-500"></i> in Nairobi
+    </div>
+</footer>
+''' if not footer_html else ''}
+
+================================================================================
+🚨 FOOTER ICON CONVERSION RULES - APPLY TO EXTRACTED CONTENT 🚨
+================================================================================
+
+The extracted footer may contain Lucide icons. Convert them to Font Awesome:
+
+| Pattern | Replace With |
+|---------|--------------|
+| `<Sparkles className="..." />` | `<i class="fas fa-sparkles text-purple-500"></i>` |
+| `<Mail className="..." />` | `<i class="fas fa-envelope"></i>` |
+| `<Phone className="..." />` | `<i class="fas fa-phone"></i>` |
+| `<MapPin className="..." />` | `<i class="fas fa-map-marker-alt"></i>` |
+| `<Send className="..." />` | `<i class="fas fa-paper-plane"></i>` |
+| `<Heart className="..." />` | `<i class="fas fa-heart text-red-500"></i>` |
+| `<Facebook className="..." />` | `<i class="fab fa-facebook-f"></i>` |
+| `<Twitter className="..." />` | `<i class="fab fa-twitter"></i>` |
+| `<Instagram className="..." />` | `<i class="fab fa-instagram"></i>` |
+| `<ArrowUp />` | `<i class="fas fa-arrow-up"></i>` |
+
+================================================================================
+🚨 SCROLL TO TOP BUTTON & NEWSLETTER HANDLER - MUST INCLUDE 🚨
+================================================================================
+
+Add this button before closing </body>:
+```html
+<button id="scrollToTop" class="fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:scale-110 transition-all duration-300 flex items-center justify-center opacity-0 invisible">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+Add this script before closing </body>:
+
+<script>
+(function() {{
+    const scrollBtn = document.getElementById('scrollToTop');
+    if (scrollBtn) {{
+        window.addEventListener('scroll', function() {{
+            if (window.scrollY > 500) {{
+                scrollBtn.classList.remove('opacity-0', 'invisible');
+                scrollBtn.classList.add('opacity-100', 'visible');
+            }} else {{
+                scrollBtn.classList.add('opacity-0', 'invisible');
+                scrollBtn.classList.remove('opacity-100', 'visible');
+            }}
+        }});
+        scrollBtn.addEventListener('click', function() {{
+            window.scrollTo({{ top: 0, behavior: 'smooth' }});
+        }});
+    }}
+    
+    window.handleNewsletter = function(event) {{
+        event.preventDefault();
+        const email = event.target.querySelector('input[type="email"]')?.value;
+        if (email) {{
+            alert('Thank you for subscribing with: ' + email);
+            event.target.reset();
+        }}
+    }};
+}})();
+</script>
+
+================================================================================
+KEEP ALL TEXT CONTENT EXACTLY AS EXTRACTED - DO NOT MODIFY:
+================================================================================
+
+
+1. Preserve ALL link text
+
+2. Preserve ALL descriptions
+
+3. Preserve ALL contact information
+
+4. Preserve copyright text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+EXACT HERO BACKGROUND IMAGE URL (use this exactly):
+================================================================================
+{first_image_display}
+
+================================================================================
+RULES FOR CONVERTING HOME PAGE CONTENT:
+================================================================================
+
+1. Extract the hero section with EXACT text from {home_content}
+2. Extract ALL feature cards with EXACT titles and descriptions
+3. Extract ALL stats with EXACT numbers and labels
+4. Extract ALL testimonials with EXACT quotes and names
+5. Extract ALL CTA sections with EXACT button text
+6. Preserve the EXACT number of items (don't add or remove cards)
+7. Keep ALL text EXACTLY as written in the original JSX
+
+================================================================================
+RULES FOR CONVERTING OTHER PAGES:
+================================================================================
+
+For each page in {page_contents_json}:
+1. Use the EXACT content provided
+2. Preserve ALL headings, paragraphs, and button text
+3. Keep the SAME number of cards, items, or sections
+4. DO NOT add placeholder text like "Coming soon" or "Lorem ipsum"
+
+================================================================================
+DESIGN REQUIREMENTS:
+================================================================================
+
+1. Modern dark theme with purple/pink gradients (#c084fc, #f472b6)
+2. Glass morphism effects (backdrop-blur, semi-transparent backgrounds)
+3. Smooth animations and hover effects
+4. Fully responsive (mobile hamburger menu at 768px)
+5. ONLY ONE <style> tag and ONE <script> tag
+6. Navigation brand uses Lucide icon - Footer uses Font Awesome - Features use HTML/SVG
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+COMPLETE JAVASCRIPT:
+================================================================================
+<script>
+    function handleBrandClick(event) {{
+        event.preventDefault();
+        event.stopPropagation();
+        showPage('home');
+        return false;
+    }}
+    
+    function showPage(pageId) {{
+        document.querySelectorAll('.page').forEach(page => {{
+            page.classList.remove('active');
+            page.style.display = 'none';
+        }});
+        const targetPage = document.getElementById('page_' + pageId);
+        if (targetPage) {{
+            targetPage.classList.add('active');
+            targetPage.style.display = 'block';
+        }}
+        window.scrollTo(0, 0);
+    }}
+    
+    function toggleMobileMenu() {{
+        const mobileMenu = document.getElementById('mobileMenu');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+        const hamburger = document.querySelector('.hamburger');
+        
+        if (mobileMenu) {{
+            mobileMenu.classList.toggle('active');
+        }}
+        if (mobileOverlay) {{
+            mobileOverlay.classList.toggle('active');
+        }}
+        if (hamburger) {{
+            hamburger.classList.toggle('active');
+        }}
+    }}
+    
+    
+    
+    
+    
+    
+    
+
+    // ========== FAQ ACCORDION FUNCTIONS ==========
+    function initFaqAccordion() {{
+        const faqButtons = document.querySelectorAll('.faq-btn, .faq-question');
+        faqButtons.forEach(button => {{
+            button.removeEventListener('click', handleFaqClick);
+            button.addEventListener('click', handleFaqClick);
+        }});
+    }}
+    
+    function handleFaqClick(event) {{
+        const button = event.currentTarget;
+        const answer = button.nextElementSibling;
+        const icon = button.querySelector('i');
+        if (answer && answer.classList.contains('hidden')) {{
+            answer.classList.remove('hidden');
+            if (icon) {{
+                icon.classList.remove('fa-plus');
+                icon.classList.add('fa-minus');
+            }}
+        }} else if (answer) {{
+            answer.classList.add('hidden');
+            if (icon) {{
+                icon.classList.remove('fa-minus');
+                icon.classList.add('fa-plus');
+            }}
+        }}
+    }}
+    
+
+    function initScrollToTop() {{
+        const scrollBtn = document.getElementById('scrollToTop');
+        if (!scrollBtn) return;
+        window.addEventListener('scroll', () => {{
+            if (window.scrollY > 500) {{
+                scrollBtn.classList.remove('opacity-0', 'invisible');
+                scrollBtn.classList.add('opacity-100', 'visible');
+            }} else {{
+                scrollBtn.classList.add('opacity-0', 'invisible');
+                scrollBtn.classList.remove('opacity-100', 'visible');
+            }}
+        }});
+        scrollBtn.addEventListener('click', () => {{
+            window.scrollTo({{ top: 0, behavior: 'smooth' }});
+        }});
+    }}
+    
+    // ========== NEWSLETTER FORM HANDLER ==========
+    function initNewsletterForm() {{
+        const newsletterForm = document.getElementById('newsletterForm');
+        if (newsletterForm) {{
+            newsletterForm.addEventListener('submit', (e) => {{
+                e.preventDefault();
+                const emailInput = newsletterForm.querySelector('input[type="email"]');
+                if (emailInput && emailInput.value) {{
+                    alert(`Thank you for subscribing with: ${{emailInput.value}}`);
+                    emailInput.value = '';
+                }}
+            }});
+        }}
+    }}
+
+    
+    
+    
+    function toggleMobileMenu() {{
+        const mobileMenu = document.getElementById('mobileMenu');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+        const hamburger = document.querySelector('.hamburger');
+        
+        if (mobileMenu) mobileMenu.classList.toggle('active');
+        if (mobileOverlay) mobileOverlay.classList.toggle('active');
+        if (hamburger) hamburger.classList.toggle('active');
+    }}
+    
+    
+    
+    
+    
+    
+    
+    function closeMobileMenu() {{
+        const mobileMenu = document.getElementById('mobileMenu');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+        const hamburger = document.querySelector('.hamburger');
+        
+        if (mobileMenu) {{
+            mobileMenu.classList.remove('active');
+        }}
+        if (mobileOverlay) {{
+            mobileOverlay.classList.remove('active');
+        }}
+        if (hamburger) {{
+            hamburger.classList.remove('active');
+        }}
+    }}
+    
+    document.addEventListener('DOMContentLoaded', function() {{
+        if (typeof lucide !== 'undefined') {{
+            lucide.createIcons();
+        }}
+        
+        const hamburger = document.querySelector('.hamburger');
+        if (hamburger) {{
+            hamburger.addEventListener('click', toggleMobileMenu);
+        }}
+        
+        const overlay = document.getElementById('mobileOverlay');
+        if (overlay) {{
+            overlay.addEventListener('click', closeMobileMenu);
+        }}
+        
+        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+            link.addEventListener('click', (e) => {{
+                e.preventDefault();
+                const pageId = link.getAttribute('data-page');
+                if (pageId) showPage(pageId);
+            }});
+        }});
+        
+        const brandLink = document.querySelector('.brand');
+        if (brandLink) {{
+            brandLink.addEventListener('click', handleBrandClick);
+        }}
+    }});
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+FINAL VERIFICATION:
+================================================================================
+
+Before outputting, verify:
+- [ ] Home page has EXACT same sections as extracted content
+- [ ] All text matches the original JSX word-for-word
+- [ ] Number of feature cards matches (should be 4 for gym website)
+- [ ] Number of stats matches (should be 4 for gym website)
+- [ ] Number of testimonials matches (should be 3 for gym website)
+- [ ] No placeholder or generic text was added
+- [ ] Navigation HTML was copied exactly
+- [ ] Footer HTML was copied exactly (if provided)
+- [ ] Footer icons use Font Awesome classes (fab fa-* or fas fa-*)
+- [ ] Font Awesome CDN is in the <head> tag
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+SPECIFIC INSTRUCTION FOR HOME PAGE (page_home)
+================================================================================
+
+The home page content above (from app/page.tsx) contains:
+
+- A hero section with an image
+- An h1 heading with your actual brand name (like "Amber College Prep")
+- A paragraph with your actual description
+- A button with your actual button text (like "Explore Programs")
+
+YOU MUST use these EXACT values. For example:
+
+✅ CORRECT: <h1>Amber College Prep</h1>
+❌ WRONG: <h1>Welcome to our website</h1>
+
+✅ CORRECT: <p>Empowering the next generation of scholars...</p>
+❌ WRONG: <p>Welcome to our website</p>
+
+✅ CORRECT: <button>Explore Programs</button>
+❌ WRONG: <button>Get Started</button>
+
+================================================================================
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: SIGNUP & LOGIN PAGE REQUIREMENTS 🚨🚨🚨
+================================================================================
+
+When generating the HTML preview, you MUST follow these rules for authentication pages:
+
+**SIGNUP PAGE (page_signup) - MUST have:**
+1. Form with id="signup-form"
+2. Form with onsubmit="handleSignup(event); return false;"
+3. Input with name="name" for full name
+4. Input with name="email" for email address
+5. Input with name="password" for password
+6. Input with name="confirmPassword" for password confirmation
+7. Submit button that says "Sign up"
+
+**LOGIN PAGE (page_login) - MUST have:**
+1. Form with id="login-form"
+2. Form with onsubmit="handleLogin(event); return false;"
+3. Input with name="email" for email address
+4. Input with name="password" for password
+5. Submit button that says "Sign in"
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL JAVASCRIPT RULES - NO FLICKER, NO DISAPPEARING BACKGROUND 🚨🚨🚨
+================================================================================
+
+The JavaScript code MUST follow these rules:
+
+1. NEVER call showPage() inside init() - causes unnecessary hiding/showing
+2. ALWAYS check if a page is already active before hiding all pages
+3. ALWAYS return early in showPage() if already on the target page
+4. NEVER use inline styles that override CSS classes
+5. ALWAYS use CSS for display control, not JavaScript inline styles
+6. ALWAYS add a flag to prevent double initialization
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: USE THE EXTRACTED CONTENT BELOW - NO PLACEHOLDERS! 🚨🚨🚨
+================================================================================
+
+The content below is EXTRACTED DIRECTLY from your Next.js pages. 
+YOU MUST use this EXACT content for each page's HTML.
+
+DO NOT generate placeholder text like "Welcome to our page" or "Explore our offerings".
+USE THE EXACT CONTENT PROVIDED BELOW.
+
+================================================================================
+EXTRACTED PAGE CONTENTS - USE THESE EXACTLY:
+================================================================================
+
+
+For EACH page, copy the EXACT content from the extracted JSON above into the page div.
+If the content contains arrays/maps, render them as HTML cards/items.
+
+For example, if Programs page has program data, render the actual programs with their titles, descriptions, icons, etc.
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 MANDATORY BODY BACKGROUND - MUST USE THIS EXACT GRADIENT 🚨🚨🚨
+================================================================================
+
+The <body> tag MUST use this EXACT background gradient:
+
+<body class="bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950">
+
+OR this alternative gradient:
+
+<style>
+body {{
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+}}
+</style>
+
+================================================================================
+FORBIDDEN - NEVER USE THESE BACKGROUNDS:
+================================================================================
+
+❌ bg-black
+❌ bg-white
+❌ bg-zinc-900
+❌ bg-gray-800
+❌ bg-slate-900
+❌ solid backgrounds of any single color
+
+================================================================================
+REQUIRED - ALWAYS USE GRADIENT BACKGROUNDS:
+================================================================================
+
+✅ linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%)
+✅ bg-gradient-to-br from-purple-950 via-zinc-950 to-pink-950
+✅ bg-gradient-to-tr from-indigo-950 via-purple-950 to-zinc-950
+
+================================================================================
+EXAMPLE - CORRECT BODY STYLING:
+================================================================================
+
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }}
+    </style>
+</head>
+<body>
+    <!-- content -->
+</body>
+</html>
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+COMPLETE CSS - USE THIS EXACTLY
+================================================================================
+
+
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+
+body {{
+    font-family: 'Inter', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+}}
+
+header {{
+    background: rgba(26, 26, 30, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    height: 72px;
+}}
+
+.nav-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+}}
+
+.brand {{
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-decoration: none;
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
+
+.nav-links {{
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}}
+
+.nav-link {{
+    color: #9ca3af;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+}}
+
+.nav-link:hover, .nav-link.active {{
+    color: #c084fc;
+    background: rgba(192,132,252,0.1);
+}}
+
+.page {{
+    display: none;
+    min-height: calc(100vh - 72px);
+    padding-top: 88px;
+}}
+
+.page.active {{ display: block; }}
+
+.container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}}
+
+.card {{
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.3s;
+}}
+
+.card:hover {{
+    transform: translateY(-4px);
+    border-color: #c084fc;
+}}
+
+.gradient-text {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
+
+.btn {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}}
+
+.btn:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(192,132,252,0.3);
+}}
+
+.hero {{
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+    border-radius: 1rem;
+    margin: 1rem;
+    overflow: hidden;
+}}
+
+.hero-bg {{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.35;
+}}
+
+.hero-content {{
+    position: relative;
+    z-index: 10;
+    padding: 3rem;
+}}
+
+.hero-content h1 {{
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+}}
+
+.hero-content p {{
+    font-size: 1.2rem;
+    color: #9ca3af;
+    margin-bottom: 2rem;
+}}
+
+.grid {{
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}}
+
+/* Footer */
+footer {{
+    background: linear-gradient(180deg, rgba(15,15,18,0.8) 0%, #1a1a2e 100%);
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin-top: 4rem;
+    padding: 3rem 0 2rem;
+}}
+
+.footer-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}}
+
+.footer-section h4 {{
+    color: #c084fc;
+    margin-bottom: 1rem;
+}}
+
+.footer-section a {{
+    color: #9ca3af;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.5rem;
+    transition: color 0.2s;
+}}
+
+.footer-section a:hover {{ color: #c084fc; }}
+
+.copyright {{
+    text-align: center;
+    padding-top: 2rem;
+    margin-top: 2rem;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: #6b7280;
+    font-size: 0.875rem;
+}}
+
+/* Mobile Menu */
+.hamburger {{
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}}
+
+.hamburger span {{
+    width: 25px;
+    height: 3px;
+    background: #9ca3af;
+    border-radius: 2px;
+}}
+
+.mobile-menu {{
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 280px;
+    height: 100vh;
+    background: #1a1a1e;
+    z-index: 200;
+    transition: right 0.3s;
+    padding: 80px 24px;
+}}
+
+.mobile-menu.active {{ right: 0; }}
+
+.mobile-overlay {{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 199;
+    display: none;
+}}
+
+.mobile-overlay.active {{ display: block; }}
+
+.mobile-nav-link {{
+    display: block;
+    padding: 12px 16px;
+    color: #9ca3af;
+    text-decoration: none;
+    border-radius: 0.5rem;
+    margin-bottom: 8px;
+}}
+
+@media (max-width: 768px) {{
+    .nav-links {{ display: none; }}
+    .hamburger {{ display: flex; }}
+    .hero-content h1 {{ font-size: 2rem; }}
+    .footer-container {{ grid-template-columns: 1fr; text-align: center; }}
+}}
+
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+
+.page {{ animation: fadeIn 0.3s ease; }}
+
+
+
+
+
+
+
+
+
+
+/* Hamburger animation to X when open */
+.hamburger.active span:nth-child(1) {{
+    {{transform}}: rotate(45deg) translate(5px, 5px);
+}}
+
+.hamburger.active span:nth-child(2) {{
+    opacity: 0;
+}}
+
+.hamburger.active span:nth-child(3) {{
+    {{transform}}: rotate(-45deg) translate(5px, -5px);
+}}
+
+/* Add transition to hamburger spans */
+.hamburger span {{
+    width: 25px;
+    height: 3px;
+    background: #9ca3af;
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ========== FAQ ACCORDION STYLES ========== */
+.faq-answer {{
+    transition: all 0.3s ease;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+}}
+
+.faq-answer.hidden {{
+    display: none;
+}}
+
+.faq-btn, .faq-question {{
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+}}
+
+.faq-btn:hover, .faq-question:hover {{
+    background: rgba(255, 255, 255, 0.05);
+}}
+
+.faq-btn i, .faq-question i {{
+    transition: transform 0.2s ease;
+}}
+
+
+
+
+
+
+
+
+/* Increase feature icon sizes */
+.feature-icon {{
+    font-size: 3rem;
+    width: auto;
+    height: auto;
+}}
+
+/* For all icons in feature cards */
+.grid.md\\:grid-cols-4 > div i {{
+    font-size: 2rem;
+    width: auto;
+    height: auto;
+    margin-bottom: 1rem;
+}}
+
+
+
+
+
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+JAVASCRIPT - WORKING NAVIGATION WITH BRAND CLICK HANDLER (FIXED)
+================================================================================
+<script>
+function showPage(pageId) {{
+    console.log('🔄 showPage called with:', pageId);
+    
+    // Hide ALL pages
+    document.querySelectorAll('.page').forEach(page => {{
+        page.classList.remove('active');
+        page.style.display = 'none';
+    }});
+    
+    // Show the target page
+    const targetPage = document.getElementById('page_' + pageId);
+    if (targetPage) {{
+        targetPage.classList.add('active');
+        targetPage.style.display = 'block';
+        console.log('✅ Showing page:', pageId);
+    }} else {{
+        console.log('❌ Page not found:', 'page_' + pageId);
+        // Fallback - show home
+        const homePage = document.getElementById('page_home');
+        if (homePage) {{
+            homePage.classList.add('active');
+            homePage.style.display = 'block';
+        }}
+    }}
+    
+    // Update navigation active states
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.classList.remove('active');
+        if (link.getAttribute('data-page') === pageId) {{
+            link.classList.add('active');
+        }}
+    }});
+    
+    // Update URL
+    if (pageId !== 'home') {{
+        window.history.pushState({{}}, '', '/' + pageId);
+    }} else {{
+        window.history.pushState({{}}, '', '/');
+    }}
+    window.scrollTo(0, 0);
+}}
+
+function toggleMenu() {{
+    const menu = document.getElementById('mobileMenu');
+    const overlay = document.getElementById('mobileOverlay');
+    const hamburger = document.querySelector('.hamburger');
+    
+    if (menu) menu.classList.toggle('active');
+    if (overlay) overlay.classList.toggle('active');
+    if (hamburger) hamburger.classList.toggle('active');
+}}
+
+// Handle brand/logo click - ALWAYS go to home page
+function handleBrandClick(e) {{
+    e.preventDefault();
+    e.stopPropagation();
+    showPage('home');
+    if (window.innerWidth <= 768) toggleMenu();
+}}
+
+// Handle navigation link clicks
+function handleNavClick(e) {{
+    e.preventDefault();
+    const pageId = this.getAttribute('data-page');
+    if (pageId) {{
+        showPage(pageId);
+        if (window.innerWidth <= 768) toggleMenu();
+    }}
+}}
+
+// ========== INITIALIZATION - CRITICAL FOR HOME PAGE ==========
+if (document.readyState === 'loading') {{
+    document.addEventListener('DOMContentLoaded', init);
+}} else {{
+    init();
+}}
+
+function init() {{
+    console.log('🎯 Initializing navigation...');
+    
+    // Get current path or default to home
+    let currentPath = window.location.pathname.slice(1);
+    if (!currentPath || currentPath === '') {{
+        currentPath = 'home';
+    }}
+    console.log('📍 Current path:', currentPath);
+    
+    // Ensure ALL pages are hidden first
+    document.querySelectorAll('.page').forEach(page => {{
+        page.classList.remove('active');
+        page.style.display = 'none';
+    }});
+    
+    // Show the home page (or current path)
+    const targetPageId = currentPath === 'home' ? 'page_home' : 'page_' + currentPath;
+    const targetPage = document.getElementById(targetPageId);
+    
+    if (targetPage) {{
+        targetPage.classList.add('active');
+        targetPage.style.display = 'block';
+        console.log('✅ Activated page:', targetPageId);
+    }} else {{
+        // Fallback - show home
+        const homePage = document.getElementById('page_home');
+        if (homePage) {{
+            homePage.classList.add('active');
+            homePage.style.display = 'block';
+            console.log('✅ Fallback: Activated home page');
+        }}
+    }}
+    
+    // Update navigation active states
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.classList.remove('active');
+        if (link.getAttribute('data-page') === currentPath) {{
+            link.classList.add('active');
+        }}
+    }});
+    
+    // Add event listeners
+    const brandLink = document.querySelector('.brand');
+    if (brandLink) {{
+        brandLink.addEventListener('click', handleBrandClick);
+        console.log('✅ Brand click handler attached');
+    }}
+    
+    const hamburger = document.querySelector('.hamburger');
+    const overlay = document.getElementById('mobileOverlay');
+    if (hamburger) hamburger.addEventListener('click', toggleMenu);
+    if (overlay) overlay.addEventListener('click', toggleMenu);
+    
+    document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {{
+        link.removeEventListener('click', handleNavClick);
+        link.addEventListener('click', handleNavClick);
+    }});
+    
+    console.log('✅ Navigation initialized successfully');
+}}
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {{
+    const path = window.location.pathname.slice(1) || 'home';
+    showPage(path);
+}});
+</script>
+
+
+
+
+
+
+
+================================================================================
+RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
+================================================================================
+"""
+
+
+
+
+
+        response_text = await model_router.generate_content(
+            prompt=prompt,
+            config={"temperature": 0.1, "max_output_tokens": 200000}
+        )
+
+        preview_html = clean_html_response(response_text)
+        preview_html = enforce_body_background(preview_html)
+        
+        
+        
+        
+        
+        
+        
+        
+        # Remove any product cards that appear after the shop page closing tag
+        preview_html = re.sub(
+            r'</div>\s*</div>\s*</div>\s*<div class="glass p-6 rounded-2xl">.*?</div>\s*<div class="glass p-6 rounded-2xl">.*?</div>\s*</div>\s*</div>\s*</div>(?=<div id="page_cart")',
+            '',
+            preview_html,
+            flags=re.DOTALL
+        )
+        
+        # Also remove any stray glass divs that contain product cards
+        preview_html = re.sub(
+            r'<div class="glass p-6 rounded-2xl"><h3 class="text-xl font-bold">.*?</h3><p class="text-purple-400 text-2xl font-bold my-4">.*?</p><button class="add-to-cart-btn w-full btn".*?</button></div>',
+            '',
+            preview_html,
+            flags=re.DOTALL
+        )
+        
+        print(f"🧹 Removed duplicate product cards outside shop page")        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+                # ========== REMOVE DUPLICATE CART SCRIPTS ==========
+        # Method 1: Remove script that starts with // ========== CART SYSTEM ==========
+        preview_html = re.sub(
+            r'<script>\s*// ========== CART SYSTEM ==========.*?</script>', 
+            '', 
+            preview_html, 
+            flags=re.DOTALL
+        )
+        
+        # Method 2: Remove script containing cart-page-items (the wrong ID)
+        preview_html = re.sub(
+            r'<script[^>]*>[\s\S]*?cart-page-items[\s\S]*?</script>', 
+            '', 
+            preview_html, 
+            flags=re.DOTALL
+        )
+        
+        # Method 3: Remove script containing empty-cart-message (without -cart suffix)
+        preview_html = re.sub(
+            r'<script[^>]*>[\s\S]*?empty-cart-message[^-][\s\S]*?</script>', 
+            '', 
+            preview_html, 
+            flags=re.DOTALL
+        )
+        
+        # Method 4: Remove any script that has wireAddToCartButtons but not MASTER
+        preview_html = re.sub(
+            r'<script[^>]*>[\s\S]*?wireAddToCartButtons[\s\S]*?MutationObserver[\s\S]*?</script>', 
+            '', 
+            preview_html, 
+            flags=re.DOTALL
+        )
+        
+        print(f"🗑️ Removed duplicate/old cart scripts")
+        # ========== END REMOVE DUPLICATE SCRIPTS ========== 
+        
+        
+        
+        
+        # ========== FIX NAVIGATION CART LINK - ADD THIS HERE ==========
+        # Fix the cart link that's missing the badge
+        cart_link_pattern = r'<a href="#" class="nav-link" data-page="cart">\s*Cart\s*</a>'
+        
+        fixed_cart_link = '<a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">\n                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>\n                <span class="text-gray-300 group-hover:text-purple-400">Cart</span>\n                <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>\n            </a>'
+        
+        preview_html = re.sub(cart_link_pattern, fixed_cart_link, preview_html, flags=re.DOTALL)
+        
+        # Also handle alternative formatting
+        alt_pattern = r'<a href="#" class="nav-link"[^>]*data-page="cart"[^>]*>.*?</a>'
+        preview_html = re.sub(alt_pattern, fixed_cart_link, preview_html, flags=re.DOTALL)
+        
+        print(f"🔧 Fixed navigation cart link - added badge and icon")
+
+
+
+
+                # ============================================================
+        # ========== STEP 1: FIX NAVIGATION CART LINK ==========
+        # ============================================================
+        
+        # Fix desktop cart link (shows "0" instead of "Cart")
+        broken_cart_pattern = r'<a href="cart"\s+class="nav-link group"\s+data-page="cart">\s*<span[^>]*>0</span>\s*</a>'
+        
+        fixed_cart_link = '<a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">\n                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>\n                <span class="text-gray-300 group-hover:text-purple-400">Cart</span>\n                <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>\n            </a>'
+        
+        preview_html = re.sub(broken_cart_pattern, fixed_cart_link, preview_html, flags=re.DOTALL)
+        
+        # Alternative pattern for different formatting
+        alt_pattern = r'<a href="cart"[^>]*data-page="cart"[^>]*>\s*<span[^>]*>0</span>\s*</a>'
+        preview_html = re.sub(alt_pattern, fixed_cart_link, preview_html, flags=re.DOTALL)
+        
+        # Fix mobile cart link
+        mobile_broken = r'<a href="cart"\s+class="mobile-nav-link block[^"]*"\s+data-page="cart">\s*<span[^>]*>0</span>\s*</a>'
+        fixed_mobile = '<a href="cart" class="mobile-nav-link flex items-center gap-3" data-page="cart">\n                    <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>\n                    <span class="text-gray-300">Cart</span>\n                </a>'
+        preview_html = re.sub(mobile_broken, fixed_mobile, preview_html, flags=re.DOTALL)
+        
+        print(f"🔧 Fixed navigation cart link")
+        
+        
+        
+        
+        
+        
+        
+        
+        
+         # ============================================================
+        # ========== STEP 2: EXTRACT PRODUCTS FROM SHOP PAGE ==========
+        # ============================================================
+        
+        # First, isolate the shop page content - use a more precise pattern
+        # Find the exact shop page div
+        shop_start = preview_html.find('<div id="page_shop"')
+        if shop_start != -1:
+            # Find the matching closing </div> for this page
+            # Count nested divs to find the correct closing tag
+            search_pos = shop_start
+            div_count = 0
+            shop_end = -1
+            
+            while search_pos < len(preview_html):
+                # Find next div opening or closing
+                next_open = preview_html.find('<div', search_pos)
+                next_close = preview_html.find('</div>', search_pos)
+                
+                if next_close == -1:
+                    break
+                
+                # If we find an opening div before the closing div
+                if next_open != -1 and next_open < next_close:
+                    div_count += 1
+                    search_pos = next_open + 4
+                else:
+                    div_count -= 1
+                    if div_count < 0:
+                        shop_end = next_close + 6
+                        break
+                    search_pos = next_close + 6
+            
+            if shop_end != -1:
+                shop_content = preview_html[shop_start:shop_end]
+                
+                # Extract product names and prices from the shop page ONLY
+                product_names = re.findall(r'<h3[^>]*>([^<]+)</h3>', shop_content)
+                product_prices = re.findall(r'<p[^>]*>\$?([\d.]+)</p>', shop_content)
+                
+                if product_names and product_prices:
+                    # Build new shop page
+                    new_products_html = '<div class="grid md:grid-cols-3 gap-8">'
+                    for i, (name, price) in enumerate(zip(product_names, product_prices), 1):
+                        clean_price = re.sub(r'[^0-9.]', '', price)
+                        try:
+                            price_float = float(clean_price)
+                        except:
+                            price_float = 0.00
+                        
+                        new_products_html += f'''
+                    <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+                        <h3 class="text-xl font-bold mb-2">{name.strip()}</h3>
+                        <p class="text-purple-400 text-2xl font-bold mb-4">${price_float:.2f}</p>
+                        <button class="add-to-cart-btn w-full py-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg hover:opacity-90 transition" 
+                                data-id="{i}" 
+                                data-name="{name.strip()}" 
+                                data-price="{price_float:.2f}">
+                            Add to Cart
+                        </button>
+                    </div>'''
+                    new_products_html += '</div>'
+                    
+                    # Build the new shop page
+                    new_shop_page = f'''<div id="page_shop" class="page">
+                <div class="pt-32 container mx-auto px-4">
+                    <h1 class="text-4xl font-bold mb-12 text-center gradient-text">Our Collection</h1>
+                    {new_products_html}
+                </div>
+            </div>'''
+                    
+                    # Replace ONLY the shop page div
+                    preview_html = preview_html[:shop_start] + new_shop_page + preview_html[shop_end:]
+                    print(f"🛒 Rebuilt shop page with {len(product_names)} products and correct data attributes")
+                else:
+                    print(f"⚠️ Could not extract product names and prices from shop page")
+            else:
+                print(f"⚠️ Could not find shop page closing tag")
+        else:
+            print(f"⚠️ Could not find shop page")
+
+
+
+
+
+
+
+
+
+
+
+        # ========== FIX NAVIGATION CART LINK ==========
+        # Ensure the cart link has the correct structure
+        if 'data-cart-count' not in preview_html:
+            cart_link_pattern = r'<a href="cart"[^>]*data-page="cart"[^>]*>.*?</a>'
+            fixed_cart_link = '<a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">\n                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>\n                <span class="text-gray-300 group-hover:text-purple-400">Cart</span>\n                <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>\n            </a>'
+            preview_html = re.sub(cart_link_pattern, fixed_cart_link, preview_html, flags=re.DOTALL)
+            print(f"🔧 Fixed navigation cart link with badge")
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ============================================================
+        # ========== CLEAN UP EXTRA CONTENT BETWEEN PAGES ==========
+        # ============================================================
+        # Remove any extra closing tags and stray content between shop and cart
+        preview_html = re.sub(
+            r'</div>\s*</div>\s*</div>\s*<!-- Right: Order Summary -->.*?(?=<div id="page_cart")',
+            '',
+            preview_html,
+            flags=re.DOTALL
+        )
+        
+        # Remove any empty cart-summary divs outside cart page
+        preview_html = re.sub(
+            r'<div class="lg:col-span-1 mt-8 lg:mt-0">\s*</div>',
+            '',
+            preview_html,
+            flags=re.DOTALL
+        )
+        
+        print(f"🧹 Cleaned up extra content between pages")
+
+
+
+
+
+
+
+
+
+        # ============================================================
+        # ========== STEP 3: INJECT MASTER CART TEMPLATE ==========
+        # ============================================================
+        
+        if is_ecommerce:
+            MASTER_CART_HTML = '''
+<div id="page_cart" class="page">
+    <div class="min-h-screen pt-24 container mx-auto px-4 py-12">
+        <h1 class="text-3xl font-bold mb-8 gradient-text">Shopping Cart (<span id="cart-total-count">0</span> items)</h1>
+        
+        <div class="grid lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2">
+                <div id="cart-items-list" class="space-y-4"></div>
+                <div id="empty-cart-message-cart" class="text-center py-12">
+                    <i data-lucide="shopping-bag" class="w-20 h-20 text-gray-600 mx-auto mb-6"></i>
+                    <h2 class="text-2xl font-bold mb-4">Your Cart is Empty</h2>
+                    <button onclick="showPage('shop')" class="btn">Continue Shopping</button>
+                </div>
+            </div>
+            <div class="lg:col-span-1 mt-8 lg:mt-0">
+                <div id="cart-summary" class="bg-white/5 rounded-xl p-6 border border-white/10 h-fit hidden">
+                    <h3 class="text-xl font-bold mb-4 gradient-text">Order Summary</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Subtotal</span>
+                            <span id="cart-page-subtotal" class="font-semibold">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Shipping</span>
+                            <span class="text-green-400">Free</span>
+                        </div>
+                    </div>
+                    <div class="border-t border-white/10 my-4"></div>
+                    <div class="flex justify-between font-bold text-lg mb-6">
+                        <span>Total</span>
+                        <span id="cart-page-total" class="text-purple-400">$0.00</span>
+                    </div>
+                    <button onclick="openCheckoutModal()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300">
+                        Proceed to Checkout →
+                    </button>
+                    <button onclick="clearCart()" class="w-full mt-3 py-2 text-gray-400 hover:text-white transition text-sm">
+                        Clear Cart
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>'''
+            
+            # Remove any existing cart page and inject master template
+            preview_html = re.sub(r'<div id="page_cart"[^>]*>.*?</div>\s*(?=</main>|</div>|<div id="page_|$|<footer|</body>)', '', preview_html, flags=re.DOTALL)
+            
+            # Find where to insert cart page (before footer or at end of main)
+            if '<footer' in preview_html:
+                preview_html = preview_html.replace('<footer', f'{MASTER_CART_HTML}\n\n<footer', 1)
+            elif '</main>' in preview_html:
+                preview_html = preview_html.replace('</main>', f'{MASTER_CART_HTML}\n    </main>', 1)
+            else:
+                preview_html = preview_html.replace('</body>', f'{MASTER_CART_HTML}\n</body>', 1)
+            
+            print(f"🛒 Injected master cart template")
+        else:
+            print(f"🚫 Not e-commerce - skipping cart template injection")
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ========== CART HTML AND SCRIPT (DEFINED OUTSIDE F-STRING) ==========
+        if is_ecommerce:
+            cart_html = """
+<!-- Cart Sidebar -->
+<div id="cart-sidebar" class="fixed right-0 top-0 h-full w-full max-w-md bg-gradient-to-br from-slate-900 to-slate-800 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
+    <div class="flex justify-between items-center p-4 border-b border-white/10">
+        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <i class="fas fa-shopping-bag text-purple-400"></i> Your Cart
+        </h2>
+        <button onclick="closeCartSidebar()" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <i class="fas fa-times text-gray-400"></i>
+        </button>
+    </div>
+    <div id="cart-items" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <div class="text-center py-12 text-gray-400">Your cart is empty</div>
+    </div>
+    <div class="border-t border-white/10 p-4">
+        <div class="flex justify-between mb-4">
+            <span class="text-gray-400">Total:</span>
+            <span id="cart-total" class="text-xl font-bold text-purple-400">$0.00</span>
+        </div>
+        <button onclick="openCheckoutModal()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition">
+            Checkout
+        </button>
+        <button onclick="closeCartSidebar()" class="w-full mt-2 py-2 text-gray-400 hover:text-white transition text-sm">
+            Continue Shopping
+        </button>
+    </div>
+</div>
+
+<!-- Cart Toast -->
+<div id="cart-toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium z-50 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+
+<!-- Checkout Modal -->
+<div id="checkout-modal" class="fixed inset-0 z-50 flex items-center justify-center px-4" style="display: none;">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeCheckoutModal()"></div>
+    
+    <div class="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl border border-white/10 shadow-2xl max-w-sm w-full p-5">
+        <div class="flex items-center gap-4 mb-4">
+            <div class="w-10 h-10 shrink-0 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+                <i class="fas fa-credit-card text-white text-lg"></i>
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-white leading-tight">Checkout</h2>
+                <p class="text-gray-400 text-xs">Enter payment details</p>
+            </div>
+        </div>
+
+        <form id="checkout-form" onsubmit="processPayment(event)">
+            <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-400 uppercase mb-1">Full Name</label>
+                        <input type="text" id="full-name" required placeholder="John Doe" class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-400 uppercase mb-1">Email</label>
+                        <input type="email" id="email" required placeholder="email@example.com" class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-medium text-gray-400 uppercase mb-1">Card Number</label>
+                    <input type="text" id="card-number" required placeholder="4242 4242 4242 4242" class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-400 uppercase mb-1">Expiry</label>
+                        <input type="text" id="expiry" required placeholder="MM/YY" maxlength="5" class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-400 uppercase mb-1">CVV</label>
+                        <input type="password" id="cvv" required placeholder="123" maxlength="4" class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-5 pt-4 border-t border-white/10 flex items-center justify-between gap-4">
+                <div>
+                    <p class="text-[10px] text-gray-400 uppercase">Total</p>
+                    <span id="checkout-total" class="font-bold text-purple-400 text-lg">$0.00</span>
+                </div>
+                <div class="flex-1">
+                    <button type="submit" class="w-full py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg font-semibold text-white hover:opacity-90 transition text-sm">
+                        Pay Now
+                    </button>
+                </div>
+            </div>
+            
+            <button type="button" onclick="closeCheckoutModal()" class="w-full mt-2 text-gray-500 hover:text-white transition text-[11px] uppercase tracking-wider">
+                Cancel
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div id="success-modal" class="fixed inset-0 z-50 flex items-center justify-center px-4" style="display: none;">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeSuccessModal()"></div>
+    
+    <div class="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl border border-white/10 shadow-2xl max-w-sm w-full p-5 text-center">
+        <div class="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-check text-white text-xl"></i>
+        </div>
+        
+        <h2 class="text-xl font-bold text-white leading-tight">Payment Successful! 🎉</h2>
+        <p class="text-gray-400 text-sm mb-4">Thanks for your order!</p>
+        
+        <div class="bg-white/5 rounded-lg p-3 mb-5 border border-white/5">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-[11px] text-gray-500 uppercase tracking-wider">Sent to:</span>
+                <span id="success-email" class="text-purple-400 text-xs font-medium">email@example.com</span>
+            </div>
+            <div class="flex justify-between items-center pt-2 border-t border-white/5">
+                <span class="text-[11px] text-gray-500 uppercase tracking-wider">Total Paid:</span>
+                <span id="success-total" class="text-lg font-bold text-white">$0.00</span>
+            </div>
+        </div>
+        
+        <button onclick="closeSuccessModalAndReset()" class="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg font-semibold text-white hover:opacity-90 transition text-sm">
+            Continue Shopping
+        </button>
+    </div>
+</div>
+
+<style>
+#cart-sidebar.active { transform: translateX(0); }
+#cart-sidebar { transition: transform 0.3s ease; }
+#cart-toast.show { opacity: 1; }
+.cart-count-badge { animation: bounceIn 0.3s ease-out; }
+@keyframes bounceIn {
+    0% { transform: scale(0); opacity: 0; }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+}
+</style>
+"""
+            
+            # Inject cart HTML and sidebar
+            if '</body>' in preview_html:
+                preview_html = preview_html.replace('</body>', f'{cart_html}\n</body>')
+            
+            print(f"🛒 Injected cart UI components")
+        else:
+            print(f"🚫 Not e-commerce - skipping cart UI injection")
+        
+        
+        
+        
+        
+        
+        
+        
+      
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+             # ========== CLEAN UP STRAY CART SUMMARY IN SHOP PAGE ==========
+        # Find and remove any cart-summary div that appears BEFORE the cart page
+        # Pattern matches cart-summary that has a div with class lg:col-span-1
+        stray_summary_pattern = r'<div class="lg:col-span-1">\s*<div id="cart-summary"[^>]*>.*?</div>\s*</div>\s*</div>\s*</div>\s*</div>(?=<div id="page_cart")'
+        
+        # Only apply if pattern exists
+        if re.search(stray_summary_pattern, preview_html, re.DOTALL):
+            preview_html = re.sub(stray_summary_pattern, '', preview_html, flags=re.DOTALL)
+            print(f"🧹 Removed stray cart summary before cart page")
+        
+        # Also remove any duplicate cart-summary that has alert('Checkout!') in it
+        preview_html = re.sub(
+            r'<div[^>]*id="cart-summary"[^>]*>.*?alert\(\'Checkout!\'\).*?</div>\s*</div>\s*</div>\s*</div>',
+            '',
+            preview_html,
+            flags=re.DOTALL
+        )
+        
+        # Remove any cart-summary that's NOT inside page_cart (simpler approach)
+        # Split by page_cart to isolate
+        if '<div id="page_cart"' in preview_html:
+            parts = preview_html.split('<div id="page_cart"')
+            before_cart = parts[0]
+            after_cart = '<div id="page_cart"' + parts[1]
+            
+            # Remove any cart-summary from the before_cart section
+            before_cart = re.sub(
+                r'<div[^>]*id="cart-summary"[^>]*>.*?</div>\s*</div>\s*</div>\s*</div>',
+                '',
+                before_cart,
+                flags=re.DOTALL
+            )
+            
+            # Reassemble
+            preview_html = before_cart + after_cart
+            print(f"🧹 Cleaned up stray cart summary from shop page")
+        
+        
+        
+        
+        
+        
+        
+
+        # ========== CLEAN ONERROR HANDLERS ==========
+        preview_html = clean_onError_handlers(preview_html)  # ← ADD THIS LINE
+        # ============================================
+        
+        
+        
+        # Fix ShieldCheck icon to use correct Font Awesome class
+        preview_html = preview_html.replace('fa-shield-check', 'fa-shield-alt')       
+        
+        
+        
+        
+        # ========== ADD THIS LINE - INJECT CART ICON ==========
+        preview_html = inject_cart_icon_into_html(preview_html, user_prompt)
+        print("🔧 Checked cart icon injection (skipped for non-ecommerce)")
+        # ===================================================
+        
+        
+
+        # Ensure doctype
+        if not preview_html.lower().startswith("<!doctype"):
+            preview_html = "<!DOCTYPE html>\n" + preview_html
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+
+        # Inject base64 images - Use Cloudinary URLs instead of huge base64 strings
+        image_urls_cache = {}
+        
+        for file_key, content in files.items():
+            if file_key.startswith("public/images/") and isinstance(content, str) and content.startswith("__binary_base64__"):
+                public_path = "/" + file_key[len("public/"):]
+                
+                # Upload to Cloudinary and get URL (cached)
+                cloudinary_url = await get_cloudinary_url_for_preview(file_key, content)
+                
+                if cloudinary_url:
+                    image_urls_cache[public_path] = cloudinary_url
+                    preview_html = preview_html.replace(f'src="{public_path}"', f'src="{cloudinary_url}"')
+                    preview_html = preview_html.replace(f"src='{public_path}'", f'src="{cloudinary_url}"')
+                    print(f"  ✅ Replaced {public_path} with Cloudinary URL")
+                else:
+                    # Fallback to base64 if Cloudinary fails
+                    raw_b64 = content[len("__binary_base64__"):]
+                    data_uri = f"data:image/jpeg;base64,{raw_b64}"
+                    preview_html = preview_html.replace(f'src="{public_path}"', f'src="{data_uri}"')
+                    preview_html = preview_html.replace(f"src='{public_path}'", f'src="{data_uri}"')
+                    print(f"  ⚠️ Cloudinary failed, using base64 for {public_path}")
+        
+        # If no images were processed, use gradient background
+        if not image_urls_cache:
+            print("⚠️ No images available, using gradient background for hero")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        # ============================================================
+        # ========== STEP 4: INJECT MASTER CART SCRIPT ==========
+        # ============================================================
+        
+        # ========== ONLY INJECT FOR E-COMMERCE ==========
+        if is_ecommerce:
+            # Remove any existing cart scripts
+            preview_html = re.sub(r'<script>\s*// ========== CART SYSTEM ==========.*?</script>', '', preview_html, flags=re.DOTALL)
+            preview_html = re.sub(r'<script>\s*// ========== MASTER CART SYSTEM ==========.*?</script>', '', preview_html, flags=re.DOTALL)
+            
+            # Remove scripts that start with // ========== CART SYSTEM ==========
+            preview_html = re.sub(
+                r'<script>\s*// ========== CART SYSTEM ==========.*?</script>',
+                '',
+                preview_html,
+                flags=re.DOTALL
+            )
+            
+            # Remove scripts containing cart-page-items (THE WRONG ID)
+            preview_html = re.sub(
+                r'<script[^>]*>[\s\S]*?cart-page-items[\s\S]*?</script>',
+                '',
+                preview_html,
+                flags=re.DOTALL
+            )
+            
+            # Remove scripts containing empty-cart-message (without -cart)
+            preview_html = re.sub(
+                r'<script[^>]*>[\s\S]*?empty-cart-message[^-][\s\S]*?</script>',
+                '',
+                preview_html,
+                flags=re.DOTALL
+            )
+            
+            # Remove scripts that have wireAddToCartButtons but NOT "MASTER"
+            preview_html = re.sub(
+                r'<script[^>]*>(?:(?!MASTER CART SYSTEM)[\s\S])*?wireAddToCartButtons[\s\S]*?</script>',
+                '',
+                preview_html,
+                flags=re.DOTALL
+            )
+            
+            print(f"🗑️ Force removed all old cart scripts")
+            
+            MASTER_CART_SCRIPT = '''
+<script>
+// ========== MASTER CART SYSTEM ==========
+let cart = [];
+
+try {
+    const saved = localStorage.getItem('eaglecode_cart');
+    if (saved) cart = JSON.parse(saved);
+} catch(e) { console.error('Failed to load cart:', e); }
+
+function saveCart() {
+    localStorage.setItem('eaglecode_cart', JSON.stringify(cart));
+    updateCartUI();
+    updateCartBadge();
+    updateCartPage();
+}
+
+function updateCartBadge() {
+    const totalItems = cart.reduce((sum, i) => sum + (i.quantity || 1), 0);
+    document.querySelectorAll('[data-cart-count]').forEach(badge => {
+        if (totalItems > 0) {
+            badge.textContent = totalItems > 99 ? '99+' : totalItems;
+            badge.classList.remove('hidden');
+            badge.classList.add('flex');
+        } else {
+            badge.classList.add('hidden');
+            badge.classList.remove('flex');
+        }
+    });
+}
+
+function updateCartUI() {
+    const container = document.getElementById('cart-items');
+    const totalEl = document.getElementById('cart-total');
+    if (!container) return;
+    if (cart.length === 0) {
+        container.innerHTML = '<div class="text-center py-12 text-gray-400">Your cart is empty</div>';
+        if (totalEl) totalEl.textContent = '$0.00';
+        return;
+    }
+    const total = cart.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
+    container.innerHTML = cart.map(item => {
+        const safeName = (item.name || '').replace(/[&<>]/g, function(m) {
+            return m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;');
+        });
+        const qty = item.quantity || 1;
+        return `
+            <div class="flex gap-4 p-3 bg-white/5 rounded-xl border border-white/10">
+                <div class="flex-1">
+                    <h4 class="font-semibold text-white text-sm">${safeName}</h4>
+                    <p class="text-purple-400 text-sm">$${(item.price || 0).toFixed(2)}</p>
+                    <div class="flex items-center gap-2 mt-2">
+                        <button onclick="updateQuantity('${item.id}', -1)" class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20">-</button>
+                        <span class="text-white text-sm w-6 text-center">${qty}</span>
+                        <button onclick="updateQuantity('${item.id}', 1)" class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20">+</button>
+                        <button onclick="removeFromCart('${item.id}')" class="ml-auto text-red-400 hover:text-red-300 text-sm">Remove</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
+}
+
+function updateCartPage() {
+    const container = document.getElementById('cart-items-list');
+    const summary = document.getElementById('cart-summary');
+    const emptyMsg = document.getElementById('empty-cart-message-cart');
+    const totalCountSpan = document.getElementById('cart-total-count');
+    if (!container) return;
+    if (cart.length === 0) {
+        if (summary) summary.classList.add('hidden');
+        if (emptyMsg) emptyMsg.classList.remove('hidden');
+        if (container) container.classList.add('hidden');
+        if (totalCountSpan) totalCountSpan.textContent = '0';
+        container.innerHTML = '';
+        return;
+    }
+    if (summary) summary.classList.remove('hidden');
+    if (emptyMsg) emptyMsg.classList.add('hidden');
+    if (container) container.classList.remove('hidden');
+    const total = cart.reduce((sum, i) => sum + (i.price * (i.quantity || 1)), 0);
+    const totalItems = cart.reduce((sum, i) => sum + (i.quantity || 1), 0);
+    if (totalCountSpan) totalCountSpan.textContent = totalItems;
+    container.innerHTML = cart.map(item => {
+        const qty = item.quantity || 1;
+        return `
+            <div class="flex gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                <div class="flex-1">
+                    <h3 class="font-semibold text-white">${(item.name || '').replace(/[&<>]/g, function(m) {
+                        return m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;');
+                    })}</h3>
+                    <p class="text-purple-400">$${(item.price || 0).toFixed(2)}</p>
+                    <div class="flex items-center gap-3 mt-2">
+                        <button onclick="updateQuantity('${item.id}', -1)" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20">-</button>
+                        <span>${qty}</span>
+                        <button onclick="updateQuantity('${item.id}', 1)" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20">+</button>
+                        <button onclick="removeFromCart('${item.id}')" class="ml-auto text-red-400 hover:text-red-300">Remove</button>
+                    </div>
+                </div>
+                <p class="font-bold text-lg">$${(item.price * qty).toFixed(2)}</p>
+            </div>
+        `;
+    }).join('');
+    const subtotalEl = document.getElementById('cart-page-subtotal');
+    const totalEl = document.getElementById('cart-page-total');
+    if (subtotalEl) subtotalEl.textContent = '$' + total.toFixed(2);
+    if (totalEl) totalEl.textContent = '$' + total.toFixed(2);
+}
+
+window.addToCart = function(id, name, price) {
+    const existing = cart.find(i => i.id === id);
+    if (existing) {
+        existing.quantity = (existing.quantity || 1) + 1;
+    } else {
+        cart.push({ id: String(id), name: name, price: Number(price), quantity: 1 });
+    }
+    saveCart();
+    const toast = document.getElementById('cart-toast');
+    if (toast) {
+        toast.textContent = name + ' added to cart!';
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 2000);
+    }
+    if (window.innerWidth <= 768 && typeof openCartSidebar === 'function') openCartSidebar();
+};
+
+window.updateQuantity = function(id, delta) {
+    const item = cart.find(i => i.id === id);
+    if (item) {
+        const newQty = (item.quantity || 1) + delta;
+        if (newQty <= 0) {
+            cart = cart.filter(i => i.id !== id);
+        } else {
+            item.quantity = newQty;
+        }
+        saveCart();
+    }
+};
+
+window.removeFromCart = function(id) {
+    cart = cart.filter(i => i.id !== id);
+    saveCart();
+    const toast = document.getElementById('cart-toast');
+    if (toast) {
+        toast.textContent = 'Item removed from cart';
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 2000);
+    }
+};
+
+window.clearCart = function() {
+    if (confirm('Are you sure you want to clear your entire cart?')) {
+        cart = [];
+        saveCart();
+        const toast = document.getElementById('cart-toast');
+        if (toast) {
+            toast.textContent = 'Cart cleared';
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+        }
+    }
+};
+
+function openCartSidebar() {
+    const sidebar = document.getElementById('cart-sidebar');
+    if (sidebar) sidebar.classList.add('active');
+}
+
+window.closeCartSidebar = function() {
+    const sidebar = document.getElementById('cart-sidebar');
+    if (sidebar) sidebar.classList.remove('active');
+};
+
+// ========== CHECKOUT FUNCTIONS ==========
+function openCheckoutModal() {
+    if (cart.length === 0) {
+        const toast = document.getElementById('cart-toast');
+        if (toast) {
+            toast.textContent = 'Your cart is empty';
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+        }
+        return;
+    }
+    const total = cart.reduce(function(s, i) { return s + (i.price * (i.quantity || 1)); }, 0);
+    const checkoutTotal = document.getElementById('checkout-total');
+    if (checkoutTotal) checkoutTotal.textContent = '$' + total.toFixed(2);
+    const modal = document.getElementById('checkout-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeCheckoutModal() {
+    const modal = document.getElementById('checkout-modal');
+    if (modal) modal.style.display = 'none';
+    const form = document.getElementById('checkout-form');
+    if (form) form.reset();
+}
+
+function closeSuccessModal() {
+    const modal = document.getElementById('success-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function closeSuccessModalAndReset() {
+    closeSuccessModal();
+    cart = [];
+    saveCart();
+    if (typeof showPage === 'function') showPage('shop');
+}
+
+function processPayment(event) {
+    event.preventDefault();
+    const fullName = document.getElementById('full-name');
+    const email = document.getElementById('email');
+    
+    if (!fullName.value || !email.value) {
+        const toast = document.getElementById('cart-toast');
+        if (toast) {
+            toast.textContent = 'Please fill in all fields';
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+        }
+        return;
+    }
+    if (!email.value.includes('@')) {
+        const toast = document.getElementById('cart-toast');
+        if (toast) {
+            toast.textContent = 'Please enter a valid email';
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+        }
+        return;
+    }
+    
+    const total = cart.reduce(function(s, i) { return s + (i.price * (i.quantity || 1)); }, 0);
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    submitBtn.disabled = true;
+    
+    setTimeout(function() {
+        closeCheckoutModal();
+        const successEmail = document.getElementById('success-email');
+        const successTotal = document.getElementById('success-total');
+        if (successEmail) successEmail.textContent = email.value;
+        if (successTotal) successTotal.textContent = '$' + total.toFixed(2);
+        const successModal = document.getElementById('success-modal');
+        if (successModal) successModal.style.display = 'flex';
+        cart = [];
+        saveCart();
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+        const toast = document.getElementById('cart-toast');
+        if (toast) {
+            toast.textContent = 'Payment successful! Thank you!';
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 2000);
+        }
+    }, 1500);
+}
+
+// ========== INITIALIZE CART ON PAGE LOAD ==========
+function wireAddToCartButtons() {
+    document.querySelectorAll('.add-to-cart-btn').forEach(function(btn) {
+        if (!btn.hasAttribute('data-wired')) {
+            btn.setAttribute('data-wired', 'true');
+            const id = btn.getAttribute('data-id');
+            const name = btn.getAttribute('data-name');
+            const price = parseFloat(btn.getAttribute('data-price'));
+            btn.onclick = function(e) {
+                e.preventDefault();
+                if (id && name && !isNaN(price)) {
+                    addToCart(id, name, price);
+                } else {
+                    console.error('Missing data attributes:', {id, name, price});
+                }
+            };
+        }
+    });
+}
+
+// Initialize when page loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        updateCartUI();
+        updateCartBadge();
+        updateCartPage();
+        wireAddToCartButtons();
+        console.log('🛒 Cart initialized with', document.querySelectorAll('.add-to-cart-btn').length, 'buttons');
+    });
+} else {
+    updateCartUI();
+    updateCartBadge();
+    updateCartPage();
+    wireAddToCartButtons();
+    console.log('🛒 Cart initialized with', document.querySelectorAll('.add-to-cart-btn').length, 'buttons');
+}
+
+// Also watch for dynamically added buttons
+if (window.MutationObserver) {
+    const observer = new MutationObserver(function() {
+        wireAddToCartButtons();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+</script>'''
+            
+            # Inject master cart script before closing body
+            if '</body>' in preview_html:
+                preview_html = preview_html.replace('</body>', MASTER_CART_SCRIPT + '\n</body>')
+            else:
+                preview_html = preview_html + MASTER_CART_SCRIPT
+            
+            print(f"🛒 Injected master cart JavaScript")
+        else:
+            print(f"🚫 Not e-commerce - skipping cart script injection")
+
+        # ========== AUTH HANDLER SCRIPT ==========
+        auth_script = f"""
+<script>
+const BACKEND_URL = "{BACKEND_URL}";
+
+// Get connection string directly from localStorage
+function getDbConnection() {{
+    let conn = localStorage.getItem("neon_db_connection");
+    if (!conn) {{
+        conn = sessionStorage.getItem("neon_db_connection");
+    }}
+    return conn;
+}}
+
+async function handleSignup(event) {{
+    event.preventDefault();
+    const form = event.target;
+    const name = form.querySelector('[name="name"], [name="fullName"]')?.value || '';
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    console.log("🔑 DB Connection found:", dbConnection ? "Yes ✅" : "No ❌");
+    
+    if (!dbConnection) {{
+        alert('❌ Database not connected. Please add your Neon DB connection string first.\\n\\nOpen console and run:\\nlocalStorage.setItem("neon_db_connection", "your-connection-string")');
+        return;
+    }}
+    
+    if (password !== confirmPassword) {{
+        alert('❌ Passwords do not match');
+        return;
+    }}
+    if (password.length < 6) {{
+        alert('❌ Password must be at least 6 characters');
+        return;
+    }}
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Sign Up';
+    if (submitBtn) submitBtn.innerText = 'Creating account...';
+    
+    try {{
+        const response = await fetch(`${{BACKEND_URL}}/api/auth/signup`, {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ 
+                name, 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            }})
+        }});
+        const data = await response.json();
+        console.log("📡 Signup response:", data);
+        
+        if (data.success) {{
+            alert('✅ Account created successfully! You can now log in.');
+            form.reset();
+            setTimeout(() => {{
+                const loginLink = document.querySelector('a[href="/login"]');
+                if (loginLink && typeof showPage === 'function') {{
+                    showPage('login');
+                }}
+            }}, 1500);
+        }} else if (data.requires_db) {{
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        }} else {{
+            alert('❌ ' + (data.error || 'Signup failed'));
+        }}
+    }} catch (error) {{
+        console.error('Signup error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    }} finally {{
+        if (submitBtn) submitBtn.innerText = originalText;
+    }}
+}}
+
+async function handleLogin(event) {{
+    event.preventDefault();
+    const form = event.target;
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    if (!dbConnection) {{
+        alert('❌ Database not connected. Please add your Neon DB connection string first.');
+        return;
+    }}
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Login';
+    if (submitBtn) submitBtn.innerText = 'Logging in...';
+    
+    try {{
+        const response = await fetch(`${{BACKEND_URL}}/api/auth/login`, {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            }})
+        }});
+        const data = await response.json();
+        
+        if (data.success) {{
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            alert('✅ Login successful! Welcome ' + (data.user.name || data.user.email));
+            setTimeout(() => {{
+                if (typeof showPage === 'function') showPage('home');
+            }}, 1000);
+        }} else if (data.requires_db) {{
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        }} else {{
+            alert('❌ ' + (data.error || 'Login failed'));
+        }}
+    }} catch (error) {{
+        console.error('Login error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    }} finally {{
+        if (submitBtn) submitBtn.innerText = originalText;
+    }}
+}}
+
+// Listen for database connection from parent window (for iframe preview)
+window.addEventListener('message', function(event) {{
+    if (event.data && event.data.type === 'SET_DB_CONNECTION') {{
+        localStorage.setItem('neon_db_connection', event.data.db_connection);
+        console.log('✅ DB Connection received from parent');
+    }}
+}});
+
+document.addEventListener('DOMContentLoaded', function() {{
+    // Request connection string from parent if not present
+    if (!getDbConnection() && window.parent !== window) {{
+        window.parent.postMessage({{ type: 'GET_DB_CONNECTION' }}, '*');
+    }}
+    
+    document.querySelectorAll('form').forEach(form => {{
+        const hasPassword = form.querySelector('[type="password"]');
+        const hasEmail = form.querySelector('[type="email"]');
+        const submitText = form.querySelector('[type="submit"]')?.innerText?.toLowerCase() || '';
+        const formId = form.id?.toLowerCase() || '';
+        
+        const isSignupForm = formId.includes('signup') || submitText.includes('sign') || submitText.includes('up') || (form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        const isLoginForm = formId.includes('login') || submitText.includes('log') || submitText.includes('in') || (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        
+        if ((isSignupForm || isLoginForm) && !form.onsubmit) {{
+            if (isSignupForm) form.onsubmit = handleSignup;
+            else if (isLoginForm) form.onsubmit = handleLogin;
+        }}
+    }});
+}});
+</script>
+"""
+
+        # ========== INJECT AUTH SCRIPT ONLY ==========
+        # Inject auth script (always needed for signup/login pages)
+        if '</body>' in preview_html:
+            preview_html = preview_html.replace('</body>', f'{auth_script}\n</body>')
+        else:
+            preview_html = preview_html + auth_script
+            
+        # Fix ShieldCheck icon one more time to be safe
+        preview_html = preview_html.replace('fa-shield-check', 'fa-shield-alt')           
+
+        print(f"✅ Beautiful preview generated! Length: {len(preview_html):,} chars")
+        return {"success": True, "preview_html": preview_html, "preview_type": "ai_full"
+                
+        }
+
+    
+    
+
+    except Exception as e:
+        print(f"❌ AI Preview Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+    
+    
+    
+    
+  
+
+

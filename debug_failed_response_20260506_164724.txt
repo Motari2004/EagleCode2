@@ -1,0 +1,2 @@
+{
+  "package.json": "{\n  \"name\": \"pearl-lake-ecommerce\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\"\n  },\n  \"dependencies\": {\n    \"next\": \"14.2.35\",\n    \"react\": \"^18.3.1\",\n    \"react-dom\": \"^18.3.1\",\n    \"lucide-react\": \"^0.446.0\",\n    \"clsx\": \"^2.1.1\",\n    \"tailwind-merge\": \"^2.5.0\"\

@@ -1,0 +1,7 @@
+{
+    "include": ["."],
+    "exclude": ["**/node_modules", "**/__pycache__"],
+    "pythonPath": "python",
+    "pythonVersion": "3.12",
+    "extraPaths": ["."]
+}
