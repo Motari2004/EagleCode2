@@ -18,6 +18,207 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 
+
+================================================================================
+🚨🚨🚨 ABSOLUTE RULE: EVERY NAVIGATION LINK MUST HAVE A PAGE FILE 🚨🚨🚨
+================================================================================
+
+This is a ZERO-TOLERANCE rule. Every href in Navigation.tsx MUST have a 
+corresponding page file. Missing pages = 404 errors = broken website.
+
+================================================================================
+ENFORCEMENT PROCESS — FOLLOW THESE STEPS IN ORDER:
+================================================================================
+
+STEP 1: WRITE Navigation.tsx FIRST
+  - Decide all navigation links before writing any page files
+  - Write out every href you plan to use
+  - Count them
+
+STEP 2: AUDIT YOUR LINKS
+  Before generating any page, list every href from Navigation.tsx:
+  
+  Example audit for E-COMMERCE:
+  - href="/shop"       → MUST generate: app/shop/page.tsx
+  - href="/cart"       → MUST generate: app/cart/page.tsx
+
+  Example audit for GYM:
+  - href="/classes"    → MUST generate: app/classes/page.tsx
+  - href="/trainers"   → MUST generate: app/trainers/page.tsx
+  - href="/membership" → MUST generate: app/membership/page.tsx
+
+  Example audit for SCHOOL:
+  - href="/programs"   → MUST generate: app/programs/page.tsx
+  - href="/admissions" → MUST generate: app/admissions/page.tsx
+  - href="/faculty"    → MUST generate: app/faculty/page.tsx
+  - href="/events"     → MUST generate: app/events/page.tsx
+
+  Example audit for RESTAURANT:
+  - href="/menu"           → MUST generate: app/menu/page.tsx
+  - href="/reservations"   → MUST generate: app/reservations/page.tsx
+  - href="/gallery"        → MUST generate: app/gallery/page.tsx
+
+  Example audit for HOTEL:
+  - href="/rooms"      → MUST generate: app/rooms/page.tsx
+  - href="/amenities"  → MUST generate: app/amenities/page.tsx
+  - href="/gallery"    → MUST generate: app/gallery/page.tsx
+  - href="/booking"    → MUST generate: app/booking/page.tsx
+
+  Example audit for PORTFOLIO:
+  - href="/work"       → MUST generate: app/work/page.tsx
+  - href="/about"      → MUST generate: app/about/page.tsx
+  - href="/services"   → MUST generate: app/services/page.tsx
+  - href="/contact"    → MUST generate: app/contact/page.tsx
+
+STEP 3: GENERATE EVERY PAGE IN THE AUDIT LIST
+  - No exceptions. No skipping. No placeholders.
+  - Every page MUST have 3+ real content sections
+  - Every page MUST match the website's theme and project type
+
+STEP 4: FINAL VERIFICATION BEFORE OUTPUT
+  Run this mental checklist:
+
+  [ ] I wrote Navigation.tsx with N links
+  [ ] I generated exactly N page files (excluding app/page.tsx home)
+  [ ] Every href="/x" has a matching app/x/page.tsx
+  [ ] No page returns <div>Coming Soon</div> or empty content
+  [ ] No page is a placeholder or stub
+
+================================================================================
+LINK-TO-FILE MAPPING TABLE — ALWAYS FOLLOW:
+================================================================================
+
+Navigation href          →    Required file
+─────────────────────────────────────────────────────
+/shop                    →    app/shop/page.tsx
+/cart                    →    app/cart/page.tsx
+/classes                 →    app/classes/page.tsx
+/trainers                →    app/trainers/page.tsx
+/membership              →    app/membership/page.tsx
+/programs                →    app/programs/page.tsx
+/admissions              →    app/admissions/page.tsx
+/faculty                 →    app/faculty/page.tsx
+/events                  →    app/events/page.tsx
+/menu                    →    app/menu/page.tsx
+/reservations            →    app/reservations/page.tsx
+/gallery                 →    app/gallery/page.tsx
+/rooms                   →    app/rooms/page.tsx
+/amenities               →    app/amenities/page.tsx
+/booking                 →    app/booking/page.tsx
+/work                    →    app/work/page.tsx
+/about                   →    app/about/page.tsx
+/services                →    app/services/page.tsx
+/contact                 →    app/contact/page.tsx
+/projects                →    app/projects/page.tsx
+/schedule                →    app/schedule/page.tsx
+/pricing                 →    app/pricing/page.tsx
+/blog                    →    app/blog/page.tsx
+/locations               →    app/locations/page.tsx
+/catalog                 →    app/catalog/page.tsx
+/delivery                →    app/delivery/page.tsx
+/subscription            →    app/subscription/page.tsx
+/recipes                 →    app/recipes/page.tsx
+/story                   →    app/story/page.tsx
+
+ANY custom href="/x"     →    app/x/page.tsx  ← ALWAYS
+
+================================================================================
+WHAT COUNTS AS A VALID PAGE — MINIMUM REQUIREMENTS:
+================================================================================
+
+Every generated page MUST have ALL of the following:
+
+✅ 'use client' at top (if it has any onClick, useState, forms)
+✅ A hero/banner section with page title and description
+✅ At least 2 more content sections below the hero
+✅ Real data (not "Lorem ipsum", not "Coming Soon", not empty arrays)
+✅ Proper styling matching the site theme
+✅ At least one interactive element (button, card hover, form, filter)
+✅ A Link back to home or another page (navigation continuity)
+
+❌ NEVER generate this — it is NOT a valid page:
+export default function About() {
+  return <div>About Us</div>;
+}
+
+❌ NEVER generate this — it is NOT a valid page:
+export default function Menu() {
+  return (
+    <div className="pt-20">
+      <h1>Menu</h1>
+      <p>Coming Soon</p>
+    </div>
+  );
+}
+
+✅ ALWAYS generate pages with this minimum structure:
+export default function About() {
+  return (
+    <div className="min-h-screen">
+      {/* Hero Section */}
+      <section className="...">...</section>
+      
+      {/* Content Section 1 */}
+      <section className="...">...</section>
+      
+      {/* Content Section 2 */}
+      <section className="...">...</section>
+    </div>
+  );
+}
+
+================================================================================
+DYNAMIC LINK DETECTION — HANDLE ANY CUSTOM LINK:
+================================================================================
+
+If the generated Navigation.tsx uses a custom or unexpected href such as:
+- href="/our-story"      → create app/our-story/page.tsx
+- href="/brew-guide"     → create app/brew-guide/page.tsx
+- href="/join-us"        → create app/join-us/page.tsx
+- href="/press"          → create app/press/page.tsx
+- href="/careers"        → create app/careers/page.tsx
+
+RULE: The page file path MUST exactly match the href string.
+href="/our-story" → app/our-story/page.tsx ✅
+href="/our-story" → app/ourstory/page.tsx  ❌ (wrong — path mismatch)
+
+================================================================================
+SELF-AUDIT PROMPT — RUN THIS BEFORE FINALIZING OUTPUT:
+================================================================================
+
+Before closing the JSON output, ask yourself:
+
+  "Did I create a page file for EVERY link in my Navigation.tsx?"
+
+  If NO → go back and generate the missing pages before outputting.
+  If YES → proceed with output.
+
+A navigation link with no page file is a broken link.
+A broken link is a failed website.
+There are NO exceptions to this rule.
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 🚨 CHECKOUT MODAL — MUST BE A SEPARATE COMPONENT 🚨
 ================================================================================
