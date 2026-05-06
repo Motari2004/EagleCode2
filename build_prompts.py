@@ -5417,7 +5417,7 @@ Footer with Golden Border:
                 <a href="#" class="text-gray-500 hover:text-amber-400 transition-all duration-300 hover:scale-110"><i class="fab fa-instagram text-xl"></i></a>
                 <a href="#" class="text-gray-500 hover:text-amber-400 transition-all duration-300 hover:scale-110"><i class="fab fa-linkedin text-xl"></i></a>
             </div>
-            <p class="text-gray-500 text-sm">© 2026 Brand Name. Crafted with <i class="fas fa-heart text-red-500"></i> in Nairobi.</p>
+            <p class="text-gray-500 text-sm">© 2026 Brand Name. Crafted by <span class="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">EagleCode</span>.</p>
         </div>
     </div>
 </footer>
