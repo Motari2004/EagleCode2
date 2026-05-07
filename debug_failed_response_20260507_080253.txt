@@ -1,0 +1,3 @@
+[
+  {
+    "app/layout.tsx": "import type { Metadata } from 'next';\nimport './globals.css';\nimport Navigation from '../components/Navigation';\nimport Footer from '../components/Footer';\nimport { CartProvider } from '../contexts/CartContext';\n\nexport const metadata: Metadata = {\n  title:

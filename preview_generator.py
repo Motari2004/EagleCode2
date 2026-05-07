@@ -12,6 +12,72 @@ from datetime import datetime
 
 
 
+def fix_shop_page_buttons(html_content: str) -> str:
+    """Convert generic shop buttons to add-to-cart-btn with proper attributes"""
+    
+    import re
+    
+    # Pattern to find product cards
+    product_card_pattern = r'<div[^>]*class="[^"]*bg-zinc-900[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>.*?<p[^>]*>\$?([\d.]+)</p>.*?<button[^>]*>(.*?)</button>'
+    
+    def fix_product_card(match):
+        product_name = match.group(1).strip()
+        product_price = match.group(2).strip()
+        button_text = match.group(3).strip()
+        
+        # Clean price
+        clean_price = re.sub(r'[^0-9.]', '', product_price)
+        try:
+            price_float = float(clean_price)
+        except:
+            price_float = 0
+        
+        # Generate product ID from name
+        product_id = product_name.lower().replace(' ', '_')
+        
+        # Return fixed card with proper button
+        return f'''
+            <div class="bg-white/5 p-6 rounded-xl border border-white/10 hover:border-purple-500/50 transition-all group">
+                <div class="w-full h-40 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg mb-4 flex items-center justify-center">
+                    <i class="fas fa-gem text-5xl text-purple-400 group-hover:scale-110 transition-transform"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">{product_name}</h3>
+                <p class="text-purple-400 text-2xl font-bold mt-2">${price_float:.2f}</p>
+                <button class="add-to-cart-btn mt-4 w-full py-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg text-white font-semibold hover:opacity-90 transition" 
+                        data-id="{product_id}" 
+                        data-name="{product_name}" 
+                        data-price="{price_float}">
+                    <i class="fas fa-cart-plus mr-2"></i> Add to Cart
+                </button>
+            </div>
+        '''
+    
+    # Apply fix to shop page only
+    if 'id="page_shop"' in html_content:
+        # Extract shop page section
+        shop_match = re.search(r'(<div id="page_shop"[^>]*>)(.*?)(</div>)', html_content, re.DOTALL)
+        if shop_match:
+            shop_content = shop_match.group(2)
+            # Fix all product cards
+            fixed_shop_content = re.sub(product_card_pattern, fix_product_card, shop_content, flags=re.DOTALL)
+            # Replace shop page with fixed version
+            html_content = html_content.replace(shop_match.group(0), shop_match.group(1) + fixed_shop_content + shop_match.group(3))
+            print("  ✅ Fixed shop page buttons - added add-to-cart-btn class and data attributes")
+    
+    return html_content
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1198,40 +1264,77 @@ async def generate_preview_internal(
                         
                         
                         
-                  # ========== Extract products array from shop page ==========
+                        
+                        
+                          # ========== Extract products array from shop page ==========
+
                   products_array_pattern = r'const\s+products\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+
                   products_match = re.search(products_array_pattern, content, re.DOTALL)
-                  
+
                   if products_match and route_name == 'shop':
+
+                      # ========== STOP IF BUTTONS ALREADY EXIST ==========
+                      existing_button_pattern = r'add-to-cart-btn'
+
+                      if re.search(existing_button_pattern, content, re.DOTALL):
+                          return content  # Prevent overwriting existing buttons
+
                       products_content = products_match.group(1)
+
                       # Extract each product
                       product_pattern = r'\{\s*id:\s*["\']([^"\']+)["\']\s*,\s*name:\s*["\']([^"\']+)["\']\s*,\s*price:\s*([\d.]+)'
+
                       product_items = re.findall(product_pattern, products_content)
-                      
+
                       if product_items:
+
                           # Build the products grid HTML
                           products_html = '<div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">'
-                          
+
                           for product_id, product_name, product_price in product_items:
+
                               products_html += f'''
                           <div class="group relative bg-gradient-to-br from-white/5 to-white/3 rounded-2xl overflow-hidden backdrop-blur-sm border border-white/10 hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1">
+
                               <div class="relative h-64 bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
+
                                   <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400/50 group-hover:scale-110 transition-transform duration-300"></i>
+
                                   <button class="absolute top-3 right-3 p-2 rounded-full bg-black/50 hover:bg-purple-600 transition-colors">
+
                                       <i data-lucide="heart" class="w-4 h-4 text-white"></i>
+
                                   </button>
+
                               </div>
+
                               <div class="p-5">
+
                                   <h3 class="text-lg font-bold mb-1">{product_name}</h3>
+
                                   <p class="text-sm text-gray-400 mb-3">Product</p>
+
                                   <div class="flex items-center justify-between">
+
                                       <span class="text-2xl font-bold text-purple-400">${product_price}</span>
-                                      <button class="add-to-cart-btn px-4 py-2 bg-purple-600/20 rounded-full text-purple-400 hover:bg-purple-600 hover:text-white transition-all text-sm" data-id="{product_id}" data-name="{product_name}" data-price="{product_price}">Add to Cart</button>
+
+                                      <button class="add-to-cart-btn px-4 py-2 bg-purple-600/20 rounded-full text-purple-400 hover:bg-purple-600 hover:text-white transition-all text-sm"
+                                          data-id="{product_id}"
+                                          data-name="{product_name}"
+                                          data-price="{product_price}">
+                                          Add to Cart
+                                      </button>
+
                                   </div>
+
                               </div>
+
                           </div>'''
-                          
+
                           products_html += '</div>'
+                          
+                          
                           
                           # Replace the products grid
                           extracted = re.sub(
@@ -2341,24 +2444,393 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
+
+
+
+
+
+
+
 ================================================================================
-🚨🚨🚨 CRITICAL: BODY BACKGROUND - NEVER USE SOLID BLACK 🚨🚨🚨
+✅ REQUIRED: BODY BACKGROUND - MUST USE THIS GRADIENT
 ================================================================================
 
-❌ FORBIDDEN - NEVER generate:
-background: #000;
-background: #000000;
-bg-black
-bg-zinc-900
-bg-gray-900
+ALWAYS use this EXACT gradient for the body background:
 
-✅ REQUIRED - ALWAYS use this gradient:
 background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
 
-This gradient creates a rich, dark theme with subtle purple/blue tones.
-Solid black backgrounds are FORBIDDEN and will be rejected.
+This creates a rich, dark theme with subtle purple/blue tones.
 
 ================================================================================
+✅ CORRECT BODY STYLING - COPY THIS EXACTLY:
+================================================================================
+
+<style>
+* {{
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}}
+
+body {{
+    background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}}
+
+header {{
+    background: rgba(10, 10, 12, 0.75);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    height: 72px;
+}}
+
+.nav-container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1.5rem;
+}}
+
+.brand {{
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}}
+
+.nav-links {{
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}}
+
+.nav-link {{
+    color: #94a3b8;
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}}
+
+.nav-link:hover {{
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+}}
+
+.nav-link.active {{
+    color: #ffffff;
+    background: rgba(139, 92, 246, 0.15);
+}}
+
+/* ========== PAGE TRANSITIONS ========== */
+.page {{
+    display: none;
+    min-height: calc(100vh - 72px);
+    padding-top: 72px;
+}}
+
+.page.active {{
+    display: block;
+}}
+
+#page_home {{
+    padding-top: 0 !important;
+}}
+
+/* ========== BUTTONS ========== */
+.btn {{
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    border-radius: 9999px;
+    font-weight: 600;
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}}
+
+.btn:hover {{
+    opacity: 0.9;
+    transform: translateY(-2px);
+}}
+
+.add-to-cart-btn {{
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    width: 100%;
+}}
+
+.add-to-cart-btn:hover {{
+    opacity: 0.9;
+    transform: scale(0.98);
+}}
+
+/* ========== CARDS ========== */
+.card, .product-card {{
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s;
+}}
+
+.card:hover, .product-card:hover {{
+    transform: translateY(-4px);
+    border-color: #c084fc;
+}}
+
+/* ========== GRADIENT TEXT ========== */
+.gradient-text {{
+    background: linear-gradient(135deg, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}}
+
+/* ========== CART SIDEBAR ========== */
+#cart-sidebar {{
+    position: fixed;
+    right: -100%;
+    top: 0;
+    height: 100%;
+    width: 100%;
+    max-width: 420px;
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    box-shadow: -5px 0 30px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    transition: right 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}}
+
+#cart-sidebar.active {{
+    right: 0;
+}}
+
+/* ========== CART BADGE ========== */
+.cart-count-badge {{
+    animation: bounceIn 0.3s ease-out;
+}}
+
+@keyframes bounceIn {{
+    0% {{ transform: scale(0); opacity: 0; }}
+    50% {{ transform: scale(1.2); }}
+    100% {{ transform: scale(1); opacity: 1; }}
+}}
+
+/* ========== TOAST ========== */
+#cart-toast {{
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    z-index: 1001;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+}}
+
+#cart-toast.show {{
+    opacity: 1;
+}}
+
+/* ========== MODALS ========== */
+#checkout-modal, #success-modal {{
+    animation: fadeIn 0.2s ease-out;
+}}
+
+@keyframes fadeIn {{
+    from {{ opacity: 0; }}
+    to {{ opacity: 1; }}
+}}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {{
+    .nav-links {{
+        display: none;
+    }}
+    
+    .hamburger {{
+        display: flex;
+    }}
+    
+    #cart-sidebar {{
+        max-width: 100%;
+    }}
+}}
+
+/* ========== UTILITIES ========== */
+.container {{
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}}
+
+.hidden {{
+    display: none !important;
+}}
+
+.flex {{
+    display: flex;
+}}
+
+.items-center {{
+    align-items: center;
+}}
+
+.justify-between {{
+    justify-content: space-between;
+}}
+
+.gap-2 {{
+    gap: 0.5rem;
+}}
+
+.gap-4 {{
+    gap: 1rem;
+}}
+
+.text-center {{
+    text-align: center;
+}}
+
+.w-full {{
+    width: 100%;
+}}
+
+.mt-4 {{
+    margin-top: 1rem;
+}}
+
+.mb-4 {{
+    margin-bottom: 1rem;
+}}
+
+.p-4 {{
+    padding: 1rem;
+}}
+</style>
+
+================================================================================
+✅ HOW TO APPLY:
+================================================================================
+
+1. Add the gradient to the <body> tag via CSS
+2. Ensure NO solid colors are used for background
+3. The gradient MUST be the FIRST style rule for body
+
+================================================================================
+✅ EXAMPLE - COMPLETE BODY STYLING:
+================================================================================
+
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, sans-serif;
+            margin: 0;
+            padding: 0;
+        }}
+    </style>
+</head>
+<body>
+    <!-- Your content here -->
+</body>
+</html>
+
+================================================================================
+✅ VERIFICATION:
+================================================================================
+
+Before outputting HTML, CONFIRM:
+- [ ] body has background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%)
+- [ ] No solid black backgrounds exist
+- [ ] Gradient creates rich dark theme with purple/blue tones
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 🚨 CRITICAL: SHOP PAGE PRODUCT ATTRIBUTES - MUST PRESERVE
+
+When generating the shop page HTML, you MUST ensure EVERY "Add to Cart" button has these EXACT attributes:
+
+### REQUIRED ATTRIBUTES FOR EACH PRODUCT BUTTON:
+
+| Attribute | Value | Example |
+|-----------|-------|---------|
+| `class` | `"add-to-cart-btn"` | `class="add-to-cart-btn"` |
+| `data-id` | Unique product ID | `data-id="prod_1"` |
+| `data-name` | Product name | `data-name="Premium Hoodie"` |
+| `data-price` | Product price as number | `data-price="79.99"` |
+
+### CORRECT BUTTON EXAMPLE:
+
+```html
+<button class="add-to-cart-btn" 
+        data-id="1" 
+        data-name="Premium Hoodie" 
+        data-price="79.99">
+    Add to Cart
+</button>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6015,7 +6487,15 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
         preview_html = clean_html_response(response_text)
         preview_html = enforce_body_background(preview_html)
         
+        preview_html = fix_shop_page_buttons(preview_html)
         
+        
+        
+        
+        
+        
+        
+     
         
         
         
@@ -6692,6 +7172,15 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
             )
             
             print(f"🗑️ Force removed all old cart scripts")
+            
+            
+            
+            
+            
+            
+            
+            
+            
             
             MASTER_CART_SCRIPT = '''
 <script>

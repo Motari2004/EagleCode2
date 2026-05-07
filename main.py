@@ -3296,7 +3296,7 @@ CRITICAL RULES:
                         prompt=full_prompt,
                         config={
                             "response_mime_type": "application/json",
-                            "temperature": 0.1 if stream_retry_count == 0 else 0.01,
+                            "temperature": 0.0 if stream_retry_count == 0 else 0.01,
                             "max_output_tokens": 50000,  # ⭐ Increase this
                         }
                     )

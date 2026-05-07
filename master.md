@@ -18,664 +18,6 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 
-### STEP 1: ANALYZE USER REQUEST
-
-Read the user's prompt and identify what type of website they want:
-
-| User Says | Generate These Pages |
-|-----------|---------------------|
-| "gym", "fitness", "workout", "trainer", "classes", "membership" | home, classes, trainers, membership |
-| "school", "academy", "university", "college", "education" | home, programs, admissions, faculty |
-| "restaurant", "cafe", "bistro", "dining" | home, menu, reservations, gallery |
-| "hotel", "resort", "lodge", "inn", "accommodation" | home, rooms, amenities, gallery, booking |
-| "portfolio", "creative", "agency", "designer", "developer" | home, projects, about, contact |
-| "ecommerce", "shop", "store", "products", "cart", "checkout" | home, shop, cart |
-| "blog", "magazine", "news", "articles" | home, blog, about, contact |
-| "saas", "software", "app", "platform", "tech" | home, features, pricing, contact |
-
-### STEP 2: GENERATE ONLY MATCHING PAGES
-
-**DO NOT** generate pages the user didn't ask for.
-
-#### Example 1: User asks for "gym website"
-✅ GENERATE: app/page.tsx, app/classes/page.tsx, app/trainers/page.tsx, app/membership/page.tsx
-❌ DO NOT GENERATE: app/shop/page.tsx, app/cart/page.tsx, app/menu/page.tsx
-
-#### Example 2: User asks for "coffee roastery"
-✅ GENERATE: app/page.tsx, app/shop/page.tsx, app/about/page.tsx, app/contact/page.tsx
-❌ DO NOT GENERATE: app/classes/page.tsx, app/trainers/page.tsx, app/membership/page.tsx
-
-#### Example 3: User asks for "ecommerce store"
-✅ GENERATE: app/page.tsx, app/shop/page.tsx, app/cart/page.tsx
-❌ DO NOT GENERATE: app/about/page.tsx, app/contact/page.tsx (unless specifically asked)
-
-### STEP 3: NAVIGATION MATCHES GENERATED PAGES
-
-The navigation MUST ONLY contain links to pages that exist:
-
-```tsx
-// If user asked for gym website - ONLY these links
-<Link href="/classes">Classes</Link>
-<Link href="/trainers">Trainers</Link>
-<Link href="/membership">Membership</Link>
-
-// If user asked for ecommerce - ONLY these links
-<Link href="/shop">Shop</Link>
-<Link href="/cart">Cart</Link>
-
-// If user asked for restaurant - ONLY these links
-<Link href="/menu">Menu</Link>
-<Link href="/reservations">Reservations</Link>
-<Link href="/gallery">Gallery</Link>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 CRITICAL: OUTPUT FORMAT - DO NOT USE JSON 🚨
-================================================================================
-
-The code you generate contains JSX syntax with curly braces, quotes, and special characters that break JSON.
-Therefore, you MUST output files using THIS SIMPLE DELIMITER FORMAT:
-
-================ FILE: app/page.tsx ================
-'use client';
-import React from 'react';
-
-export default function Home() {{
-  return (
-    <div className="min-h-screen">
-      <h1 className="text-4xl font-bold">Welcome</h1>
-    </div>
-  );
-}}
-================ END_FILE ================
-
-================ FILE: app/shop/page.tsx ================
-'use client';
-import {{ useCart }} from '../../contexts/CartContext';
-
-const products = [
-  {{ id: "1", name: "Premium Hoodie", price: 79.99 }},
-  {{ id: "2", name: "Classic Tee", price: 29.99 }}
-];
-
-export default function ShopPage() {{
-  const {{ addToCart }} = useCart();
-  
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Shop</h1>
-      <div className="grid md:grid-cols-3 gap-6">
-        {{products.map(product => (
-          <div key={{product.id}} className="bg-white/5 p-4 rounded-lg">
-            <h3>{{product.name}}</h3>
-            <p>${'{product.price}'}</p>
-            <button 
-              onClick={{() => addToCart(product)}}
-              className="add-to-cart-btn mt-2 px-4 py-2 bg-purple-600 rounded"
-              data-id="{{product.id}}"
-              data-name="{{product.name}}"
-              data-price="{{product.price}}">
-              Add to Cart
-            </button>
-          </div>
-        ))}}
-      </div>
-    </div>
-  );
-}}
-================ END_FILE ================
-
-================ FILE: components/Navigation.tsx ================
-... content ...
-================ END_FILE ================
-
-RULES:
-1. Each file starts with "================ FILE: filepath ================"
-2. Each file ends with "================ END_FILE ================"
-3. Write code NATURALLY - NO escaping, NO JSON wrapping
-4. Use double braces {{ }} for JSX expressions (they will be properly handled)
-5. The delimiter markers must be on their own lines
-
-================================================================================
-
-
-
-
-
-
-
-
-
-
-
-
-
-You are a Senior Next.js 14 developer. Generate a complete e-commerce cart system with these EXACT requirements:
-
-## 1. CART BADGE IN NAVIGATION (components/Navigation.tsx)
-
-**REQUIREMENTS:**
-- Import and use useCart() to get getTotalItems()
-- Display a red badge with the total item count on top of the cart icon
-- Badge position: absolute -top-2 -right-2
-- Badge styling: bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center
-- Badge updates in real-time when items are added/removed
-- If count is 0, hide badge or show nothing
-
-**CODE EXAMPLE:**
-```tsx
-import { useCart } from '../contexts/CartContext';
-
-export default function Navigation() {
-  const { getTotalItems } = useCart();
-  const itemCount = getTotalItems();
-
-  return (
-    <Link href="/cart" className="relative">
-      <ShoppingBag className="w-5 h-5" />
-      {itemCount > 0 && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-          {itemCount}
-        </span>
-      )}
-    </Link>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-You are a Senior Next.js 14 developer. Generate a cart page (app/cart/page.tsx) with these EXACT requirements:
-
-## CART PAGE DISPLAY FORMAT
-
-Each cart item MUST display as:
-
-┌────────────────────────────────────────────────────────────┐
-│  [Icon]  Product Name        [−]  Quantity  [+]    $Line Total │
-│         $Price                              [Remove]          │
-└────────────────────────────────────────────────────────────┘
-
-EXAMPLE with real data:
-┌────────────────────────────────────────────────────────────┐
-│  🛍️     Premium Hoodie        [−]    2    [+]      $159.98    │
-│         $79.99                                 [Remove]      │
-├────────────────────────────────────────────────────────────┤
-│  🛍️     Classic Tee           [−]    3    [+]      $89.97     │
-│         $29.99                                 [Remove]      │
-└────────────────────────────────────────────────────────────┘
-
-## QUANTITY CONTROLS REQUIREMENTS:
-
-1. MINUS BUTTON (-):
-   - Calls updateQuantity(item.id, item.quantity - 1)
-   - If quantity becomes 0, remove item from cart
-   - Styling: w-8 h-8 rounded-full bg-white/10 hover:bg-purple-600/50
-
-2. PLUS BUTTON (+):
-   - Calls updateQuantity(item.id, item.quantity + 1)
-   - Styling: w-8 h-8 rounded-full bg-white/10 hover:bg-purple-600/50
-
-3. QUANTITY DISPLAY:
-   - Shows current quantity between buttons
-   - Center-aligned, min-width 30px
-   - Font: semibold, text-white
-
-4. REMOVE BUTTON:
-   - Calls removeFromCart(item.id)
-   - Shows trash icon OR text "Remove"
-   - Position: below the unit price
-   - Color: red-400 hover:text-red-300
-
-## HEADER DISPLAY:
-
-Must show: "Your Cart ({totalItems} {item/items})"
-
-Examples:
-- "Your Cart (1 item)" when 1 item total
-- "Your Cart (5 items)" when multiple items
-
-## ORDER SUMMARY (Sticky, Right Side):
-
-Always visible when cart has items:
-
-┌─────────────────────────┐
-│ Order Summary           │
-│ Subtotal (X items)      │
-│ Shipping: Free (green)  │
-│ ─────────────────────── │
-│ Total: $XXX.XX (purple) │
-│                         │
-│ [Proceed to Checkout →] │
-│ [Clear Cart]            │
-│                         │
-│ ✓ Secure SSL            │
-│ ✓ Free returns          │
-│ ✓ 24/7 support          │
-└─────────────────────────┘
-
-## LAYOUT:
-
-Use grid layout:
-- Left column (lg:col-span-2): Cart items list
-- Right column (lg:col-span-1): Order summary (sticky top-24)
-
-## EMPTY CART STATE:
-
-When items.length === 0, show:
-- ShoppingBag icon (large)
-- "Your Cart is Empty" heading
-- "Add some items to get started." message
-- "Continue Shopping" button linking to /shop
-
-## COMPLETE CODE STRUCTURE:
-
-```tsx
-'use client';
-
-import { useCart } from '../../contexts/CartContext';
-import type { CartItem } from '../../contexts/CartContext';
-import Link from 'next/link';
-import { ShoppingBag, Trash2, Plus, Minus, ArrowLeft } from 'lucide-react';
-
-export default function CartPage() {
-  const { items, removeFromCart, updateQuantity, getCartTotal, getTotalItems, clearCart } = useCart();
-  
-  const subtotal = getCartTotal();
-  const totalItems = getTotalItems();
-
-  return (
-    <div className="min-h-screen pt-24 container mx-auto px-4 py-12">
-      {/* Back button */}
-      <Link href="/shop" className="...">
-        <ArrowLeft /> Back to Shop
-      </Link>
-
-      {/* Header with item count */}
-      <h1 className="...">
-        Your Cart ({totalItems} {totalItems === 1 ? 'item' : 'items'})
-      </h1>
-
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* LEFT: Cart Items */}
-        <div className="lg:col-span-2">
-          {items.length === 0 ? (
-            /* Empty state */
-          ) : (
-            <div className="space-y-4">
-              {items.map((item: CartItem) => (
-                <div key={item.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
-                  {/* Icon */}
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg flex items-center justify-center">
-                    <ShoppingBag className="w-6 h-6 text-purple-400" />
-                  </div>
-                  
-                  {/* Product Info */}
-                  <div className="flex-1 ml-4">
-                    <h3 className="font-semibold text-white">{item.name}</h3>
-                    <p className="text-purple-400 font-bold">${item.price.toFixed(2)}</p>
-                  </div>
-                  
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => updateQuantity(item.id, item.quantity - 1)}>
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="text-white font-semibold min-w-[30px] text-center">
-                      {item.quantity}
-                    </span>
-                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)}>
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  
-                  {/* Line Total & Remove */}
-                  <div className="text-right ml-4 min-w-[100px]">
-                    <p className="font-bold text-white">${(item.price * item.quantity).toFixed(2)}</p>
-                    <button onClick={() => removeFromCart(item.id)} className="text-red-400 text-xs">
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: Order Summary */}
-        {items.length > 0 && (
-          <div className="lg:col-span-1">
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10 sticky top-24">
-              <h3 className="text-xl font-bold mb-6">Order Summary</h3>
-              
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span>Subtotal ({totalItems} items)</span>
-                  <span>${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span className="text-green-400">Free</span>
-                </div>
-              </div>
-              
-              <div className="border-t my-4" />
-              
-              <div className="flex justify-between font-bold text-lg mb-6">
-                <span>Total</span>
-                <span className="text-purple-400">${subtotal.toFixed(2)}</span>
-              </div>
-              
-              <button onClick={() => window.dispatchEvent(new CustomEvent('openCheckout'))}>
-                Proceed to Checkout →
-              </button>
-              
-              <button onClick={() => { if (confirm('Clear cart?')) clearCart(); }}>
-                Clear Cart
-              </button>
-              
-              {/* Trust badges */}
-              <div className="mt-6 space-y-2">
-                <div>✓ Secure 256-bit SSL encryption</div>
-                <div>✓ Free returns within 30 days</div>
-                <div>✓ 24/7 customer support</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## CART PAGE (app/cart/page.tsx)
-
-1. DISPLAY SHIPPING COST:
-   - Show "Shipping: Free" in green text when subtotal > $0
-   - Never hide the shipping line - always visible
-   - Calculate: subtotal = getCartTotal()
-
-2. ORDER SUMMARY MUST SHOW:
-   - Subtotal (with item count)
-   - Shipping (always "Free" in green)
-   - Total (subtotal + shipping)
-
-3. TRUST BADGES (always visible when cart has items):
-   - ✓ Secure 256-bit SSL encryption
-   - ✓ Free returns within 30 days  
-   - ✓ 24/7 customer support
-
-## CHECKOUT MODAL (components/CheckoutModal.tsx)
-
-
-
-1. CVV VALIDATION (STRICT):
-   - Must be exactly 3 or 4 digits (American Express allows 4)
-   - Only numbers allowed
-   - Show error: "CVV must be 3-4 digits" if invalid
-   - Disable Pay button until CVV is valid
-
-2. CARD NUMBER VALIDATION:
-   - Must be 16 digits
-   - Format with spaces every 4 digits
-   - Show error if incomplete
-
-3. EXPIRY VALIDATION:
-   - Format: MM/YY
-   - Must not be expired (compare with current date)
-   - Show error: "Card has expired" if invalid
-
-4. EMAIL VALIDATION:
-   - Must contain @ and .
-   - Show error for invalid format
-
-5. PAYMENT FLOW:
-   - Validate all fields before processing
-   - Show validation errors inline
-   - If valid: show loading spinner for 2 seconds
-   - Then show success message
-   - Clear cart ONLY after success
-
-6. SUCCESS MODAL SHOWS:
-   - "Thanks for your order, {fullName}!"
-   - Confirmation email: {email}
-   - Total paid: ${getCartTotal()}
-   - "Continue Shopping" button (clears cart and closes)
-
-## EXAMPLE ORDER SUMMARY CODE:
-
-```tsx
-<div className="space-y-3 mb-4">
-  <div className="flex justify-between">
-    <span className="text-gray-400">Subtotal ({totalItems} items)</span>
-    <span className="text-white font-semibold">${subtotal.toFixed(2)}</span>
-  </div>
-  <div className="flex justify-between">
-    <span className="text-gray-400">Shipping</span>
-    <span className="text-green-400 font-semibold">Free</span>
-  </div>
-</div>
-
-<div className="border-t border-white/10 my-4" />
-
-<div className="flex justify-between font-bold text-lg mb-6">
-  <span className="text-white">Total</span>
-  <span className="text-purple-400">${subtotal.toFixed(2)}</span>
-</div>
-
-
-
-
-
-
-
-
-
-
-================================================================================
-STEP 9C — CART PAGE ANTI-SKELETON ENFORCEMENT
-================================================================================
-
-The AI keeps generating this exact stripped skeleton. It is BANNED:
-
-  const { items, removeFromCart, updateQuantity, getCartTotal } = useCart();
-
-BANNED because:
-  - Missing clearCart         → Clear Cart button cannot work
-  - Missing getTotalItems     → item count in heading is broken
-  - Missing CartItem type     → TypeScript build fails
-
-  if (items.length === 0) return ( ... );
-
-BANNED because:
-  - Early return skips the full layout
-  - Order Summary never renders
-  - Clear Cart never renders
-
-  <p>Total: ${getCartTotal().toFixed(2)}</p>
-
-BANNED because:
-  - No Subtotal line
-  - No Shipping Free line
-  - No divider
-  - No bold purple Total line
-  - No Clear Cart button
-  - No trust badges
-
-  className="w-full mt-4 py-3 bg-purple-600 rounded-lg"
-
-BANNED because:
-  - Plain bg-purple-600 not gradient
-  - No shadow
-  - No hover effect
-
-================================================================================
-THE ONLY VALID CART PAGE DESTRUCTURE LINE IS:
-
-  const {
-    items,
-    removeFromCart,
-    updateQuantity,
-    getCartTotal,
-    getTotalItems,
-    clearCart,
-  } = useCart();
-
-If clearCart is missing → the file is wrong → rewrite it.
-If getTotalItems is missing → the file is wrong → rewrite it.
-
-================================================================================
-THE ONLY VALID ORDER SUMMARY BLOCK IS:
-
-  <div className="bg-white/5 rounded-xl p-6 border border-white/10 sticky top-24">
-
-    <h3 className="text-xl font-bold mb-6 bg-gradient-to-r from-purple-400
-      to-pink-400 bg-clip-text text-transparent">
-      Order Summary
-    </h3>
-
-    <div className="space-y-3 mb-4">
-      <div className="flex justify-between">
-        <span className="text-gray-400">Subtotal ({totalItems} items)</span>
-        <span className="text-white font-semibold">${total.toFixed(2)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-gray-400">Shipping</span>
-        <span className="text-green-400 font-semibold">Free</span>
-      </div>
-    </div>
-
-    <div className="border-t border-white/10 my-4" />
-
-    <div className="flex justify-between font-bold text-xl mb-6">
-      <span className="text-white">Total</span>
-      <span className="text-purple-400">${total.toFixed(2)}</span>
-    </div>
-
-    <button
-      onClick={() => window.dispatchEvent(new CustomEvent('openCheckout'))}
-      className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600
-        rounded-xl font-semibold text-white hover:opacity-90 transition
-        duration-300 shadow-lg shadow-purple-500/25 mb-3"
-    >
-      Proceed to Checkout →
-    </button>
-
-    <button
-      onClick={() => {
-        if (confirm('Are you sure you want to clear your entire cart?')) {
-          clearCart();
-        }
-      }}
-      className="w-full py-2 text-gray-400 hover:text-white transition text-sm"
-    >
-      Clear Cart
-    </button>
-
-    <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span className="text-green-400">✓</span> Secure 256-bit SSL encryption
-      </div>
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span className="text-green-400">✓</span> Free returns within 30 days
-      </div>
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span className="text-green-400">✓</span> 24/7 customer support
-      </div>
-    </div>
-  </div>
-
-If ANY of these are missing from the Order Summary:
-  - Subtotal line          → rewrite the file
-  - Shipping Free line     → rewrite the file
-  - border-t divider       → rewrite the file
-  - Total in purple        → rewrite the file
-  - Proceed to Checkout button with gradient → rewrite the file
-  - Clear Cart button      → rewrite the file
-  - Trust badges           → rewrite the file
-
-================================================================================
-THE ONLY VALID CART PAGE STRUCTURE IS:
-
-  return (
-    <div className="min-h-screen pt-24 container mx-auto px-4 py-12">
-
-      [Back to Shop Link]
-
-      [Page heading with item count]
-
-      <div className="grid lg:grid-cols-3 gap-8">
-
-        <div className="lg:col-span-2">
-          [Empty state — shown when items.length === 0]
-          [Items list — shown when items.length > 0]
-        </div>
-
-        {items.length > 0 && (
-          <div className="lg:col-span-1">
-            [Full Order Summary as shown above]
-          </div>
-        )}
-
-      </div>
-    </div>
-  );
-
-NEVER use early return for empty state.
-NEVER put Order Summary outside the items.length > 0 conditional.
-NEVER omit the grid lg:grid-cols-3 wrapper.
-NEVER render a page heading inside the empty state only.
-The page heading MUST always be visible regardless of cart state.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ================================================================================
@@ -742,6 +84,1079 @@ CHECKOUT MODAL — components/CheckoutModal.tsx
 
 
 
+
+
+
+================================================================================
+REQUIRED FILE 1 — app/cart/page.tsx
+================================================================================
+
+'use client';
+
+import { useCart } from '../../contexts/CartContext';
+import type { CartItem } from '../../contexts/CartContext';
+import Link from 'next/link';
+import { ShoppingBag, Trash2, Plus, Minus, ArrowLeft } from 'lucide-react';
+
+export default function CartPage() {
+  const {
+    items,
+    removeFromCart,
+    updateQuantity,
+    getCartTotal,
+    getTotalItems,
+    clearCart,
+  } = useCart();
+
+  const total = getCartTotal();
+  const totalItems = getTotalItems();
+
+  return (
+    <div className="min-h-screen pt-24 container mx-auto px-4 py-12">
+
+      <Link
+        href="/shop"
+        className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-6"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back to Shop
+      </Link>
+
+      <h1 className="text-3xl font-bold mb-8 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        Shopping Cart (<span>{totalItems}</span> items)
+      </h1>
+
+      <div className="grid lg:grid-cols-3 gap-8">
+
+        {/* LEFT: Cart Items */}
+        <div className="lg:col-span-2">
+
+          {/* Empty State */}
+          {items.length === 0 && (
+            <div className="text-center py-20">
+              <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-white/5 flex items-center justify-center">
+                <ShoppingBag className="w-12 h-12 text-gray-500" />
+              </div>
+              <h2 className="text-2xl font-bold mb-4">Your Cart is Empty</h2>
+              <p className="text-gray-400 mb-8">Add some items to get started.</p>
+              <Link
+                href="/shop"
+                className="inline-block px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition"
+              >
+                Continue Shopping
+              </Link>
+            </div>
+          )}
+
+          {/* Items */}
+          {items.length > 0 && (
+            <div className="space-y-4">
+              {items.map((item: CartItem) => (
+                <div
+                  key={item.id}
+                  className="flex gap-4 p-4 bg-white/5 rounded-xl border border-white/10 hover:border-purple-500/50 transition-all duration-300"
+                >
+                  {/* Icon */}
+                  <div className="w-20 h-20 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <ShoppingBag className="w-8 h-8 text-purple-400" />
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-lg text-white">{item.name}</h3>
+                    <p className="text-purple-400 font-bold">${item.price.toFixed(2)}</p>
+
+                    {/* Quantity Controls */}
+                    <div className="flex items-center gap-3 mt-3">
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-purple-600/50 flex items-center justify-center transition-all duration-200"
+                      >
+                        <Minus className="w-4 h-4 text-white" />
+                      </button>
+                      <span className="text-white w-8 text-center font-semibold text-lg">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-purple-600/50 flex items-center justify-center transition-all duration-200"
+                      >
+                        <Plus className="w-4 h-4 text-white" />
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.id)}
+                        className="ml-4 flex items-center gap-1 text-red-400 hover:text-red-300 transition text-sm"
+                      >
+                        <Trash2 className="w-4 h-4" /> Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Line Total */}
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-xl text-white">
+                      ${(item.price * item.quantity).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Order Summary — only visible when cart has items */}
+        {items.length > 0 && (
+          <div className="lg:col-span-1 mt-8 lg:mt-0">
+            <div className="bg-white/5 rounded-xl p-6 border border-white/10 sticky top-24">
+
+              <h3 className="text-xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Order Summary
+              </h3>
+
+              {/* Line items */}
+              <div className="space-y-3 mb-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Subtotal ({totalItems} items)</span>
+                  <span className="text-white font-semibold">${total.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Shipping</span>
+                  <span className="text-green-400 font-semibold">Free</span>
+                </div>
+              </div>
+
+              <div className="border-t border-white/10 my-4" />
+
+              {/* Total */}
+              <div className="flex justify-between font-bold text-lg mb-6">
+                <span className="text-white">Total</span>
+                <span className="text-purple-400">${total.toFixed(2)}</span>
+              </div>
+
+              {/* Checkout Button */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('openCheckout'))}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300 shadow-lg shadow-purple-500/25 mb-3"
+              >
+                Proceed to Checkout →
+              </button>
+
+              {/* Clear Cart */}
+              <button
+                onClick={() => {
+                  if (confirm('Are you sure you want to clear your entire cart?')) clearCart();
+                }}
+                className="w-full py-2 text-gray-400 hover:text-white transition text-sm"
+              >
+                Clear Cart
+              </button>
+
+              {/* Trust Badges */}
+              <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="text-green-400">✓</span> Secure 256-bit SSL encryption
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="text-green-400">✓</span> Free returns within 30 days
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="text-green-400">✓</span> 24/7 customer support
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+================================================================================
+REQUIRED FILE 2 — components/CheckoutModal.tsx
+================================================================================
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useCart } from '../contexts/CartContext';
+import { X, CreditCard, CheckCircle, Loader2 } from 'lucide-react';
+
+export default function CheckoutModal() {
+  const { getCartTotal, clearCart, getTotalItems } = useCart();
+
+  const [isOpen, setIsOpen]             = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [showSuccess, setShowSuccess]   = useState<boolean>(false);
+  const [fullName, setFullName]         = useState<string>('');
+  const [email, setEmail]               = useState<string>('');
+  const [cardNumber, setCardNumber]     = useState<string>('');
+  const [expiry, setExpiry]             = useState<string>('');
+  const [cvv, setCvv]                   = useState<string>('');
+
+  useEffect(() => {
+    const handleOpen = () => { setShowSuccess(false); setIsOpen(true); };
+    window.addEventListener('openCheckout', handleOpen);
+    return () => window.removeEventListener('openCheckout', handleOpen);
+  }, []);
+
+  const handleCardNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 16);
+    setCardNumber(value.replace(/(.{4})/g, '$1 ').trim());
+  };
+
+  const handleExpiry = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setExpiry(value.length >= 2 ? value.slice(0, 2) + '/' + value.slice(2) : value);
+  };
+
+  const handleClose = () => {
+    if (isProcessing) return;
+    setIsOpen(false);
+    setShowSuccess(false);
+    setFullName(''); setEmail(''); setCardNumber(''); setExpiry(''); setCvv('');
+  };
+
+  const handlePayment = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    await new Promise<void>(resolve => setTimeout(resolve, 2000));
+    setIsProcessing(false);
+    setShowSuccess(true);
+  };
+
+  const handleContinueShopping = () => {
+    clearCart();
+    setIsOpen(false);
+    setShowSuccess(false);
+    setFullName(''); setEmail(''); setCardNumber(''); setExpiry(''); setCvv('');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={handleClose}
+      />
+
+      {/* ── PAYMENT FORM ── */}
+      {!showSuccess && (
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl border border-white/10 shadow-2xl w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto">
+
+          {/* Close */}
+          <button
+            onClick={handleClose}
+            className="absolute top-4 right-4 p-1 rounded-lg hover:bg-white/10 transition text-gray-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* Header */}
+          <div className="flex items-center gap-4 mb-5">
+            <div className="w-10 h-10 shrink-0 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white leading-tight">Checkout</h2>
+              <p className="text-gray-400 text-xs">Enter payment details</p>
+            </div>
+          </div>
+
+          <form onSubmit={handlePayment} className="space-y-3">
+
+            {/* Row 1: Name + Email */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Card Number */}
+            <div>
+              <label className="block text-[11px] font-medium text-gray-400 uppercase mb-1">
+                Card Number
+              </label>
+              <input
+                type="text"
+                required
+                value={cardNumber}
+                onChange={handleCardNumber}
+                placeholder="4242 4242 4242 4242"
+                maxLength={19}
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+              />
+            </div>
+
+            {/* Row 3: Expiry + CVV */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase mb-1">
+                  Expiry
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={expiry}
+                  onChange={handleExpiry}
+                  placeholder="MM/YY"
+                  maxLength={5}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase mb-1">
+                  CVV
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={cvv}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCvv(e.target.value)}
+                  placeholder="123"
+                  maxLength={4}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Row 4: Total + Pay */}
+            <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase">Total</p>
+                <span className="font-bold text-purple-400 text-lg">
+                  ${getCartTotal().toFixed(2)}
+                </span>
+                <p className="text-[10px] text-gray-500">
+                  {getTotalItems()} item{getTotalItems() !== 1 ? 's' : ''} · Free shipping
+                </p>
+              </div>
+              <div className="flex-1">
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="w-full py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg font-semibold text-white hover:opacity-90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Pay Now'
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="w-full mt-2 text-gray-500 hover:text-white transition text-[11px] uppercase tracking-wider"
+            >
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* ── SUCCESS MODAL ── */}
+      {showSuccess && (
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl border border-white/10 shadow-2xl w-full max-w-sm p-5 text-center">
+
+          <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-3">
+            <CheckCircle className="w-6 h-6 text-white" />
+          </div>
+
+          <h2 className="text-xl font-bold text-white leading-tight">
+            Payment Successful! 🎉
+          </h2>
+          <p className="text-gray-400 text-sm mb-4">
+            Thanks for your order, {fullName}!
+          </p>
+
+          <div className="bg-white/5 rounded-lg p-3 mb-5 border border-white/5 text-left space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-[11px] text-gray-500 uppercase tracking-wider">Sent to:</span>
+              <span className="text-purple-400 text-xs font-medium truncate ml-2">{email}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-white/5">
+              <span className="text-[11px] text-gray-500 uppercase tracking-wider">Total Paid:</span>
+              <span className="text-lg font-bold text-white">${getCartTotal().toFixed(2)}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleContinueShopping}
+            className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg font-semibold text-white hover:opacity-90 transition text-sm"
+          >
+            Continue Shopping
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 RULE #1 — READ THIS FIRST BEFORE GENERATING ANYTHING 🚨
+================================================================================
+
+You are generating a Next.js 14 e-commerce project. The cart page and checkout
+modal are the most critical files. Before writing a single line, read the exact
+required code below. You MUST output these files matching this structure exactly.
+Do not simplify. Do not skip sections. Do not invent alternatives.
+
+================================================================================
+REQUIRED FILE 1 — app/cart/page.tsx (COPY THIS EXACTLY)
+================================================================================
+
+'use client';
+
+import { useCart } from '../../contexts/CartContext';
+import type { CartItem } from '../../contexts/CartContext';
+import Link from 'next/link';
+import { ShoppingBag, Trash2, Plus, Minus, ArrowLeft } from 'lucide-react';
+
+export default function CartPage() {
+  const {
+    items,
+    removeFromCart,
+    updateQuantity,
+    getCartTotal,
+    getTotalItems,
+    clearCart,
+  } = useCart();
+
+  const total = getCartTotal();
+  const totalItems = getTotalItems();
+
+  return (
+    <div className="min-h-screen pt-24 container mx-auto px-4 py-12">
+
+      <Link
+        href="/shop"
+        className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors mb-6"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back to Shop
+      </Link>
+
+      <h1 className="text-3xl font-bold mb-8 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        Shopping Cart ({totalItems} items)
+      </h1>
+
+      <div className="grid lg:grid-cols-3 gap-8">
+
+        {/* LEFT: Cart Items */}
+        <div className="lg:col-span-2">
+
+          {/* Empty State */}
+          {items.length === 0 && (
+            <div className="text-center py-20">
+              <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-white/5 flex items-center justify-center">
+                <ShoppingBag className="w-12 h-12 text-gray-500" />
+              </div>
+              <h2 className="text-2xl font-bold mb-4">Your Cart is Empty</h2>
+              <p className="text-gray-400 mb-8">Add some items to get started.</p>
+              <Link
+                href="/shop"
+                className="inline-block px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition"
+              >
+                Continue Shopping
+              </Link>
+            </div>
+          )}
+
+          {/* Items List */}
+          {items.length > 0 && (
+            <div className="space-y-4">
+              {items.map((item: CartItem) => (
+                <div
+                  key={item.id}
+                  className="flex gap-4 p-4 bg-white/5 rounded-xl border border-white/10 hover:border-purple-500/50 transition-all duration-300"
+                >
+                  <div className="w-20 h-20 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <ShoppingBag className="w-8 h-8 text-purple-400" />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-lg text-white">{item.name}</h3>
+                    <p className="text-purple-400 font-bold">${item.price.toFixed(2)}</p>
+                    <div className="flex items-center gap-3 mt-3">
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-purple-600/50 flex items-center justify-center transition-all duration-200"
+                      >
+                        <Minus className="w-4 h-4 text-white" />
+                      </button>
+                      <span className="text-white w-8 text-center font-semibold text-lg">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-purple-600/50 flex items-center justify-center transition-all duration-200"
+                      >
+                        <Plus className="w-4 h-4 text-white" />
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.id)}
+                        className="ml-4 flex items-center gap-1 text-red-400 hover:text-red-300 transition text-sm"
+                      >
+                        <Trash2 className="w-4 h-4" /> Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-bold text-xl text-white">
+                      ${(item.price * item.quantity).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Order Summary */}
+        {items.length > 0 && (
+          <div className="lg:col-span-1">
+            <div className="bg-white/5 rounded-xl p-6 border border-white/10 sticky top-24">
+              <h3 className="text-xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Order Summary
+              </h3>
+
+              <div className="space-y-3 mb-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Subtotal ({totalItems} items)</span>
+                  <span className="text-white font-semibold">${total.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Shipping</span>
+                  <span className="text-green-400 font-semibold">Free</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Tax</span>
+                  <span className="text-white font-semibold">$0.00</span>
+                </div>
+              </div>
+
+              <div className="border-t border-white/10 my-4" />
+
+              <div className="flex justify-between font-bold text-xl mb-6">
+                <span className="text-white">Total</span>
+                <span className="text-purple-400">${total.toFixed(2)}</span>
+              </div>
+
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('openCheckout'))}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300 shadow-lg shadow-purple-500/25 mb-3"
+              >
+                Proceed to Checkout →
+              </button>
+
+              <button
+                onClick={() => {
+                  if (confirm('Clear your entire cart?')) clearCart();
+                }}
+                className="w-full py-2 text-gray-400 hover:text-white transition text-sm"
+              >
+                Clear Cart
+              </button>
+
+              <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="text-green-400">✓</span> Secure 256-bit SSL encryption
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="text-green-400">✓</span> Free returns within 30 days
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="text-green-400">✓</span> 24/7 customer support
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+================================================================================
+REQUIRED FILE 2 — components/CheckoutModal.tsx (COPY THIS EXACTLY)
+================================================================================
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useCart } from '../contexts/CartContext';
+import { X, CreditCard, CheckCircle, Loader2 } from 'lucide-react';
+
+export default function CheckoutModal() {
+  const { getCartTotal, clearCart, getTotalItems } = useCart();
+
+  const [isOpen, setIsOpen]           = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [showSuccess, setShowSuccess] = useState<boolean>(false);
+  const [fullName, setFullName]       = useState<string>('');
+  const [email, setEmail]             = useState<string>('');
+  const [cardNumber, setCardNumber]   = useState<string>('');
+  const [expiry, setExpiry]           = useState<string>('');
+  const [cvv, setCvv]                 = useState<string>('');
+
+  useEffect(() => {
+    const handleOpen = () => { setShowSuccess(false); setIsOpen(true); };
+    window.addEventListener('openCheckout', handleOpen);
+    return () => window.removeEventListener('openCheckout', handleOpen);
+  }, []);
+
+  const handleCardNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 16);
+    setCardNumber(value.replace(/(.{4})/g, '$1 ').trim());
+  };
+
+  const handleExpiry = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setExpiry(value.length >= 2 ? value.slice(0, 2) + '/' + value.slice(2) : value);
+  };
+
+  const handleClose = () => {
+    if (isProcessing) return;
+    setIsOpen(false);
+    setShowSuccess(false);
+    setFullName(''); setEmail(''); setCardNumber(''); setExpiry(''); setCvv('');
+  };
+
+  const handlePayment = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsProcessing(true);
+    await new Promise<void>(resolve => setTimeout(resolve, 2000));
+    setIsProcessing(false);
+    setShowSuccess(true);
+  };
+
+  const handleContinueShopping = () => {
+    clearCart();
+    setIsOpen(false);
+    setShowSuccess(false);
+    setFullName(''); setEmail(''); setCardNumber(''); setExpiry(''); setCvv('');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={handleClose}
+      />
+
+      {/* ── PAYMENT FORM ── */}
+      {!showSuccess && (
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-white/10 shadow-2xl w-full max-w-sm p-5 max-h-[90vh] overflow-y-auto">
+
+          <button
+            onClick={handleClose}
+            className="absolute top-4 right-4 p-1 rounded-lg hover:bg-white/10 transition text-gray-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+              <CreditCard className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white leading-tight">Checkout</h2>
+              <p className="text-gray-400 text-xs">Enter your payment details</p>
+            </div>
+          </div>
+
+          <form onSubmit={handlePayment} className="space-y-3">
+
+            {/* Row 1: Name + Email */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFullName(e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
+                  placeholder="john@example.com"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Card Number (full width) */}
+            <div>
+              <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">
+                Card Number
+              </label>
+              <input
+                type="text"
+                required
+                value={cardNumber}
+                onChange={handleCardNumber}
+                placeholder="4242 4242 4242 4242"
+                maxLength={19}
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+              />
+            </div>
+
+            {/* Row 3: Expiry + CVV */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">
+                  Expiry
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={expiry}
+                  onChange={handleExpiry}
+                  placeholder="MM/YY"
+                  maxLength={5}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">
+                  CVV
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={cvv}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCvv(e.target.value)}
+                  placeholder="123"
+                  maxLength={4}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-white text-sm placeholder-gray-600 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Row 4: Total + Pay button */}
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wider">Order Total</p>
+                  <span className="font-bold text-purple-400 text-xl">${getCartTotal().toFixed(2)}</span>
+                  <p className="text-[10px] text-gray-500">
+                    {getTotalItems()} item{getTotalItems() !== 1 ? 's' : ''} · Free shipping
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className="w-full py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl font-semibold text-white hover:opacity-90 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Pay Now'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="w-full py-2 text-gray-500 hover:text-white transition text-[11px] uppercase tracking-wider"
+            >
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* ── SUCCESS MODAL ── */}
+      {showSuccess && (
+        <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-white/10 shadow-2xl w-full max-w-sm p-6 text-center">
+
+          <div className="w-16 h-16 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-8 h-8 text-white" />
+          </div>
+
+          <h2 className="text-2xl font-bold text-white mb-1">Payment Successful! 🎉</h2>
+          <p className="text-gray-400 text-sm mb-5">Thanks for your order, {fullName}!</p>
+
+          <div className="bg-white/5 rounded-xl p-4 mb-5 border border-white/10 text-left space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-[11px] text-gray-500 uppercase tracking-wider">Confirmation sent to</span>
+              <span className="text-purple-400 text-xs font-semibold truncate ml-2">{email}</span>
+            </div>
+            <div className="border-t border-white/5 pt-2 flex justify-between items-center">
+              <span className="text-[11px] text-gray-500 uppercase tracking-wider">Total Paid</span>
+              <span className="text-xl font-bold text-white">${getCartTotal().toFixed(2)}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleContinueShopping}
+            className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition"
+          >
+            Continue Shopping
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+================================================================================
+REQUIRED FILE 3 — contexts/CartContext.tsx (COPY THIS EXACTLY)
+================================================================================
+
+'use client';
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+interface CartContextType {
+  items: CartItem[];
+  addToCart: (product: Omit<CartItem, 'quantity'>) => void;
+  removeFromCart: (id: string) => void;
+  updateQuantity: (id: string, quantity: number) => void;
+  clearCart: () => void;
+  getCartTotal: () => number;
+  getTotalItems: () => number;
+}
+
+const CartContext = createContext<CartContextType | undefined>(undefined);
+
+export function CartProvider({ children }: { children: ReactNode }) {
+  const [items, setItems] = useState<CartItem[]>([]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('cart');
+      if (saved) setItems(JSON.parse(saved) as CartItem[]);
+    } catch (e) { console.error('Failed to load cart:', e); }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('cart', JSON.stringify(items));
+    window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { items } }));
+  }, [items]);
+
+  const addToCart = (product: Omit<CartItem, 'quantity'>): void => {
+    setItems((prev: CartItem[]) => {
+      const existing = prev.find((i: CartItem) => i.id === product.id);
+      if (existing) {
+        return prev.map((i: CartItem) =>
+          i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
+        );
+      }
+      return [...prev, { ...product, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (id: string): void => {
+    setItems((prev: CartItem[]) => prev.filter((i: CartItem) => i.id !== id));
+  };
+
+  const updateQuantity = (id: string, quantity: number): void => {
+    if (quantity <= 0) { removeFromCart(id); return; }
+    setItems((prev: CartItem[]) =>
+      prev.map((i: CartItem) => i.id === id ? { ...i, quantity } : i)
+    );
+  };
+
+  const clearCart = (): void => setItems([]);
+
+  const getCartTotal = (): number =>
+    items.reduce((total: number, i: CartItem) => total + i.price * i.quantity, 0);
+
+  const getTotalItems = (): number =>
+    items.reduce((total: number, i: CartItem) => total + i.quantity, 0);
+
+  return (
+    <CartContext.Provider value={{
+      items, addToCart, removeFromCart,
+      updateQuantity, clearCart, getCartTotal, getTotalItems,
+    }}>
+      {children}
+    </CartContext.Provider>
+  );
+}
+
+export const useCart = (): CartContextType => {
+  const context = useContext(CartContext);
+  if (!context) throw new Error('useCart must be used within a CartProvider');
+  return context;
+};
+
+================================================================================
+REQUIRED FILE 4 — app/layout.tsx (COPY THIS EXACTLY)
+================================================================================
+
+import type { Metadata } from 'next';
+import './globals.css';
+import Navigation from '../components/Navigation';
+import Footer from '../components/Footer';
+import { CartProvider } from '../contexts/CartContext';
+import CheckoutModal from '../components/CheckoutModal';
+
+export const metadata: Metadata = {
+  title: 'My Store',
+  description: 'Premium online store',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <CartProvider>
+          <Navigation />
+          <CheckoutModal />
+          {children}
+          <Footer />
+        </CartProvider>
+      </body>
+    </html>
+  );
+}
+
+================================================================================
+SELF-CHECK — RUN BEFORE OUTPUTTING JSON
+================================================================================
+
+Cart page — verify ALL are present:
+  [ ] imports: useCart, CartItem type, Link, ShoppingBag, Trash2, Plus, Minus, ArrowLeft
+  [ ] destructures: items, removeFromCart, updateQuantity, getCartTotal, getTotalItems, clearCart
+  [ ] items.map uses (item: CartItem) explicit type
+  [ ] empty state has ShoppingBag icon + heading + Link to /shop
+  [ ] each item has Plus button → updateQuantity(item.id, item.quantity + 1)
+  [ ] each item has Minus button → updateQuantity(item.id, item.quantity - 1)
+  [ ] each item has Remove button with Trash2 icon
+  [ ] each item shows line total: (item.price * item.quantity).toFixed(2)
+  [ ] Order Summary panel is sticky top-24
+  [ ] Order Summary shows subtotal, Free shipping, $0.00 tax, total
+  [ ] Checkout button fires: window.dispatchEvent(new CustomEvent('openCheckout'))
+  [ ] Clear Cart button calls clearCart() with confirm()
+  [ ] Trust badges (SSL, returns, support) in Order Summary
+  [ ] Layout uses grid lg:grid-cols-3
+
+Checkout modal — verify ALL are present:
+  [ ] imports: X, CreditCard, CheckCircle, Loader2 from lucide-react
+  [ ] destructures: getCartTotal, clearCart, getTotalItems from useCart()
+  [ ] 8 useState calls: isOpen, isProcessing, showSuccess, fullName, email, cardNumber, expiry, cvv
+  [ ] useEffect listens for 'openCheckout' (NOT 'openCheckoutModal')
+  [ ] handleCardNumber strips non-digits, formats with spaces every 4
+  [ ] handleExpiry strips non-digits, inserts slash after MM
+  [ ] handlePayment is async, awaits 2000ms, then setShowSuccess(true)
+  [ ] handleClose resets all 5 string fields
+  [ ] handleContinueShopping calls clearCart() then resets all fields
+  [ ] Modal backdrop is bg-black/70 backdrop-blur-sm
+  [ ] Modal background is bg-gradient-to-br from-slate-900 to-slate-800
+  [ ] Close button is absolute top-4 right-4
+  [ ] Header has CreditCard icon in gradient circle
+  [ ] Form has 2-column grid for Name+Email
+  [ ] Form has full-width Card Number field
+  [ ] Form has 2-column grid for Expiry+CVV
+  [ ] Pay button shows Loader2 animate-spin when isProcessing
+  [ ] Pay button disabled when isProcessing
+  [ ] Success modal shows fullName in greeting
+  [ ] Success modal shows email in confirmation card
+  [ ] Success modal shows getCartTotal() as total paid
+  [ ] Continue Shopping calls handleContinueShopping (NOT clearCart inline)
+
+If ANY box is unchecked → fix it before outputting.
+
+================================================================================
+EVENT NAME — CRITICAL
+================================================================================
+
+Cart page fires:   window.dispatchEvent(new CustomEvent('openCheckout'))
+Modal listens for: window.addEventListener('openCheckout', handleOpen)
+
+The event name is exactly 'openCheckout' — case sensitive.
+Any other name ('openCheckoutModal', 'checkout', 'open-checkout') breaks the connection.
+
+================================================================================
+NOW generate the rest of the project for this request:
+================================================================================
 
 
 

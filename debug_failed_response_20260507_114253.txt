@@ -1,0 +1,2 @@
+{
+  "package.json": "{\n  \"name\": \"urban-college-prep\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build
