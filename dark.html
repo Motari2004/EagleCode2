@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>ChromaFlow | Dark & Light Mode Toggle</title>
+    <style>
+        /* -------------------- CSS RESET & BASE (THEME VARIABLES) -------------------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            transition: background-color 0.25s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        /* Light mode (default) */
+        :root {
+            --bg-page: #f8fafc;
+            --bg-surface: #ffffff;
+            --bg-elevated: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #475569;
+            --border-light: #e2e8f0;
+            --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+            --toggle-bg: #e2e8f0;
+            --toggle-knob: #ffffff;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --code-bg: #f1f5f9;
+            --footer-text: #64748b;
+        }
+
+        /* Dark mode override */
+        body.dark {
+            --bg-page: #0f172a;
+            --bg-surface: #1e293b;
+            --bg-elevated: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --border-light: #334155;
+            --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+            --toggle-bg: #475569;
+            --toggle-knob: #facc15;
+            --accent: #60a5fa;
+            --accent-hover: #3b82f6;
+            --code-bg: #0f172a;
+            --footer-text: #94a3b8;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-primary);
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+            line-height: 1.5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        /* main container */
+        .container {
+            max-width: 900px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* toggle card - premium switch */
+        .theme-card {
+            background-color: var(--bg-surface);
+            border-radius: 2rem;
+            padding: 1rem 1.8rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-light);
+            backdrop-filter: blur(2px);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+        }
+
+        .brand-icon {
+            font-size: 1.8rem;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+        }
+
+        .brand h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        /* TOGGLE SWITCH (accessible) */
+        .toggle-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .mode-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 64px;
+            height: 32px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--toggle-bg);
+            border-radius: 34px;
+            transition: 0.3s;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.2);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--toggle-knob);
+            border-radius: 50%;
+            transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(32px);
+        }
+
+        /* Icons inside slider as pseudo decorative, but we add separate icons */
+        .icon-sun, .icon-moon {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .icon-sun {
+            left: 8px;
+            color: #f59e0b;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+        }
+
+        .icon-moon {
+            right: 8px;
+            color: #cbd5e1;
+        }
+
+        body.dark .icon-sun { color: #fcd34d; }
+        body.dark .icon-moon { color: #94a3b8; }
+
+        /* HERO SECTION */
+        .hero {
+            background: var(--bg-surface);
+            border-radius: 1.75rem;
+            padding: 2rem 2rem 2rem 2rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--border-light);
+        }
+
+        .hero h2 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(120deg, var(--text-primary), var(--accent));
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            font-size: 1.05rem;
+        }
+
+        .badge-group {
+            display: flex;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            background: var(--bg-elevated);
+            border-radius: 40px;
+            padding: 0.4rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            border: 1px solid var(--border-light);
+        }
+
+        /* Cards grid */
+        .cards-grid {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 2.5rem;
+        }
+
+        .card {
+            background-color: var(--bg-surface);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            flex: 1 1 220px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--card-shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 30px -12px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-icon {
+            font-size: 2.2rem;
+            margin-bottom: 0.8rem;
+            display: inline-block;
+        }
+
+        .card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* CODE block demo */
+        .code-demo {
+            background-color: var(--bg-surface);
+            border-radius: 1.25rem;
+            border: 1px solid var(--border-light);
+            overflow: hidden;
+            margin-bottom: 1.8rem;
+        }
+
+        .code-header {
+            background-color: var(--bg-elevated);
+            padding: 0.75rem 1.25rem;
+            border-bottom: 1px solid var(--border-light);
+            font-family: monospace;
+            font-weight: 500;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        pre {
+            background-color: var(--code-bg);
+            padding: 1.2rem;
+            overflow-x: auto;
+            font-family: 'Fira Code', 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            margin: 0;
+            line-height: 1.45;
+        }
+
+        code {
+            font-family: inherit;
+        }
+
+        /* footer */
+        .footer {
+            text-align: center;
+            color: var(--footer-text);
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-light);
+            padding-top: 1.8rem;
+            margin-top: 0.8rem;
+        }
+
+        button, .btn-outline {
+            background: transparent;
+            border: 1px solid var(--accent);
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            color: var(--accent);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        @media (max-width: 680px) {
+            .theme-card {
+                flex-direction: column;
+                align-items: stretch;
+                text-align: center;
+            }
+            .hero h2 {
+                font-size: 1.5rem;
+            }
+            .cards-grid {
+                flex-direction: column;
+            }
+            .container {
+                padding: 0 0.2rem;
+            }
+        }
+
+        /* floating glow effect (optional) */
+        .accent-text {
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Header + Toggle control -->
+    <div class="theme-card">
+        <div class="brand">
+            <span class="brand-icon">🌓</span>
+            <h1>ChromaFlow</h1>
+        </div>
+        <div class="toggle-wrapper">
+            <span class="mode-label" id="mode-text-label">Light</span>
+            <label class="switch" aria-label="Dark mode toggle">
+                <input type="checkbox" id="darkmode-toggle" aria-describedby="mode-text-label">
+                <span class="slider">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon">🌙</span>
+                </span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Main content section: demonstrates theme adaptation -->
+    <div class="hero">
+        <h2>Seamless light & dark experience</h2>
+        <p>Every element responds to your theme preference — from cards to code blocks. Built with CSS custom properties and pure JavaScript. No external libraries, just pure elegance.</p>
+        <div class="badge-group">
+            <span class="badge">🌞 Adaptive UI</span>
+            <span class="badge">🌙 System ready</span>
+            <span class="badge">⚡ Smooth transitions</span>
+            <span class="badge">🎨 Accessible toggle</span>
+        </div>
+    </div>
+
+    <!-- Feature Cards (dynamic theming demo) -->
+    <div class="cards-grid">
+        <div class="card">
+            <div class="card-icon">🎨</div>
+            <h3>Dynamic colors</h3>
+            <p>CSS variables update instantly, giving you a rich visual experience in both modes.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">⚡</div>
+            <h3>Lightning toggle</h3>
+            <p>Local storage persists your preference. Next time you visit, your choice is remembered.</p>
+        </div>
+        <div class="card">
+            <div class="card-icon">🧩</div>
+            <h3>Modular design</h3>
+            <p>Easy to integrate into any project. Copy & adapt — no heavy frameworks.</p>
+        </div>
+    </div>
+
+    <!-- Code preview block to showcase theming in code snippets -->
+    <div class="code-demo">
+        <div class="code-header">
+            📄 theme-controller.js — core logic
+        </div>
+        <pre><code>// Simple, resilient dark mode manager
+const setTheme = (isDark) => {
+  if (isDark) {
+    document.body.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  } else {
+    document.body.classList.remove('dark');
+    localStorage.setItem('theme', 'light');
+  }
+  updateToggleUI(isDark);
+};
+
+// Check system preference & stored theme
+const initTheme = () => {
+  const stored = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = stored === 'dark' || (!stored && prefersDark);
+  setTheme(isDark);
+  if (toggle) toggle.checked = isDark;
+};</code></pre>
+    </div>
+
+    <!-- extra interactive panel: micro interaction -->
+    <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+        <button id="demo-btn" class="btn-outline">✨ Try theme-aware button</button>
+    </div>
+    <div class="footer">
+        <p>🌗 Dark / Light mode • preference saved locally • respects system default</p>
+        <p style="margin-top: 0.4rem;">Made with <span class="accent-text">❤️</span> & CSS variables</p>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // DOM elements
+        const toggleCheckbox = document.getElementById('darkmode-toggle');
+        const modeTextLabel = document.getElementById('mode-text-label');
+        const demoButton = document.getElementById('demo-btn');
+
+        // Helper: update label and any extra dynamic UI
+        function updateModeLabel(isDark) {
+            if (modeTextLabel) {
+                modeTextLabel.textContent = isDark ? 'Dark' : 'Light';
+            }
+        }
+
+        // Core set theme function
+        function setTheme(isDark) {
+            if (isDark) {
+                document.body.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.body.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            }
+            // sync checkbox state if triggered externally
+            if (toggleCheckbox && toggleCheckbox.checked !== isDark) {
+                toggleCheckbox.checked = isDark;
+            }
+            updateModeLabel(isDark);
+        }
+
+        // Toggle handler
+        function onToggleChange(e) {
+            const isChecked = e.target.checked;
+            setTheme(isChecked);
+        }
+
+        // Check for initial theme: stored > system preference > light default
+        function initializeTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            let isDark = false;
+
+            if (storedTheme === 'dark') {
+                isDark = true;
+            } else if (storedTheme === 'light') {
+                isDark = false;
+            } else {
+                // no stored preference, check system preference
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                isDark = prefersDark;
+            }
+
+            // Apply theme
+            setTheme(isDark);
+            if (toggleCheckbox) {
+                toggleCheckbox.checked = isDark;
+            }
+        }
+
+        // Add event listener for toggle
+        if (toggleCheckbox) {
+            toggleCheckbox.addEventListener('change', onToggleChange);
+        }
+
+        // Optional: listen to system preference changes while using the page (so if system changes, we adapt BUT only if user hasn't explicitly overridden)
+        // This is a polished behavior: if user manually toggled, we respect localstorage override. We'll still sync only if no manual override flag?
+        // Better UX: if user hasn't manually set a preference? But we already store user preference.
+        // However many modern apps listen to system changes but also respect user's previous choice.
+        // Implementation: we will listen to system changes but NOT override if the user has a stored preference in localStorage.
+        // Because user explicit click stores a theme. So we only adjust when no stored theme exists (but then init already took care)
+        // Actually to be ultra smooth: if localStorage has no "theme" item at all, then react to system changes live.
+        // But if user toggled manually, keep respecting that. We'll add an elegant system watcher.
+        // For that we need to know if user ever manually set theme. We'll store a flag? But we already have 'theme' key.
+        // If 'theme' exists that means user has either set it automatically via init? On init we set storage.
+        // To make system live switch only when there's no user override, we can track that the user never clicked manually,
+        // but we can also apply: if there's no explicit user toggle recorded (we can add a meta variable), but simpler: if localStorage.theme doesn't exist because of user interaction?
+        // The elegant approach: after first manual toggle, we stop reacting to system changes.
+        let userHasManuallyToggled = false;
+        
+        // Update flag when toggle is clicked by user
+        if (toggleCheckbox) {
+            const originalHandler = onToggleChange;
+            const wrappedHandler = (e) => {
+                userHasManuallyToggled = true;
+                originalHandler(e);
+            };
+            toggleCheckbox.removeEventListener('change', onToggleChange);
+            toggleCheckbox.addEventListener('change', wrappedHandler);
+            // reassign for consistency
+            window.__themeToggleHandler = wrappedHandler;
+        }
+
+        // function to sync with system if no manual preference existed
+        function handleSystemChange(e) {
+            // If user has never toggled manually (userHasManuallyToggled == false) 
+            // AND there is no existing localStorage theme? Actually, if localStorage.theme is present it's because either init set it or user toggled.
+            // But init sets theme based on system if none existed. So after init there will always be storage.
+            // Instead better rule: If the stored theme does not exist (i.e. first load) we are free to follow system.
+            // But we also want live updates only when the user has no explicit preference.
+            // We consider "explicit preference" = if the localStorage item was set due to user toggle (but we can't differentiate easily from init)
+            // Instead we implement: if userHasManuallyToggled is false AND the stored theme matches system? no.
+            // Simple solution for demo: if the user hasn't interacted with toggle yet, follow system changes. But after toggle, we ignore system.
+            if (!userHasManuallyToggled) {
+                const newIsDark = e.matches;
+                // Also ensure that we do not override if the current theme differs from system but user never toggled.
+                // But note: we must avoid race, we set theme only when needed.
+                // Also we need to reflect on toggle checkbox.
+                if (newIsDark && !document.body.classList.contains('dark')) {
+                    setTheme(true);
+                    if (toggleCheckbox) toggleCheckbox.checked = true;
+                } else if (!newIsDark && document.body.classList.contains('dark')) {
+                    setTheme(false);
+                    if (toggleCheckbox) toggleCheckbox.checked = false;
+                }
+            }
+        }
+
+        // Listen for system color scheme changes
+        const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        if (darkModeMediaQuery.addEventListener) {
+            darkModeMediaQuery.addEventListener('change', handleSystemChange);
+        } else if (darkModeMediaQuery.addListener) {
+            // Safari fallback
+            darkModeMediaQuery.addListener(handleSystemChange);
+        }
+
+        // But also we have to set initial state via initializeTheme (which respects storage)
+        initializeTheme();
+
+        // After initializeTheme, we need to check if there is a stored theme that came from init? 
+        // But to correctly set 'userHasManuallyToggled' to false initially, that's fine.  
+        // Additionally, if the user has clicked the toggle, we set flag true. That's all.
+
+        // Bonus: Update label after any external call to setTheme (demo button could also trigger)
+        // We'll also make demo button change theme as example, and ensure it respects manual flag.
+        if (demoButton) {
+            demoButton.addEventListener('click', () => {
+                // Theme-aware fun: show alert message but also we can just demonstrate theme is consistent.
+                // For demonstration, we'll flip theme programmatically? But that may confuse users.
+                // Instead we show a toast-like alert? But an interactive demonstration: 
+                // Display a small feedback message that respects theme? Better: We can just show a temporary theme indicator.
+                const currentIsDark = document.body.classList.contains('dark');
+                const msg = `🌓 You are currently in ${currentIsDark ? 'DARK' : 'LIGHT'} mode.\nTheme remains consistent across all components.`;
+                alert(msg);
+                // add a micro effect: a ripple style? no needed. but it showcases that dynamic theming works.
+                // We also could change something? Maybe highlight something? but okay.
+                // Also we ensure that manual flag remains as it is (since this button doesn't toggle, it just informs)
+                // Good demonstration.
+            });
+        }
+
+        // sync label on any remaining setTheme calls (internal consistency)
+        // additionally we ensure the mode text and toggle sync perfectly.
+        // for completeness, we add MutationObserver? unnecessary.
+        // final fix: if user manually toggles and then system changes we ignore due to userHasManuallyToggled flag.
+        // but we might also want to reset flag if user clears local storage? not required for demo.
+        // Also we need to expose setTheme for any browser extension? no.
+        // Extra polish: Update the label at start.
+        function syncFromBody() {
+            const isDark = document.body.classList.contains('dark');
+            updateModeLabel(isDark);
+        }
+        // Observer to catch any class changes (if some other script ever changes)
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mut) => {
+                if (mut.attributeName === 'class') {
+                    const isDarkNow = document.body.classList.contains('dark');
+                    updateModeLabel(isDarkNow);
+                    if (toggleCheckbox && toggleCheckbox.checked !== isDarkNow) {
+                        toggleCheckbox.checked = isDarkNow;
+                    }
+                }
+            });
+        });
+        observer.observe(document.body, { attributes: true });
+        
+        // final call
+        syncFromBody();
+    })();
+</script>
+</body>
+</html>
