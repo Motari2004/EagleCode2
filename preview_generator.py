@@ -8,10 +8,6 @@ from datetime import datetime
 
 
 
-
-
-
-
 def fix_shop_page_buttons(html_content: str) -> str:
     """Convert generic shop buttons to add-to-cart-btn with proper attributes"""
     
