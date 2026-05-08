@@ -2442,6 +2442,83 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
+================================================================================
+REQUIRED OUTPUT FORMAT:
+================================================================================
+✅ Pure HTML with <!DOCTYPE html>
+✅ CSS styling in <style> tags (Tailwind CDN for utilities)
+✅ Pure JavaScript in <script> tags
+✅ Regular HTML elements only (div, section, button, etc.)
+✅ onclick handlers for interactivity
+✅ All content rendered as static HTML (no .map() in output)
+
+================================================================================
+CRITICAL: RENDER ARRAYS AS STATIC HTML
+================================================================================
+If you see React code like:
+features.map(feature => <div>{{feature.title}}</div>)
+
+You MUST output:
+<div>Feature Title 1</div>
+<div>Feature Title 2</div>
+<div>Feature Title 3</div>
+
+NO .map() in the final HTML - render EVERY item as actual HTML.
+
+================================================================================
+CRITICAL: NO PLACEHOLDER TEXT
+================================================================================
+Use the EXACT content from the source files below. 
+DO NOT write "Coming soon", "Lorem ipsum", or any placeholder text.
+
+================================================================================
+PAGES TO RENDER (from Next.js files):
+================================================================================
+{page_contents_json}
+
+================================================================================
+NAVIGATION TO USE:
+================================================================================
+{nav_links_json}
+
+================================================================================
+BRAND NAME:
+================================================================================
+{brand_name}
+
+================================================================================
+HERO IMAGE URL (use this EXACT URL):
+================================================================================
+{first_image_display}
+
+================================================================================
+FOOTER HTML (use this EXACT HTML):
+================================================================================
+{footer_html if footer_html else '<!-- No footer found -->'}
+
+================================================================================
+FAQ CONTENT (use these EXACT questions):
+================================================================================
+{faq_html if faq_html else '<!-- No FAQ found -->'}
+
+================================================================================
+TESTIMONIALS (use these EXACT quotes):
+================================================================================
+{testimonials_html if testimonials_html else '<!-- No testimonials found -->'}
+
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
