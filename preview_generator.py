@@ -8,6 +8,151 @@ from datetime import datetime
 
 
 
+
+
+
+
+def replace_map_block(content: str, array_name: str, replacement: str) -> str:
+    """Replace {arrayName.map(...)} block by counting braces - handles nested JSX"""
+    import re
+    start_pattern = rf'\{{\s*{array_name}\.map\('
+    match = re.search(start_pattern, content)
+    if not match:
+        print(f"  ❌ Could not find {array_name}.map() block to replace")
+        return content
+    
+    start = match.start()
+    brace_count = 0
+    i = start
+    
+    while i < len(content):
+        if content[i] == '{':
+            brace_count += 1
+        elif content[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                end = i + 1
+                content = content[:start] + replacement + content[end:]
+                print(f"  ✅ Replaced {array_name}.map() block (pos {start}→{end})")
+                return content
+        i += 1
+    
+    print(f"  ❌ Could not find closing brace for {array_name}.map()")
+    return content
+
+
+
+
+
+
+
+def replace_map_block(content: str, array_name: str, replacement: str) -> str:
+    """Replace {arrayName.map(...)} block by counting braces - handles nested JSX"""
+    import re
+    start_pattern = rf'\{{\s*{array_name}\.map\('
+    match = re.search(start_pattern, content)
+    if not match:
+        print(f"  ❌ Could not find {array_name}.map() block to replace")
+        return content
+    
+    start = match.start()
+    brace_count = 0
+    i = start
+    
+    while i < len(content):
+        if content[i] == '{':
+            brace_count += 1
+        elif content[i] == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                end = i + 1
+                content = content[:start] + replacement + content[end:]
+                print(f"  ✅ Replaced {array_name}.map() block (pos {start}→{end})")
+                return content
+        i += 1
+    
+    print(f"  ❌ Could not find closing brace for {array_name}.map()")
+    return content
+
+
+def render_array_to_html(content: str) -> str:
+    """Convert React arrays to HTML BEFORE sending to AI - prevents AI from generating its own content"""
+    
+    import re
+
+    # ========== FEATURES ==========
+    features_html = None
+    features_pattern = r'const\s+features\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+    features_match = re.search(features_pattern, content, re.DOTALL)
+
+    if features_match:
+        features_content = features_match.group(1)
+        feature_pattern = r'\{\s*icon:\s*(\w+)\s*,\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']'
+        features = re.findall(feature_pattern, features_content)
+
+        if features:
+            icon_map = {
+                'Cpu': 'cpu', 'Zap': 'zap', 'Globe': 'globe', 'Shield': 'shield',
+                'Rocket': 'rocket', 'Sparkles': 'sparkles', 'Heart': 'heart', 'Star': 'star'
+            }
+            features_html = '<div class="grid md:grid-cols-4 gap-6">\n'
+            for icon_name, title, desc in features:
+                lucide_icon = icon_map.get(icon_name, 'sparkles')
+                features_html += f'''
+    <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+        <i data-lucide="{lucide_icon}" class="w-10 h-10 mb-4 text-purple-400"></i>
+        <h3 class="text-xl font-bold mb-2">{title}</h3>
+        <p class="text-gray-400 text-sm">{desc}</p>
+    </div>'''
+            features_html += '\n</div>'
+            print(f"  ✅ Rendered {len(features)} features from source array")
+
+    if features_html:
+        content = replace_map_block(content, 'features', features_html)
+
+    # ========== FAQS ==========
+    faqs_html = None
+    faqs_pattern = r'const\s+faqs\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+    faqs_match = re.search(faqs_pattern, content, re.DOTALL)
+
+    if faqs_match:
+        faqs_content = faqs_match.group(1)
+        faq_pattern = r'\{\s*q:\s*["\']([^"\']+)["\']\s*,\s*a:\s*["\']([^"\']+)["\']\s*\}'
+        faqs = re.findall(faq_pattern, faqs_content)
+
+        if faqs:
+            faqs_html = '<div class="space-y-4">\n'
+            for q, a in faqs:
+                faqs_html += f'''
+    <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+        <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+            <span class="font-semibold text-white">{q}</span>
+            <i class="fas fa-plus text-purple-400"></i>
+        </button>
+        <div class="faq-answer hidden px-6 pb-4 text-gray-400">{a}</div>
+    </div>'''
+            faqs_html += '\n</div>'
+            print(f"  ✅ Rendered {len(faqs)} FAQs from source array")
+
+    if faqs_html:
+        content = replace_map_block(content, 'faqs', faqs_html)
+
+    # ========== CLEANUP ==========
+    content = re.sub(r'const\s+features\s*=\s*\[[^\]]*\]\s*;?\s*', '', content, flags=re.DOTALL)
+    content = re.sub(r'const\s+faqs\s*=\s*\[[^\]]*\]\s*;?\s*', '', content, flags=re.DOTALL)
+
+    return content
+
+
+
+
+
+
+
+
+
+
+
 def fix_shop_page_buttons(html_content: str) -> str:
     """Convert generic shop buttons to add-to-cart-btn with proper attributes"""
     
@@ -1093,31 +1238,36 @@ async def generate_preview_internal(
 
 
 
-
-              # Helper function to extract content from TSX/JSX files
         def extract_page_content(content: str, route_name: str) -> str:
-            """Extract meaningful content from page component - captures ALL sections including arrays and maps"""
+            """Extract meaningful content from page component"""
             print(f"\n{'='*60}")
             print(f"🔍 EXTRACTING: {route_name}")
             print(f"{'='*60}")
             print(f"📦 Original content length: {len(content)} chars")
             
             if not content:
-                  print(f"❌ Content is empty!")
-                  return ""
+                print(f"❌ Content is empty!")
+                return ""
             
-            # Remove imports and exports (but keep the JSX structure)
+            # ⭐ STEP 0: Pre-render arrays on the ORIGINAL content
+            print(f"\n📌 STEP 0: Pre-rendering arrays from source...")
+            content = render_array_to_html(content)  # ← MODIFIES content
+            print(f"   ✅ Arrays pre-rendered, content length: {len(content)} chars")
+            
+            # NOW use the modified content for the rest of extraction
             print(f"\n📌 STEP 1: Removing imports and exports...")
-            clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)
+            clean = re.sub(r'^import\s+.*?from\s+["\'][^"\']+["\'];\s*$', '', content, flags=re.MULTILINE)  # ← Use 'content', not original
             clean = re.sub(r'^export\s+default\s+\w+;?\s*$', '', clean, flags=re.MULTILINE)
             clean = re.sub(r'^export\s+const\s+\w+\s*=\s*', '', clean, flags=re.MULTILINE)
             clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
             print(f"   ✅ Length after import removal: {len(clean)} chars")
+       
             
             # Remove 'use client' directive
             print(f"\n📌 STEP 2: Removing 'use client' directive...")
             clean = re.sub(r'^["\']use client["\'];\s*$', '', clean, flags=re.MULTILINE)
             print(f"   ✅ Length after 'use client' removal: {len(clean)} chars")
+
             
             # ⭐ NEW: Check for image in cleaned content
             if 'image_1.jpg' in clean or 'image_' in clean:
@@ -1179,7 +1329,32 @@ async def generate_preview_internal(
             print(f"   📏 Keeping full extracted content (no semicolon truncation): {len(extracted)} chars")
             
             extracted = extracted.strip()
+            
+            
+            
+            
+            
+            
             print(f"   📏 Final extracted length: {len(extracted)} chars")
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             
             # ⭐ Check if image was preserved in extracted content
             if 'image_1.jpg' in extracted:
@@ -2428,6 +2603,77 @@ async def generate_preview_internal(
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 
 Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## THEME REQUIREMENTS (MUST MATCH EXACTLY)
+
+### Colors & Gradients:
+- Body background: `linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%)`
+- Primary gradient: `linear-gradient(135deg, #c084fc, #f472b6)` (purple-pink)
+- Secondary gradient: `linear-gradient(135deg, #c084fc, #f472b6)` for buttons
+- Text gradient: `linear-gradient(135deg, #c084fc, #f472b6)` with `-webkit-background-clip: text`
+- Card background: `rgba(255,255,255,0.05)` with `backdrop-filter: blur(10px)`
+- Border color: `rgba(255,255,255,0.1)`
+
+### Typography:
+- Font family: 'Inter', system-ui, sans-serif
+- Body text color: #e2e8f0
+- Heading gradient: purple to pink
+
+### Components:
+
+**Navbar:**
+- Fixed position, backdrop blur
+- Brand: icon + text with gradient
+- Nav links: hover purple, active purple background
+
+**Cards:**
+- Glass morphism effect
+- Border: 1px solid rgba(255,255,255,0.1)
+- Border radius: 1rem
+- Hover: translateY(-4px) + border purple
+
+**Buttons:**
+- Gradient background (purple to pink)
+- Border radius: 2rem
+- Hover: translateY(-2px) + shadow glow
+
+**Hero Section:**
+- Full screen height
+- Background image with opacity 0.35 overlay
+- Dark overlay: rgba(0,0,0,0.5)
+- Content centered
+
+**Scrollbar:**
+- Width: 6px
+- Track: #1a1a1e
+- Thumb: gradient purple to pink
 
 
 

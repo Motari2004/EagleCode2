@@ -8,6 +8,483 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 
+
+
+
+
+
+
+
+================================================================================
+STEP 1 — PROJECT TYPE DETECTION
+================================================================================
+
+Detect the project type from the user prompt:
+
+| Keywords                                      | Type        | Nav Links (max 4)                    |
+|-----------------------------------------------|-------------|--------------------------------------|
+| gym, fitness, workout, trainer, yoga, hiit    | GYM         | Classes, Trainers, Membership        |
+| school, academy, university, college          | SCHOOL      | Programs, Admissions, Faculty        |
+| restaurant, bistro, cafe, dining              | RESTAURANT  | Menu, Reservations, Gallery          |
+| hotel, resort, lodge, inn                     | HOTEL       | Rooms, Amenities, Gallery, Book Now  |
+| portfolio, creative, agency, designer         | PORTFOLIO   | Work, About, Services, Contact       |
+| shop, store, ecommerce, products, cart        | ECOMMERCE   | Shop, Cart                           |
+| coffee, roastery, beanery                     | COFFEE      | Shop, Brew Guide, Story              |
+| saas, software, app, platform, tech           | TECH        | Features, Pricing, Contact           |
+
+NAVIGATION RULE: Maximum 4 links. Brand name = home link. Never add a "Home" link.
+
+================================================================================
+STEP 2 — PAGES TO GENERATE PER TYPE
+================================================================================
+
+GYM       → app/page.tsx, app/classes/page.tsx, app/trainers/page.tsx, app/membership/page.tsx
+SCHOOL    → app/page.tsx, app/programs/page.tsx, app/admissions/page.tsx, app/faculty/page.tsx
+RESTAURANT→ app/page.tsx, app/menu/page.tsx, app/reservations/page.tsx, app/gallery/page.tsx
+HOTEL     → app/page.tsx, app/rooms/page.tsx, app/amenities/page.tsx, app/gallery/page.tsx
+PORTFOLIO → app/page.tsx, app/work/page.tsx, app/about/page.tsx, app/contact/page.tsx
+ECOMMERCE → app/page.tsx, app/shop/page.tsx, app/cart/page.tsx
+COFFEE    → app/page.tsx, app/shop/page.tsx, app/about/page.tsx, app/contact/page.tsx
+TECH      → app/page.tsx, app/features/page.tsx, app/pricing/page.tsx, app/contact/page.tsx
+
+RULE: Every nav link MUST have a matching page file. Missing page = 404 error.
+RULE: NEVER mix types (no Shop/Cart on GYM sites, no Classes on ECOMMERCE sites).
+
+================================================================================
+STEP 3 — REQUIRED FILES (ALL TYPES)
+================================================================================
+
+app/layout.tsx              ← NO 'use client'. Has metadata export.
+app/page.tsx                ← 'use client'. Hero + Features + FAQ only.
+app/globals.css             ← Full styles with animations.
+components/Navigation.tsx   ← 'use client'. Max 4 nav links.
+components/Footer.tsx       ← 'use client'. Newsletter + social + copyright.
+lib/utils.ts                ← cn() utility.
+tailwind.config.ts
+postcss.config.mjs          ← MUST be .mjs not .js
+tsconfig.json               ← NO @/* path aliases
+package.json
+
+ECOMMERCE EXTRA FILES:
+contexts/CartContext.tsx
+components/CheckoutModal.tsx
+components/CartToast.tsx
+
+================================================================================
+STEP 4 — HOME PAGE STRUCTURE (app/page.tsx)
+================================================================================
+
+EXACTLY 3 sections in this order:
+
+SECTION 1 — HERO:
+  'use client';
+  <section className="relative h-screen flex items-center justify-center overflow-hidden">
+    <img
+      src="/images/image_1.jpg"
+      alt="Hero background"
+      className="absolute inset-0 w-full h-full object-cover"
+      onError={(e) => {
+        e.currentTarget.style.display = 'none';
+        e.currentTarget.parentElement?.classList.add('bg-gradient-to-br','from-purple-950','to-pink-950');
+      }}
+    />
+    <div className="absolute inset-0 bg-black/50" />
+    <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+      {/* Badge */}
+      <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 mb-6">
+        <Sparkles className="w-4 h-4 text-amber-400" />
+        <span className="text-amber-400 text-sm font-medium uppercase tracking-wider">[BADGE]</span>
+      </div>
+      {/* Heading */}
+      <h1 className="text-5xl md:text-7xl font-bold text-white mb-4">[BRAND]</h1>
+      {/* Tagline */}
+      <p className="text-xl md:text-2xl text-amber-400 font-semibold mb-3">[TAGLINE]</p>
+      {/* Description */}
+      <p className="text-base md:text-lg text-gray-300 mb-8 max-w-2xl mx-auto">[2-3 SENTENCES]</p>
+      {/* CTA Buttons */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+        <Link href="/[primary]" className="px-8 py-3.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold hover:scale-105 transition-all duration-300 inline-flex items-center gap-2">
+          Primary CTA <ArrowRight className="w-4 h-4" />
+        </Link>
+        <Link href="/[secondary]" className="px-8 py-3.5 rounded-full border-2 border-white/30 text-white font-semibold hover:bg-white/10 transition-all duration-300 inline-flex items-center gap-2">
+          Secondary CTA
+        </Link>
+      </div>
+      {/* Trust Indicators */}
+      <div className="flex flex-wrap gap-6 justify-center text-sm text-gray-300">
+        <div className="flex items-center gap-2"><Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /><span>4.9/5 from 2,000+ reviews</span></div>
+        <div className="flex items-center gap-2"><Users className="w-4 h-4 text-cyan-400" /><span>50,000+ happy customers</span></div>
+        <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-green-400" /><span>30-day guarantee</span></div>
+      </div>
+    </div>
+  </section>
+
+SECTION 2 — FEATURES (4 cards, unique content per card):
+  <section className="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
+    <div className="container mx-auto">
+      <div className="text-center mb-12">
+        <span className="text-purple-400 text-sm uppercase tracking-wider">Why Choose Us</span>
+        <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Features</h2>
+        <p className="text-gray-400 mt-4">[SUBTITLE]</p>
+      </div>
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {features.map((f, i) => (
+          <div key={i} className="bg-white/5 border border-white/10 hover:border-purple-500/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1">
+            <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${f.color} flex items-center justify-center mb-4`}>
+              <f.icon className="w-7 h-7 text-white" />
+            </div>
+            <h3 className="text-lg font-bold mb-2 text-white">{f.title}</h3>
+            <p className="text-gray-400 text-sm">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+SECTION 3 — FAQ (4 questions, accordion with useState):
+  <section className="py-20 px-4">
+    <div className="container mx-auto max-w-3xl">
+      <div className="text-center mb-12">
+        <span className="text-purple-400 text-sm uppercase tracking-wider">FAQ</span>
+        <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Frequently Asked Questions</h2>
+      </div>
+      <div className="space-y-4">
+        {faqs.map((faq, idx) => (
+          <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-purple-500/30 transition-colors">
+            <button onClick={() => setOpenIndex(openIndex === idx ? null : idx)} className="w-full px-6 py-4 flex justify-between items-center text-left">
+              <span className="font-semibold text-white">{faq.q}</span>
+              {openIndex === idx ? <Minus className="w-5 h-5 text-purple-400" /> : <Plus className="w-5 h-5 text-purple-400" />}
+            </button>
+            {openIndex === idx && <div className="px-6 pb-5 text-gray-400 text-sm">{faq.a}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+NO OTHER SECTIONS on home page (no testimonials, no stats, no newsletter).
+
+================================================================================
+STEP 5 — PAGE CONTENT RULES
+================================================================================
+
+Every non-home page MUST have:
+  - Hero section (title + description)
+  - At least 2 more content sections
+  - Real data (no Lorem Ipsum, no "Coming Soon")
+  - Interactive elements (buttons, cards, filters, forms)
+
+GYM PAGES:
+  classes/     → category filters + 6 class cards (name, instructor, duration, difficulty, spots) + weekly schedule table
+  trainers/    → 4+ trainer profiles (name, specialty, experience, certs, bio, rating) + filter by specialty + spotlight
+  membership/  → 3 pricing tiers (Basic/Pro/Premium) + monthly/annual toggle + feature comparison table + FAQ + guarantee badges
+
+SCHOOL PAGES:
+  programs/    → category filters + 6 program cards (name, duration, credits, career outcomes, tuition) + comparison table
+  admissions/  → steps + requirements + deadlines + application form
+  faculty/     → 4+ teacher profiles (name, subject, bio, credentials)
+
+RESTAURANT PAGES:
+  menu/        → category filters + items with name/price/description
+  reservations/→ date picker + time slots + guest count + occasion dropdown + cancellation policy
+  gallery/     → photo grid (gradient placeholders with captions)
+
+HOTEL PAGES:
+  rooms/       → 4+ room types (name, occupancy, bed type, sqft, view, amenities, nightly rate, book button)
+  amenities/   → facilities grid with icons and descriptions
+  gallery/     → photo grid
+
+ECOMMERCE PAGES:
+  shop/        → products array at TOP LEVEL outside component + addToCart with useCart() + 6+ product cards
+  cart/        → full destructure: { items, removeFromCart, updateQuantity, getCartTotal, getTotalItems, clearCart }
+               → grid lg:grid-cols-3 layout + order summary sticky top-24 + Subtotal + Shipping Free + Total purple
+               → Checkout fires: window.dispatchEvent(new CustomEvent('openCheckout'))
+               → trust badges: SSL, Free returns, 24/7 support
+
+PORTFOLIO PAGES:
+  work/        → project grid with filters (category) + 6+ project cards (title, client, description, tech stack, year)
+  about/       → story + team + values + timeline
+  contact/     → contact form (name, email, subject, message) + address + hours + social links
+
+================================================================================
+STEP 6 — CART + CHECKOUT (ECOMMERCE ONLY)
+================================================================================
+
+CartContext (contexts/CartContext.tsx):
+  export { items, addToCart, removeFromCart, updateQuantity, getCartTotal, getTotalItems, clearCart }
+
+CheckoutModal (components/CheckoutModal.tsx):
+  - Mounted in app/layout.tsx inside <CartProvider>
+  - Listens: window.addEventListener('openCheckout', () => setIsOpen(true))
+  - States: isOpen, isProcessing, showSuccess, fullName, email, cardNumber, expiry, cvv
+  - On pay: 2s loading → showSuccess = true
+  - Success shows: "Thanks {fullName}!", email, total
+  - clearCart() called ONLY in handleContinueShopping
+
+Cart badge in Navigation:
+  const { getTotalItems } = useCart();
+  {getTotalItems() > 0 && (
+    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+      {getTotalItems()}
+    </span>
+  )}
+
+================================================================================
+STEP 7 — NAVIGATION COMPONENT RULES
+================================================================================
+
+'use client';
+- useState for mobile menu open/close
+- useEffect for scroll detection (isScrolled)
+- Brand icon from ADAPTIVE_ICON_MAP based on project type
+- Max 4 nav links
+- Mobile hamburger menu with slide-down panel
+- Sticky top-0 with backdrop-blur when scrolled
+
+ADAPTIVE_ICON_MAP:
+  GYM        → Dumbbell (green-400)
+  SCHOOL     → GraduationCap (purple-400)
+  RESTAURANT → Utensils (orange-400)
+  HOTEL      → Hotel (blue-400)
+  PORTFOLIO  → Sparkles (purple-400)
+  ECOMMERCE  → ShoppingBag (pink-400)
+  COFFEE     → Coffee (amber-400)
+  TECH       → Cpu (cyan-400)
+
+NAV LABEL OPTIONS (pick randomly, never repeat same set):
+  GYM:        A["Classes","Trainers","Membership"] B["Workouts","Coaches","Plans"] C["Sessions","Experts","Join"]
+  SCHOOL:     A["Programs","Admissions","Faculty"] B["Courses","Apply","Staff"] C["Academics","Enroll","Teachers"]
+  RESTAURANT: A["Menu","Reservations","Gallery"] B["Dining","Book","Photos"] C["Cuisine","Reserve","Moments"]
+  HOTEL:      A["Rooms","Amenities","Gallery","Book"] B["Suites","Services","Photos","Reserve"]
+  PORTFOLIO:  A["Work","About","Services","Contact"] B["Projects","Story","Expertise","Connect"]
+  ECOMMERCE:  A["Shop","Cart"] B["Store","Bag"] C["Browse","Checkout"]
+  COFFEE:     A["Shop","Brew Guide","Story"] B["Coffees","Recipes","About"]
+  TECH:       A["Features","Pricing","Contact"] B["Product","Plans","Connect"]
+
+================================================================================
+STEP 8 — FOOTER COMPONENT RULES
+================================================================================
+
+'use client';
+- 4 columns: Brand | Quick Links | Contact Info | Newsletter
+- Brand section: icon + name + tagline + social icons (Facebook, Twitter, Instagram, Youtube)
+- Quick Links: match nav links with hover:text-purple-400
+- Contact: Mail + Phone + MapPin icons with values
+- Newsletter: email input + subscribe button (gradient purple-to-pink)
+- Bottom bar: legal links left, copyright right
+- Copyright: © {new Date().getFullYear()} [Brand]. Crafted by EagleCode
+- Scroll-to-top button: fixed bottom-8 right-8, appears after scrollY > 500
+- Decorative: gradient top border, glowing orbs, grid pattern overlay
+
+================================================================================
+STEP 9 — BUSINESS NAME GENERATION
+================================================================================
+
+Generate UNIQUE names. NEVER reuse "Apex", "Summit Peak", "Golden Bean", "Crystal Bay".
+
+Word banks (combine randomly):
+  ADJECTIVES: Horizon, Starlight, Evergreen, Radiant, Luminous, Noble, Ember,
+              Whisper, Phoenix, Eclipse, Nova, Aurora, Mystic, Willow, Cedar, Violet
+  NOUNS:      Valley, Harbor, Ridge, Forge, Loft, Mill, Citadel, Haven, Orchard,
+              Grove, Falls, Crest, Peak, Bay
+  TYPES:
+    School:    Academy / Institute / Hub
+    Coffee:    Roastery / Brew / Beanery
+    Hotel:     Resort / Lodge / Villas
+    Gym:       Fitness / Athletic Club
+    Restaurant:Bistro / Kitchen / Grill
+    Ecommerce: Market / Boutique / Emporium
+
+Vary structure: 2 words or 3 words, different orderings each time.
+
+================================================================================
+STEP 10 — STYLING RULES (NO EXCEPTIONS)
+================================================================================
+
+BACKGROUNDS:
+  body           → bg-zinc-950 (or linear-gradient(135deg, #0f0f12, #1a1a2e))
+  section alt    → bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20
+  section dark   → bg-gradient-to-r from-purple-950/50 to-pink-950/50
+  navbar         → bg-gradient-to-r from-purple-950/80 via-zinc-950/80 to-pink-950/80 backdrop-blur-xl
+  footer         → bg-gradient-to-t from-black via-zinc-950 to-transparent
+
+FORBIDDEN BACKGROUNDS: bg-black, bg-white, bg-gray-900, bg-zinc-900 (solid)
+
+CARDS:   bg-white/5 backdrop-blur-sm border border-white/10 hover:border-purple-500/50 rounded-2xl
+HEADING: bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent
+BTN PRI: bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 rounded-full
+BTN OUT: border border-white/30 text-white hover:bg-white/10 rounded-full
+
+IMAGES:
+  Only image_1.jpg exists. Use ONLY in hero (app/page.tsx).
+  All other sections: icons, gradients, SVGs. NO other images.
+  Team avatars: gradient circles with initials only.
+
+================================================================================
+STEP 11 — TECHNICAL BUILD RULES
+================================================================================
+
+'use client' REQUIRED in any file with: useState, useEffect, onClick, onChange,
+  onSubmit, onError, useRouter, usePathname, window, document, localStorage
+
+'use client' FORBIDDEN in: app/layout.tsx, app/api/*/route.ts, lib/utils.ts,
+  tailwind.config.ts, postcss.config.mjs, types/index.ts
+
+ALL imports MUST be relative. NEVER use @/ aliases.
+  ✅ import Navigation from '../components/Navigation'
+  ❌ import Navigation from '@/components/Navigation'
+
+Import case MUST match filename exactly (Linux is case-sensitive):
+  ✅ import Footer from '../components/Footer'
+  ❌ import Footer from '../components/footer'
+
+onError MUST use optional chaining:
+  ✅ e.currentTarget.parentElement?.classList.add(...)
+  ❌ e.currentTarget.parentElement.classList.add(...)
+
+Icons from lucide-react only. Import ONLY icons actually used in the file.
+Plus and Minus ALWAYS required for FAQ accordion.
+
+================================================================================
+STEP 12 — REQUIRED CONFIG FILES
+================================================================================
+
+postcss.config.mjs:
+  export default { plugins: { tailwindcss: {}, autoprefixer: {} } }
+
+tailwind.config.ts:
+  import type { Config } from 'tailwindcss';
+  const config: Config = {
+    darkMode: 'class',
+    content: ['./pages/**/*.{js,ts,jsx,tsx,mdx}','./components/**/*.{js,ts,jsx,tsx,mdx}','./app/**/*.{js,ts,jsx,tsx,mdx}'],
+    theme: { extend: { animation: { gradient:'gradient 3s ease infinite', shimmer:'shimmer 3s ease infinite', float:'float 6s ease-in-out infinite', 'pulse-slow':'pulse-slow 3s ease-in-out infinite' }, keyframes: { gradient:{'0%,100%':{backgroundPosition:'0% 50%'},'50%':{backgroundPosition:'100% 50%'}}, shimmer:{'0%':{backgroundPosition:'0% 50%'},'50%':{backgroundPosition:'100% 50%'},'100%':{backgroundPosition:'0% 50%'}}, float:{'0%,100%':{transform:'translateY(0px)'},'50%':{transform:'translateY(-20px)'}}, 'pulse-slow':{'0%,100%':{opacity:'0.5'},'50%':{opacity:'1'}} } } },
+    plugins: [],
+  };
+  export default config;
+
+tsconfig.json:
+  { "compilerOptions": { "lib":["dom","dom.iterable","esnext"], "allowJs":true, "skipLibCheck":true, "strict":true, "noEmit":true, "module":"esnext", "moduleResolution":"bundler", "resolveJsonModule":true, "isolatedModules":true, "jsx":"preserve", "incremental":true, "plugins":[{"name":"next"}], "esModuleInterop":true }, "include":["next-env.d.ts",".next/types/**/*.ts","**/*.ts","**/*.tsx"], "exclude":["node_modules"] }
+
+package.json:
+  { "name":"project-app","version":"0.1.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"14.2.35","react":"^18.3.1","react-dom":"^18.3.1","lucide-react":"^0.446.0","clsx":"^2.1.1","tailwind-merge":"^2.5.0"},"devDependencies":{"@types/node":"^22.9.0","@types/react":"^18.3.12","@types/react-dom":"^18.3.1","autoprefixer":"^10.4.20","postcss":"^8.4.49","tailwindcss":"^3.4.15","typescript":"^5.6.3"} }
+
+lib/utils.ts:
+  import { type ClassValue, clsx } from "clsx";
+  import { twMerge } from "tailwind-merge";
+  export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+
+================================================================================
+STEP 13 — GLOBALS.CSS (COMPLETE — NEVER SIMPLIFY)
+================================================================================
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-zinc-950 text-white antialiased; }
+  * { border-color: hsl(var(--border)); }
+}
+
+@layer utilities {
+  html { scroll-behavior: smooth; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #18181b; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(to bottom, #a855f7, #ec4899); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(to bottom, #c084fc, #f472b6); }
+  ::selection { @apply bg-purple-500 text-white; }
+  *:focus-visible { @apply outline-none ring-2 ring-purple-500 ring-offset-2 ring-offset-zinc-950; }
+}
+
+@layer components {
+  .glass { @apply bg-white/5 backdrop-blur-md border border-white/10; }
+  .glass-hover { @apply transition-all duration-300 hover:bg-white/10 hover:border-white/20; }
+  .gradient-text { @apply bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent; background-size: 200% auto; animation: shimmer 3s ease infinite; }
+  .card-hover { @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-purple-500/20; }
+  .glow { @apply shadow-lg shadow-purple-500/25; }
+  .glow-hover { @apply transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/40; }
+  .hero-gradient { background: radial-gradient(ellipse at top, #1e1b4b, transparent), radial-gradient(ellipse at bottom, #4c1d95, transparent); }
+  .grid-pattern { background-image: linear-gradient(to right, #ffffff0a 1px, transparent 1px), linear-gradient(to bottom, #ffffff0a 1px, transparent 1px); background-size: 50px 50px; }
+  .btn { @apply px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300; }
+}
+
+@keyframes shimmer { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-20px); } }
+@keyframes pulse-slow { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+@keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
+.animate-gradient { background-size: 200% auto; animation: gradient 3s ease infinite; }
+
+================================================================================
+STEP 14 — OUTPUT FORMAT
+================================================================================
+
+Output ONLY raw valid JSON. No markdown, no explanations, no code blocks.
+Keys = file paths. Values = complete file content as escaped strings.
+Escape: double quotes as \" and newlines as \n.
+NEVER: raw newlines, unescaped quotes, trailing commas, backticks, ${} inside JSON strings.
+
+================================================================================
+STEP 15 — PRE-OUTPUT CHECKLIST
+================================================================================
+
+[ ] Project type detected correctly
+[ ] Navigation has MAX 4 links
+[ ] Every nav link has a matching page file
+[ ] 'use client' is line 1 in all client files
+[ ] app/layout.tsx has NO 'use client'
+[ ] All imports are relative (no @/ aliases)
+[ ] Import paths match filename case exactly
+[ ] onError uses optional chaining (?.)
+[ ] Hero uses /images/image_1.jpg ONLY
+[ ] No other pages use images
+[ ] All arrays fully written out (no truncation)
+[ ] All JSX sections fully written out (no "// ..." shortcuts)
+[ ] No placeholder content ("Coming Soon", "Lorem ipsum", "TODO")
+[ ] Business name is unique (not Apex/Summit Peak/Golden Bean/Crystal Bay)
+[ ] Footer copyright includes current year
+[ ] postcss.config.mjs uses .mjs extension
+[ ] globals.css includes all animations and utility classes
+[ ] Output is raw valid JSON only
+
+================================================================================
+FORBIDDEN SHORTCUTS — NEVER OUTPUT:
+================================================================================
+
+  // ... rest of component
+  // ... same as above
+  // ... more items here
+  {/* ... */}
+  /* rest of styles */
+  [same structure as above]
+  // See above for content
+
+A truncated file WILL fail to compile. Always write complete files.
+If approaching token limits: reduce comments → reduce whitespace → reduce array items.
+NEVER truncate. A shorter complete file beats a longer broken file.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 🚨 NEVER GENERATE PAGES LIKE THIS - THIS IS FORBIDDEN 🚨
 '''tsx
 // ❌ FORBIDDEN - Empty placeholder page
@@ -303,6 +780,38 @@ export default function ProjectsPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+## CRITICAL RULE: MAXIMUM 4 PAGES TOTAL
+
+The website MUST have NO MORE THAN 4 pages total.
+
+### Navigation Rules:
+- The navigation bar can have MAXIMUM 3 links (brand/logo counts as home link)
+- Example valid navigation: [Brand] - Classes - Trainers - Membership
+- Example valid navigation: [Brand] - Shop - Cart
+- Example valid navigation: [Brand] - Menu - Reservations - Contact
+- TOTAL pages created = 4 (home page + 3 other pages)
+
+### Page Structure:
+- app/page.tsx (home) + 3 other pages maximum
+- DO NOT create page 5, 6, 7, etc.
+- Each page MUST have rich content (hero, features, grid, CTA)
+
+
+
+
+
 
 
 
@@ -7231,9 +7740,7 @@ components/
 components/ui/
   Button.tsx                # Reusable button with variants (primary, outline, ghost)
   Card.tsx                  # Card component with hover effects
-  Input.tsx                 # Form input component
-  Modal.tsx                 # Modal dialog component
-  Dropdown.tsx              # Dropdown menu component
+  
 
 components/layout/
   Header.tsx                # Header wrapper
