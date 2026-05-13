@@ -3389,7 +3389,6 @@ CRITICAL RULES:
 
 
 
-            # ========== JSON PARSING ==========
             try:
                 clean_text = clean_json_response(full_response)
 
@@ -3397,10 +3396,17 @@ CRITICAL RULES:
                     project_files: Dict[str, str] = json.loads(clean_text)
                     print(f"✅ JSON parsed successfully on attempt {retry_count + 1}")
                     
-                    # ========== INSERT IMAGE WAITING CODE HERE ==========
+                    # FIX: Convert list to dict if needed
+                    if isinstance(project_files, list):
+                        print(f"⚠️ AI returned LIST instead of dict")
+                        if project_files and isinstance(project_files[0], (list, tuple)) and len(project_files[0]) == 2:
+                            project_files = dict(project_files)
+                            print(f"✅ Converted list to dict")
+                    
+                    # WAIT FOR IMAGES
                     await websocket.send_json({
                         "type": "status",
-                        "message": "⏳ Waiting for images to finish processing..."
+                        "message": "⏳ Waiting for images..."
                     })
                     
                     try:
@@ -3411,16 +3417,27 @@ CRITICAL RULES:
                             "message": f"✅ Images ready! Found {len([k for k in image_data if image_data[k]])}/2 images"
                         })
                     except asyncio.TimeoutError:
-                        print("⚠️ Image search timeout, continuing with available images")
+                        print("⚠️ Image search timeout")
                         await websocket.send_json({
                             "type": "status",
-                            "message": "⚠️ Image search timeout, using gradient cards for missing images"
+                            "message": "⚠️ Image timeout, using gradients"
                         })
                     except Exception as e:
-                        print(f"⚠️ Image task error: {e}")
-                    # ========== END OF IMAGE WAITING CODE ==========
+                        print(f"⚠️ Image error: {e}")
                     
                     break  # Exit retry loop
+                    
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
                     
                 except json.JSONDecodeError as e1:
                     print(f"⚠️ Initial parse failed: {e1}")
@@ -3506,18 +3523,33 @@ CRITICAL RULES:
 
 
 
-
-
-
-
-
-
-
-
-
-
+        # ========== ENSURE project_files IS A DICT ==========
+        if isinstance(project_files, list):
+                print(f"⚠️ project_files is a list after retry loop — converting...")
+                converted = {}
+                for item in project_files:
+                        if isinstance(item, (list, tuple)) and len(item) == 2:
+                                converted[item[0]] = item[1]
+                        elif isinstance(item, dict):
+                                converted.update(item)
+                project_files = converted
+                print(f"✅ Converted list to dict with {len(project_files)} entries")
+        
+        if not isinstance(project_files, dict):
+                print(f"❌ project_files is unexpected type: {type(project_files)}")
+                await websocket.send_json({
+                        "type": "error",
+                        "message": "Generated project has invalid format. Please try again."
+                })
+                return
+        
         # ========== REPLACE NAME PLACEHOLDERS ==========
         for file_path, content in project_files.items():
+
+            
+            
+            
+            
             if isinstance(content, str):
                 content = content.replace("{{PROJECT_NAME}}", project_name)
                 content = content.replace("[CREATE_A_BRAND_NAME_BASED_ON_PROJECT_TYPE]", project_name)

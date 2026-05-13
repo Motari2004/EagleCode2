@@ -1,0 +1,4 @@
+{
+  "package.json": "{\n  \"name\": \"aspen-summit-ecommerce\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"dev\": \"next dev\",\n    \"build\": \"next build\",\n    \"start\": \"next start\"\n  },\n  \"dependencies\": {\n    \"next\": \"14.2.35\",\n    \"react\": \"^18.3.1\",\n    \"react-dom\": \"^18.3.1\",\n    \"lucide-react\": \"^0.446.0\",\n    \"clsx\": \"^2.1.1\",\n    \"tailwind-merge\": \"^2.5.0\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.9.0\",\n    \"@types/react\": \"^18.3.12\",\n    \"@types/react-dom\": \"^18.3.1\",\n    \"autoprefixer\": \"^10.4.20\",\n    \"postcss\": \"^8.4.49\",\n    \"tailwindcss\": \"^3.4.15\",\n    \"typescript\": \"^5.6.3\"\n  }\n}",
+  "postcss.config.mjs": "export default { plugins: { tailwindcss: {}, autoprefixer: {} } }",
+  "tailwind.config.ts": "import type { Config } from 'tailwindcss';\nconst

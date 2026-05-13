@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOIR | Curated Essentials</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['DM Sans', 'sans-serif'],
+                        serif: ['Cormorant Garamond', 'serif'],
+                    },
+                    colors: {
+                        noir: {
+                            50: '#fafaf9',
+                            100: '#f5f5f4',
+                            200: '#e7e5e4',
+                            300: '#d6d3d1',
+                            400: '#a8a29e',
+                            500: '#78716c',
+                            600: '#57534e',
+                            700: '#44403c',
+                            800: '#292524',
+                            900: '#1c1917',
+                            950: '#0c0a09',
+                        },
+                        gold: {
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #44403c; }
+        
+        /* Hide scrollbar for horizontal scroll */
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Animations */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        
+        .animate-fade-up { animation: fadeUp 0.8s ease-out forwards; }
+        .animate-fade-in { animation: fadeIn 0.6s ease-out forwards; }
+        .animate-slide-right { animation: slideInRight 0.5s ease-out forwards; }
+        .animate-scale { animation: scaleIn 0.5s ease-out forwards; }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        
+        /* Stagger delays */
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+        .delay-300 { animation-delay: 0.3s; }
+        .delay-400 { animation-delay: 0.4s; }
+        .delay-500 { animation-delay: 0.5s; }
+        
+        /* Masonry grid */
+        .masonry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-auto-rows: 10px;
+        }
+        
+        /* Product card sizes */
+        .product-tall { grid-row: span 35; }
+        .product-wide { grid-row: span 25; }
+        .product-normal { grid-row: span 30; }
+        
+        /* Glass morphism */
+        .glass-dark {
+            background: rgba(12, 10, 9, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .glass-light {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        
+        /* Image hover zoom */
+        .img-zoom {
+            transition: transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        .group:hover .img-zoom {
+            transform: scale(1.08);
+        }
+        
+        /* Text reveal on hover */
+        .reveal-text {
+            clip-path: inset(0 100% 0 0);
+            transition: clip-path 0.5s ease;
+        }
+        .group:hover .reveal-text {
+            clip-path: inset(0 0 0 0);
+        }
+        
+        /* Custom checkbox */
+        .custom-checkbox {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border: 1.5px solid #d6d3d1;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .custom-checkbox:checked {
+            background: #1c1917;
+            border-color: #1c1917;
+        }
+        .dark .custom-checkbox:checked {
+            background: #fafaf9;
+            border-color: #fafaf9;
+        }
+        .custom-checkbox:checked::after {
+            content: '';
+            display: block;
+            width: 5px;
+            height: 9px;
+            border: solid white;
+            border-width: 0 1.5px 1.5px 0;
+            transform: rotate(45deg);
+            margin: 2px 0 0 5px;
+        }
+        .dark .custom-checkbox:checked::after {
+            border-color: #1c1917;
+        }
+        
+        /* Loading skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, #e7e5e4 25%, #f5f5f4 50%, #e7e5e4 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        .dark .skeleton {
+            background: linear-gradient(90deg, #292524 25%, #44403c 50%, #292524 75%);
+            background-size: 200% 100%;
+        }
+        
+        /* Floating cart button pulse */
+        .cart-pulse {
+            position: relative;
+        }
+        .cart-pulse::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 2px solid #1c1917;
+            animation: ripple 2s infinite;
+        }
+        @keyframes ripple {
+            0% { transform: scale(1); opacity: 0.5; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+        
+        /* Smooth section transitions */
+        section {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        section.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="bg-noir-50 dark:bg-noir-950 text-noir-900 dark:text-noir-100 font-sans antialiased selection:bg-noir-900 selection:text-white dark:selection:bg-noir-100 dark:selection:text-noir-900">
+
+    <!-- Navigation -->
+    <nav id="main-nav" class="fixed w-full z-50 transition-all duration-500">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <!-- Logo -->
+                <a href="#" class="flex items-center gap-3 group">
+                    <div class="w-10 h-10 bg-noir-900 dark:bg-noir-100 rounded-sm flex items-center justify-center text-noir-50 dark:text-noir-950 font-serif text-xl italic font-bold transition-transform group-hover:rotate-12">N</div>
+                    <span class="font-serif text-2xl font-semibold tracking-wide">NOIR</span>
+                </a>
+
+                <!-- Desktop Links -->
+                <div class="hidden md:flex items-center gap-10 text-sm font-medium tracking-wide uppercase">
+                    <a href="#shop" class="hover:text-gold-600 transition-colors relative group">
+                        Shop
+                        <span class="absolute -bottom-1 left-0 w-0 h-px bg-gold-500 transition-all group-hover:w-full"></span>
+                    </a>
+                    <a href="#collections" class="hover:text-gold-600 transition-colors relative group">
+                        Collections
+                        <span class="absolute -bottom-1 left-0 w-0 h-px bg-gold-500 transition-all group-hover:w-full"></span>
+                    </a>
+                    <a href="#about" class="hover:text-gold-600 transition-colors relative group">
+                        Story
+                        <span class="absolute -bottom-1 left-0 w-0 h-px bg-gold-500 transition-all group-hover:w-full"></span>
+                    </a>
+                    <a href="#journal" class="hover:text-gold-600 transition-colors relative group">
+                        Journal
+                        <span class="absolute -bottom-1 left-0 w-0 h-px bg-gold-500 transition-all group-hover:w-full"></span>
+                    </a>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-5">
+                    <button onclick="toggleSearch()" class="w-10 h-10 flex items-center justify-center hover:bg-noir-100 dark:hover:bg-noir-800 rounded-full transition-colors">
+                        <i class="fas fa-search text-sm"></i>
+                    </button>
+                    <button onclick="toggleTheme()" class="w-10 h-10 flex items-center justify-center hover:bg-noir-100 dark:hover:bg-noir-800 rounded-full transition-colors">
+                        <i class="fas fa-moon dark:hidden text-sm"></i>
+                        <i class="fas fa-sun hidden dark:block text-sm text-gold-400"></i>
+                    </button>
+                    <button onclick="toggleCart()" class="relative w-10 h-10 flex items-center justify-center hover:bg-noir-100 dark:hover:bg-noir-800 rounded-full transition-colors cart-pulse" id="cart-trigger">
+                        <i class="fas fa-shopping-bag text-sm"></i>
+                        <span id="nav-cart-count" class="absolute -top-1 -right-1 w-5 h-5 bg-gold-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center hidden">0</span>
+                    </button>
+                    <button onclick="toggleMobileMenu()" class="md:hidden w-10 h-10 flex items-center justify-center">
+                        <i class="fas fa-bars text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Search Overlay -->
+    <div id="search-overlay" class="fixed inset-0 z-50 bg-noir-950/95 backdrop-blur-xl hidden opacity-0 transition-opacity duration-300">
+        <div class="h-full flex flex-col items-center justify-center px-6">
+            <button onclick="toggleSearch()" class="absolute top-8 right-8 text-noir-400 hover:text-white transition-colors">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+            <div class="w-full max-w-2xl">
+                <input type="text" id="search-input" placeholder="Search our collection..." 
+                    class="w-full bg-transparent border-b-2 border-noir-700 text-3xl md:text-5xl font-serif text-white placeholder-noir-600 py-4 outline-none focus:border-gold-500 transition-colors text-center">
+                <p class="text-noir-500 text-center mt-6 text-sm tracking-widest uppercase">Press Enter to search</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Menu -->
+    <div id="mobile-menu" class="fixed inset-0 z-50 bg-noir-50 dark:bg-noir-950 hidden">
+        <div class="h-full flex flex-col p-8">
+            <div class="flex justify-between items-center mb-12">
+                <span class="font-serif text-2xl font-semibold">NOIR</span>
+                <button onclick="toggleMobileMenu()" class="w-12 h-12 flex items-center justify-center">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="flex-1 flex flex-col justify-center space-y-8">
+                <a href="#shop" onclick="toggleMobileMenu()" class="font-serif text-4xl hover:text-gold-600 transition-colors">Shop</a>
+                <a href="#collections" onclick="toggleMobileMenu()" class="font-serif text-4xl hover:text-gold-600 transition-colors">Collections</a>
+                <a href="#about" onclick="toggleMobileMenu()" class="font-serif text-4xl hover:text-gold-600 transition-colors">Our Story</a>
+                <a href="#journal" onclick="toggleMobileMenu()" class="font-serif text-4xl hover:text-gold-600 transition-colors">Journal</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hero -->
+    <section id="hero" class="relative min-h-screen flex items-end pb-20 lg:pb-32 overflow-hidden">
+        <div class="absolute inset-0">
+            <img src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1920&h=1080&fit=crop" alt="Hero" class="w-full h-full object-cover">
+            <div class="absolute inset-0 bg-gradient-to-t from-noir-950 via-noir-950/50 to-transparent"></div>
+        </div>
+        
+        <div class="relative max-w-7xl mx-auto px-6 lg:px-8 w-full">
+            <div class="max-w-2xl animate-fade-up">
+                <p class="text-gold-400 text-sm tracking-[0.3em] uppercase mb-4 font-medium">Spring / Summer 2026</p>
+                <h1 class="font-serif text-5xl md:text-7xl lg:text-8xl font-medium leading-[0.9] mb-8 text-white">
+                    Curated<br>
+                    <span class="italic text-noir-300">Essentials</span>
+                </h1>
+                <p class="text-noir-300 text-lg md:text-xl max-w-md mb-10 leading-relaxed">
+                    Timeless pieces for the modern individual. Crafted with intention, designed to endure.
+                </p>
+                <div class="flex flex-wrap gap-4">
+                    <a href="#shop" class="px-10 py-4 bg-white text-noir-950 font-medium tracking-wide hover:bg-gold-400 transition-all duration-300 text-sm uppercase">
+                        Explore Collection
+                    </a>
+                    <a href="#about" class="px-10 py-4 border border-white/30 text-white font-medium tracking-wide hover:bg-white/10 transition-all duration-300 text-sm uppercase">
+                        Our Story
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scroll indicator -->
+        <div class="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/50 animate-float">
+            <div class="w-px h-16 bg-gradient-to-b from-transparent via-current to-transparent"></div>
+        </div>
+    </section>
+
+    <!-- Categories Horizontal Scroll -->
+    <section id="collections" class="py-20 lg:py-32">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="flex items-end justify-between mb-12">
+                <div>
+                    <p class="text-gold-600 text-sm tracking-[0.2em] uppercase mb-2 font-medium">Browse</p>
+                    <h2 class="font-serif text-4xl md:text-5xl font-medium">Collections</h2>
+                </div>
+                <div class="hidden md:flex gap-2">
+                    <button onclick="scrollCategories(-1)" class="w-12 h-12 border border-noir-200 dark:border-noir-700 rounded-full flex items-center justify-center hover:bg-noir-900 hover:text-white dark:hover:bg-noir-100 dark:hover:text-noir-900 transition-all">
+                        <i class="fas fa-arrow-left text-sm"></i>
+                    </button>
+                    <button onclick="scrollCategories(1)" class="w-12 h-12 border border-noir-200 dark:border-noir-700 rounded-full flex items-center justify-center hover:bg-noir-900 hover:text-white dark:hover:bg-noir-100 dark:hover:text-noir-900 transition-all">
+                        <i class="fas fa-arrow-right text-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="categories-scroll" class="flex gap-6 overflow-x-auto hide-scroll px-6 lg:px-8 pb-4 snap-x snap-mandatory">
+            <!-- Category cards injected by JS -->
+        </div>
+    </section>
+
+    <!-- Shop Section -->
+    <section id="shop" class="py-20 lg:py-32 bg-white dark:bg-noir-900">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="flex flex-col lg:flex-row gap-12">
+                
+                <!-- Sidebar Filters -->
+                <aside class="lg:w-64 flex-shrink-0">
+                    <div class="lg:sticky lg:top-24 space-y-10">
+                        <div>
+                            <h3 class="font-serif text-2xl font-medium mb-6">Filter</h3>
+                            <div class="space-y-3" id="category-filters">
+                                <!-- Injected by JS -->
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 class="text-sm font-medium tracking-wide uppercase mb-4 text-noir-500">Price Range</h4>
+                            <div class="space-y-4">
+                                <input type="range" id="price-range" min="0" max="500" value="500" class="w-full accent-noir-900 dark:accent-noir-100">
+                                <div class="flex justify-between text-sm text-noir-500">
+                                    <span>$0</span>
+                                    <span id="price-display">$500</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 class="text-sm font-medium tracking-wide uppercase mb-4 text-noir-500">Sort By</h4>
+                            <select id="sort-select" class="w-full bg-transparent border border-noir-200 dark:border-noir-700 rounded-lg px-4 py-3 text-sm outline-none focus:border-gold-500 transition-colors">
+                                <option value="featured">Featured</option>
+                                <option value="newest">Newest</option>
+                                <option value="price-asc">Price: Low to High</option>
+                                <option value="price-desc">Price: High to Low</option>
+                            </select>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Product Grid -->
+                <div class="flex-1">
+                    <div class="flex items-center justify-between mb-8">
+                        <p class="text-noir-500 text-sm"><span id="product-count" class="font-medium text-noir-900 dark:text-noir-100">0</span> products</p>
+                        <button onclick="toggleMobileFilters()" class="lg:hidden text-sm font-medium flex items-center gap-2">
+                            <i class="fas fa-sliders-h"></i> Filter
+                        </button>
+                    </div>
+
+                    <div id="products-container" class="grid grid-cols-1 sm:grid-cols-2 gap-6 lg:gap-8">
+                        <!-- Products injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Featured Editorial -->
+    <section id="about" class="py-20 lg:py-32 relative overflow-hidden">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="grid lg:grid-cols-2 gap-16 items-center">
+                <div class="relative">
+                    <div class="aspect-[4/5] overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&h=1000&fit=crop" alt="Editorial" class="w-full h-full object-cover img-zoom">
+                    </div>
+                    <div class="absolute -bottom-6 -right-6 w-48 h-48 bg-gold-500/20 -z-10"></div>
+                    <div class="absolute -top-6 -left-6 w-48 h-48 border border-noir-200 dark:border-noir-700 -z-10"></div>
+                </div>
+                <div class="lg:pl-12">
+                    <p class="text-gold-600 text-sm tracking-[0.2em] uppercase mb-4 font-medium">Our Philosophy</p>
+                    <h2 class="font-serif text-4xl md:text-5xl font-medium mb-8 leading-tight">
+                        Less, But<br>
+                        <span class="italic text-noir-400">Better</span>
+                    </h2>
+                    <div class="space-y-6 text-noir-600 dark:text-noir-300 leading-relaxed">
+                        <p>We believe in the power of curation. Every item in our collection is selected not just for its aesthetic appeal, but for its ability to enhance daily life through thoughtful design and exceptional quality.</p>
+                        <p>Our partnerships with independent artisans and sustainable manufacturers ensure that each purchase supports ethical production practices while delivering products that stand the test of time.</p>
+                    </div>
+                    <div class="mt-10 grid grid-cols-3 gap-8">
+                        <div>
+                            <div class="font-serif text-3xl font-medium mb-1">100%</div>
+                            <div class="text-xs text-noir-500 uppercase tracking-wider">Sustainable</div>
+                        </div>
+                        <div>
+                            <div class="font-serif text-3xl font-medium mb-1">50+</div>
+                            <div class="text-xs text-noir-500 uppercase tracking-wider">Artisan Partners</div>
+                        </div>
+                        <div>
+                            <div class="font-serif text-3xl font-medium mb-1">12k</div>
+                            <div class="text-xs text-noir-500 uppercase tracking-wider">Happy Clients</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Journal -->
+    <section id="journal" class="py-20 lg:py-32 bg-noir-100 dark:bg-noir-900">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <p class="text-gold-600 text-sm tracking-[0.2em] uppercase mb-2 font-medium">Stories</p>
+                <h2 class="font-serif text-4xl md:text-5xl font-medium">From The Journal</h2>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <article class="group cursor-pointer">
+                    <div class="aspect-[4/3] overflow-hidden mb-6">
+                        <img src="https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=600&h=450&fit=crop" alt="Journal 1" class="w-full h-full object-cover img-zoom">
+                    </div>
+                    <p class="text-xs text-noir-500 uppercase tracking-wider mb-2">Design • May 2026</p>
+                    <h3 class="font-serif text-2xl font-medium group-hover:text-gold-600 transition-colors">The Art of Minimalist Living Spaces</h3>
+                </article>
+                <article class="group cursor-pointer">
+                    <div class="aspect-[4/3] overflow-hidden mb-6">
+                        <img src="https://images.unsplash.com/photo-1558171813-4c088753af8f?w=600&h=450&fit=crop" alt="Journal 2" class="w-full h-full object-cover img-zoom">
+                    </div>
+                    <p class="text-xs text-noir-500 uppercase tracking-wider mb-2">Fashion • April 2026</p>
+                    <h3 class="font-serif text-2xl font-medium group-hover:text-gold-600 transition-colors">Building a Capsule Wardrobe That Lasts</h3>
+                </article>
+                <article class="group cursor-pointer">
+                    <div class="aspect-[4/3] overflow-hidden mb-6">
+                        <img src="https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=600&h=450&fit=crop" alt="Journal 3" class="w-full h-full object-cover img-zoom">
+                    </div>
+                    <p class="text-xs text-noir-500 uppercase tracking-wider mb-2">Lifestyle • March 2026</p>
+                    <h3 class="font-serif text-2xl font-medium group-hover:text-gold-600 transition-colors">Sustainable Materials in Modern Design</h3>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- Instagram Feed -->
+    <section class="py-20 lg:py-32">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8 text-center mb-12">
+            <p class="text-gold-600 text-sm tracking-[0.2em] uppercase mb-2 font-medium">Community</p>
+            <h2 class="font-serif text-4xl font-medium">@noir.curated</h2>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-1">
+            <div class="aspect-square overflow-hidden group cursor-pointer"><img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&h=400&fit=crop" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div>
+            <div class="aspect-square overflow-hidden group cursor-pointer"><img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div>
+            <div class="aspect-square overflow-hidden group cursor-pointer"><img src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div>
+            <div class="aspect-square overflow-hidden group cursor-pointer"><img src="https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=400&h=400&fit=crop" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div>
+            <div class="aspect-square overflow-hidden group cursor-pointer"><img src="https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&h=400&fit=crop" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div>
+            <div class="aspect-square overflow-hidden group cursor-pointer"><img src="https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=400&fit=crop" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"></div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-noir-950 text-noir-400 py-20">
+        <div class="max-w-7xl mx-auto px-6 lg:px-8">
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
+                <div class="lg:col-span-1">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-8 h-8 bg-noir-100 rounded-sm flex items-center justify-center text-noir-950 font-serif text-lg italic font-bold">N</div>
+                        <span class="font-serif text-xl font-semibold text-white">NOIR</span>
+                    </div>
+                    <p class="text-sm leading-relaxed mb-6">Curated essentials for the modern individual. Quality over quantity, always.</p>
+                    <div class="flex gap-4">
+                        <a href="#" class="w-10 h-10 rounded-full border border-noir-800 flex items-center justify-center hover:border-gold-500 hover:text-gold-500 transition-all"><i class="fab fa-instagram text-sm"></i></a>
+                        <a href="#" class="w-10 h-10 rounded-full border border-noir-800 flex items-center justify-center hover:border-gold-500 hover:text-gold-500 transition-all"><i class="fab fa-pinterest text-sm"></i></a>
+                        <a href="#" class="w-10 h-10 rounded-full border border-noir-800 flex items-center justify-center hover:border-gold-500 hover:text-gold-500 transition-all"><i class="fab fa-twitter text-sm"></i></a>
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-white font-medium mb-6 text-sm uppercase tracking-wider">Shop</h4>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">New Arrivals</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Best Sellers</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Accessories</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Home</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Sale</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-medium mb-6 text-sm uppercase tracking-wider">Support</h4>
+                    <ul class="space-y-3 text-sm">
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Shipping & Returns</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Size Guide</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">FAQ</a></li>
+                        <li><a href="#" class="hover:text-gold-500 transition-colors">Contact Us</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-white font-medium mb-6 text-sm uppercase tracking-wider">Newsletter</h4>
+                    <p class="text-sm mb-4">Subscribe for early access to new collections and exclusive offers.</p>
+                    <form onsubmit="event.preventDefault(); showToast('Welcome to the club.');" class="flex gap-2">
+                        <input type="email" placeholder="Your email" class="flex-1 bg-noir-900 border border-noir-800 rounded-lg px-4 py-3 text-sm outline-none focus:border-gold-500 transition-colors" required>
+                        <button type="submit" class="px-4 py-3 bg-white text-noir-950 rounded-lg hover:bg-gold-400 transition-colors">
+                            <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="border-t border-noir-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-noir-600">
+                <p> NOIR Curated. All rights reserved.</p>
+                <div class="flex gap-6">
+                    <a href="#" class="hover:text-white transition-colors">Privacy</a>
+                    <a href="#" class="hover:text-white transition-colors">Terms</a>
+                    <a href="#" class="hover:text-white transition-colors">Cookies</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Cart Drawer -->
+    <div id="cart-overlay" class="fixed inset-0 bg-noir-950/60 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity duration-300" onclick="toggleCart()"></div>
+    <div id="cart-drawer" class="fixed top-0 right-0 h-full w-full sm:w-[420px] bg-white dark:bg-noir-950 z-50 shadow-2xl transform translate-x-full transition-transform duration-500 ease-out flex flex-col">
+        <div class="p-6 border-b border-noir-100 dark:border-noir-800 flex items-center justify-between">
+            <h2 class="font-serif text-2xl font-medium">Your Cart <span id="cart-count-badge" class="text-noir-400 text-base font-sans">(0)</span></h2>
+            <button onclick="toggleCart()" class="w-10 h-10 flex items-center justify-center hover:bg-noir-100 dark:hover:bg-noir-800 rounded-full transition-colors">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div id="cart-items-container" class="flex-1 overflow-y-auto p-6 space-y-4">
+            <div id="empty-cart-msg" class="h-full flex flex-col items-center justify-center text-center">
+                <div class="w-20 h-20 bg-noir-100 dark:bg-noir-800 rounded-full flex items-center justify-center mb-4">
+                    <i class="fas fa-shopping-bag text-2xl text-noir-400"></i>
+                </div>
+                <p class="font-medium text-lg mb-2">Your cart is empty</p>
+                <p class="text-sm text-noir-500 mb-6">Discover something extraordinary</p>
+                <button onclick="toggleCart()" class="px-6 py-3 bg-noir-900 dark:bg-noir-100 text-white dark:text-noir-950 rounded-full text-sm font-medium hover:bg-gold-500 transition-colors">
+                    Continue Shopping
+                </button>
+            </div>
+        </div>
+
+        <div id="cart-footer" class="border-t border-noir-100 dark:border-noir-800 p-6 hidden">
+            <div class="space-y-3 mb-6">
+                <div class="flex justify-between text-sm">
+                    <span class="text-noir-500">Subtotal</span>
+                    <span id="cart-subtotal" class="font-medium">$0.00</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-noir-500">Shipping</span>
+                    <span class="text-green-600 font-medium">Calculated at checkout</span>
+                </div>
+                <div class="border-t border-noir-100 dark:border-noir-800 pt-3 flex justify-between">
+                    <span class="font-medium">Total</span>
+                    <span id="cart-total" class="font-serif text-xl font-medium">$0.00</span>
+                </div>
+            </div>
+            <button onclick="checkout()" class="w-full py-4 bg-noir-900 dark:bg-noir-100 text-white dark:text-noir-950 rounded-full font-medium hover:bg-gold-500 dark:hover:bg-gold-400 transition-all text-sm uppercase tracking-wider">
+                Checkout
+            </button>
+            <button onclick="toggleCart()" class="w-full py-3 mt-3 text-sm text-noir-500 hover:text-noir-900 dark:hover:text-noir-100 transition-colors">
+                Continue Shopping
+            </button>
+        </div>
+    </div>
+
+    <!-- Product Modal -->
+    <div id="product-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-noir-950/80 backdrop-blur-sm" onclick="closeProductModal()"></div>
+        <div class="absolute inset-4 md:inset-12 lg:inset-20 bg-white dark:bg-noir-950 rounded-2xl overflow-hidden flex flex-col md:flex-row animate-scale shadow-2xl">
+            <button onclick="closeProductModal()" class="absolute top-4 right-4 z-10 w-10 h-10 bg-white/80 dark:bg-noir-900/80 backdrop-blur rounded-full flex items-center justify-center hover:bg-white transition-colors">
+                <i class="fas fa-times"></i>
+            </button>
+            <div id="modal-image-container" class="md:w-1/2 bg-noir-100 dark:bg-noir-900"></div>
+            <div id="modal-details" class="md:w-1/2 p-8 lg:p-12 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-50 space-y-3 pointer-events-none"></div>
+
+    <!-- Floating Action Button (Mobile) -->
+    <button onclick="toggleCart()" id="floating-cart" class="fixed bottom-6 right-6 w-14 h-14 bg-noir-900 dark:bg-white text-white dark:text-noir-950 rounded-full shadow-2xl flex items-center justify-center z-40 md:hidden transform scale-0 transition-transform duration-300">
+        <i class="fas fa-shopping-bag"></i>
+        <span id="floating-cart-count" class="absolute -top-1 -right-1 w-5 h-5 bg-gold-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center hidden">0</span>
+    </button>
+
+    <script>
+        // Data
+        const products = [
+            { id: 1, name: "The Essential Tote", category: "accessories", price: 185, image: "https://images.unsplash.com/photo-1544816155-12df9643f363?w=600&h=750&fit=crop", badge: "new", description: "Handcrafted from full-grain Italian leather. Spacious interior with dedicated laptop compartment and magnetic closure.", specs: ["100% Full-grain leather", "15\" laptop compartment", "Brass hardware", "Made in Italy"] },
+            { id: 2, name: "Ceramic Vase Collection", category: "home", price: 95, image: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=600&h=600&fit=crop", description: "Minimalist ceramic vases in earth tones. Perfect for dried botanicals or as standalone sculptural pieces.", specs: ["Hand-thrown stoneware", "Matte glaze finish", "Set of 3", "Dishwasher safe"] },
+            { id: 3, name: "Merino Wool Sweater", category: "fashion", price: 245, image: "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=600&h=800&fit=crop", badge: "bestseller", description: "Ultra-soft merino wool in a relaxed fit. Naturally temperature-regulating and odor-resistant.", specs: ["100% Merino wool", "Relaxed fit", "Ribbed cuffs", "Made in Scotland"] },
+            { id: 4, name: "Minimalist Desk Lamp", category: "home", price: 320, image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=600&h=500&fit=crop", description: "Architectural desk lamp with adjustable arm and warm LED technology. Touch dimmer with memory function.", specs: ["Adjustable brass arm", "Warm 2700K LED", "Touch dimmer", "5-year warranty"] },
+            { id: 5, name: "Linen Table Runner", category: "home", price: 68, image: "https://images.unsplash.com/photo-1449247709967-d4461a6a6103?w=600&h=400&fit=crop", description: "Washed Belgian linen with natural texture. Gets softer with every wash.", specs: ["100% Belgian linen", "Pre-washed", "72\" x 16\"", "Machine washable"] },
+            { id: 6, name: "Leather Notebook", category: "accessories", price: 55, image: "https://images.unsplash.com/photo-1544816155-12df9643f363?w=600&h=700&fit=crop", badge: "limited", description: "Refillable leather journal with cream-colored archival paper. Ages beautifully with use.", specs: ["Vegetable-tanned leather", "240 pages", "A5 size", "Ribbon bookmark"] },
+            { id: 7, name: "Cashmere Scarf", category: "fashion", price: 175, image: "https://images.unsplash.com/photo-1520903920243-00d872a2d1c9?w=600&h=900&fit=crop", description: "Grade-A cashmere in a versatile neutral tone. Lightweight warmth for year-round use.", specs: ["100% Grade-A cashmere", "78\" x 28\"", "Hand-finished edges", "Dry clean only"] },
+            { id: 8, name: "Walnut Serving Board", category: "home", price: 120, image: "https://images.unsplash.com/photo-1603199506016-b9a594b593c0?w=600&h=450&fit=crop", description: "Solid black walnut with live edge detail. Food-safe oil finish.", specs: ["Solid black walnut", "Live edge detail", "16\" x 12\"", "Food-safe finish"] },
+            { id: 9, name: "Silk Sleep Mask", category: "fashion", price: 45, image: "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=600&h=500&fit=crop", description: "Pure mulberry silk with adjustable strap. Blocks light completely for deeper rest.", specs: ["22 momme silk", "Adjustable strap", "Hypoallergenic", "Gift boxed"] },
+            { id: 10, name: "Brass Candle Holder", category: "home", price: 85, image: "https://images.unsplash.com/photo-1602028915047-37269d1a73f7?w=600&h=700&fit=crop", description: "Solid brass candle holder with weighted base. Holds standard taper candles.", specs: ["Solid brass", "Weighted base", "Felt bottom", "3.5\" diameter"] },
+            { id: 11, name: "Canvas Weekender", category: "accessories", price: 295, image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&h=500&fit=crop", badge: "new", description: "Waxed canvas weekender with leather trim. Perfect for short trips or gym sessions.", specs: ["Waxed cotton canvas", "Leather trim", "Shoe compartment", "Detachable strap"] },
+            { id: 12, name: "Olive Oil Set", category: "home", price: 78, image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=600&h=800&fit=crop", description: "Cold-pressed extra virgin olive oils from small-batch producers in Tuscany and Andalusia.", specs: ["Two 500ml bottles", "Cold-pressed", "Single-origin", "Gift boxed"] }
+        ];
+
+        const categories = [
+            { name: "All", slug: "all", image: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=500&fit=crop", count: 12 },
+            { name: "Fashion", slug: "fashion", image: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=500&fit=crop", count: 4 },
+            { name: "Home", slug: "home", image: "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=400&h=500&fit=crop", count: 6 },
+            { name: "Accessories", slug: "accessories", image: "https://images.unsplash.com/photo-1523170335256-f5ed11844a49?w=400&h=500&fit=crop", count: 3 },
+            { name: "Wellness", slug: "wellness", image: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400&h=500&fit=crop", count: 2 }
+        ];
+
+        let cart = [];
+        let currentCategory = 'all';
+        let currentSort = 'featured';
+        let maxPrice = 500;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderCategories();
+            renderFilters();
+            renderProducts();
+            setupScrollObserver();
+            setupNavScroll();
+        });
+
+        function renderCategories() {
+            const container = document.getElementById('categories-scroll');
+            container.innerHTML = categories.map((cat, i) => `
+                <div class="snap-start flex-shrink-0 w-72 group cursor-pointer" onclick="filterByCategory('${cat.slug}')" style="animation-delay: ${i * 0.1}s">
+                    <div class="relative aspect-[3/4] overflow-hidden rounded-lg mb-4">
+                        <img src="${cat.image}" alt="${cat.name}" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110">
+                        <div class="absolute inset-0 bg-gradient-to-t from-noir-950/80 to-transparent opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                        <div class="absolute bottom-6 left-6 right-6">
+                            <h3 class="font-serif text-2xl text-white font-medium mb-1">${cat.name}</h3>
+                            <p class="text-white/70 text-sm">${cat.count} items</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderFilters() {
+            const container = document.getElementById('category-filters');
+            container.innerHTML = categories.map(cat => `
+                <label class="flex items-center gap-3 cursor-pointer group">
+                    <input type="radio" name="category" value="${cat.slug}" 
+                        ${cat.slug === 'all' ? 'checked' : ''} 
+                        onchange="filterByCategory('${cat.slug}')"
+                        class="custom-checkbox">
+                    <span class="text-sm group-hover:text-gold-600 transition-colors">${cat.name}</span>
+                    <span class="text-xs text-noir-400 ml-auto">${cat.count}</span>
+                </label>
+            `).join('');
+        }
+
+        function renderProducts() {
+            let filtered = products.filter(p => {
+                const matchCat = currentCategory === 'all' || p.category === currentCategory;
+                const matchPrice = p.price <= maxPrice;
+                return matchCat && matchPrice;
+            });
+
+            switch(currentSort) {
+                case 'price-asc': filtered.sort((a,b) => a.price - b.price); break;
+                case 'price-desc': filtered.sort((a,b) => b.price - a.price); break;
+                case 'newest': filtered.sort((a,b) => (b.badge === 'new' ? 1 : 0) - (a.badge === 'new' ? 1 : 0)); break;
+            }
+
+            document.getElementById('product-count').textContent = filtered.length;
+
+            const container = document.getElementById('products-container');
+            container.innerHTML = filtered.map((p, i) => `
+                <div class="group cursor-pointer animate-fade-in" style="animation-delay: ${i * 0.05}s" onclick="openProductModal(${p.id})">
+                    <div class="relative aspect-[4/5] overflow-hidden bg-noir-100 dark:bg-noir-800 rounded-lg mb-4">
+                        <img src="${p.image}" alt="${p.name}" class="w-full h-full object-cover img-zoom">
+                        ${p.badge ? `
+                            <span class="absolute top-4 left-4 px-3 py-1 bg-noir-950 text-white text-[10px] font-medium uppercase tracking-wider rounded-full">
+                                ${p.badge}
+                            </span>
+                        ` : ''}
+                        <div class="absolute bottom-4 left-4 right-4 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0">
+                            <button onclick="event.stopPropagation(); addToCart(${p.id})" class="w-full py-3 bg-white dark:bg-noir-950 text-noir-950 dark:text-white rounded-full text-sm font-medium hover:bg-gold-500 hover:text-white transition-all shadow-lg">
+                                Add to Cart — $${p.price}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <p class="text-xs text-noir-500 uppercase tracking-wider">${p.category}</p>
+                        <h3 class="font-medium group-hover:text-gold-600 transition-colors">${p.name}</h3>
+                        <p class="font-serif text-lg">$${p.price}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterByCategory(slug) {
+            currentCategory = slug;
+            document.querySelectorAll('input[name="category"]').forEach(input => {
+                input.checked = input.value === slug;
+            });
+            renderProducts();
+            if(window.innerWidth < 1024) {
+                document.getElementById('shop').scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function scrollCategories(direction) {
+            const container = document.getElementById('categories-scroll');
+            container.scrollBy({ left: direction * 300, behavior: 'smooth' });
+        }
+
+        // Price range
+        document.getElementById('price-range').addEventListener('input', (e) => {
+            maxPrice = parseInt(e.target.value);
+            document.getElementById('price-display').textContent = `$${maxPrice}`;
+            renderProducts();
+        });
+
+        // Sort
+        document.getElementById('sort-select').addEventListener('change', (e) => {
+            currentSort = e.target.value;
+            renderProducts();
+        });
+
+        // Cart Functions
+        function addToCart(productId) {
+            const product = products.find(p => p.id === productId);
+            const existing = cart.find(item => item.id === productId);
+            
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ ...product, qty: 1 });
+            }
+            
+            updateCart();
+            showToast(`${product.name} added to cart`);
+            
+            // Pulse animation
+            const trigger = document.getElementById('cart-trigger');
+            trigger.classList.add('scale-110');
+            setTimeout(() => trigger.classList.remove('scale-110'), 200);
+        }
+
+        function removeFromCart(productId) {
+            cart = cart.filter(item => item.id !== productId);
+            updateCart();
+        }
+
+        function updateQty(productId, delta) {
+            const item = cart.find(item => item.id === productId);
+            if (item) {
+                item.qty += delta;
+                if (item.qty <= 0) removeFromCart(productId);
+                else updateCart();
+            }
+        }
+
+        function updateCart() {
+            const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
+            const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            
+            // Update badges
+            const navBadge = document.getElementById('nav-cart-count');
+            const floatBadge = document.getElementById('floating-cart-count');
+            const floatBtn = document.getElementById('floating-cart');
+            
+            [navBadge, floatBadge].forEach(badge => {
+                badge.textContent = totalQty;
+                badge.classList.toggle('hidden', totalQty === 0);
+            });
+            
+            floatBtn.classList.toggle('scale-0', totalQty === 0);
+            document.getElementById('cart-count-badge').textContent = `(${totalQty})`;
+            
+            // Render items
+            const container = document.getElementById('cart-items-container');
+            const footer = document.getElementById('cart-footer');
+            const emptyMsg = document.getElementById('empty-cart-msg');
+            
+            if (cart.length === 0) {
+                container.innerHTML = '';
+                container.appendChild(emptyMsg);
+                emptyMsg.classList.remove('hidden');
+                footer.classList.add('hidden');
+            } else {
+                emptyMsg.classList.add('hidden');
+                footer.classList.remove('hidden');
+                
+                container.innerHTML = cart.map(item => `
+                    <div class="flex gap-4 animate-slide-right">
+                        <div class="w-20 h-24 bg-noir-100 dark:bg-noir-800 rounded-lg overflow-hidden flex-shrink-0">
+                            <img src="${item.image}" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex-1 min-w-0 flex flex-col justify-between">
+                            <div>
+                                <h4 class="font-medium text-sm truncate">${item.name}</h4>
+                                <p class="text-noir-500 text-xs mt-1">${item.category}</p>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <button onclick="updateQty(${item.id}, -1)" class="w-7 h-7 rounded-full border border-noir-200 dark:border-noir-700 flex items-center justify-center hover:bg-noir-100 dark:hover:bg-noir-800 transition-colors text-xs">-</button>
+                                    <span class="text-sm font-medium w-4 text-center">${item.qty}</span>
+                                    <button onclick="updateQty(${item.id}, 1)" class="w-7 h-7 rounded-full border border-noir-200 dark:border-noir-700 flex items-center justify-center hover:bg-noir-100 dark:hover:bg-noir-800 transition-colors text-xs">+</button>
+                                </div>
+                                <span class="font-medium text-sm">$${(item.price * item.qty).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('cart-subtotal').textContent = `$${subtotal.toFixed(2)}`;
+                document.getElementById('cart-total').textContent = `$${subtotal.toFixed(2)}`;
+            }
+        }
+
+        function toggleCart() {
+            const overlay = document.getElementById('cart-overlay');
+            const drawer = document.getElementById('cart-drawer');
+            const isOpen = !drawer.classList.contains('translate-x-full');
+            
+            if (isOpen) {
+                drawer.classList.add('translate-x-full');
+                overlay.classList.add('opacity-0');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+                document.body.style.overflow = '';
+            } else {
+                overlay.classList.remove('hidden');
+                setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+                drawer.classList.remove('translate-x-full');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function checkout() {
+            showToast('Redirecting to secure checkout...', 'info');
+            setTimeout(() => {
+                showToast('Thank you for your order!', 'success');
+                cart = [];
+                updateCart();
+                toggleCart();
+            }, 2000);
+        }
+
+        // Product Modal
+        function openProductModal(productId) {
+            const p = products.find(x => x.id === productId);
+            const modal = document.getElementById('product-modal');
+            
+            document.getElementById('modal-image-container').innerHTML = `
+                <img src="${p.image}" class="w-full h-full object-cover">
+            `;
+            
+            document.getElementById('modal-details').innerHTML = `
+                <div class="space-y-6">
+                    <div>
+                        <p class="text-xs text-noir-500 uppercase tracking-wider mb-2">${p.category}</p>
+                        <h2 class="font-serif text-3xl lg:text-4xl font-medium mb-4">${p.name}</h2>
+                        <p class="font-serif text-2xl text-gold-600">$${p.price}</p>
+                    </div>
+                    
+                    <p class="text-noir-600 dark:text-noir-300 leading-relaxed">${p.description}</p>
+                    
+                    <div class="space-y-3">
+                        <h4 class="text-sm font-medium uppercase tracking-wider">Specifications</h4>
+                        <ul class="space-y-2">
+                            ${p.specs.map(s => `<li class="flex items-center gap-3 text-sm text-noir-600 dark:text-noir-400"><span class="w-1 h-1 bg-gold-500 rounded-full"></span>${s}</li>`).join('')}
+                        </ul>
+                    </div>
+                    
+                    <div class="pt-6 space-y-4">
+                        <button onclick="addToCart(${p.id}); closeProductModal();" class="w-full py-4 bg-noir-900 dark:bg-noir-100 text-white dark:text-noir-950 rounded-full font-medium hover:bg-gold-500 dark:hover:bg-gold-400 transition-all text-sm uppercase tracking-wider">
+                            Add to Cart — $${p.price}
+                        </button>
+                        <button class="w-full py-4 border border-noir-200 dark:border-noir-700 rounded-full font-medium hover:border-gold-500 hover:text-gold-600 transition-all text-sm">
+                            Add to Wishlist
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeProductModal() {
+            document.getElementById('product-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        // UI Toggles
+        function toggleSearch() {
+            const overlay = document.getElementById('search-overlay');
+            const isHidden = overlay.classList.contains('hidden');
+            
+            if (isHidden) {
+                overlay.classList.remove('hidden');
+                setTimeout(() => {
+                    overlay.classList.remove('opacity-0');
+                    document.getElementById('search-input').focus();
+                }, 10);
+            } else {
+                overlay.classList.add('opacity-0');
+                setTimeout(() => overlay.classList.add('hidden'), 300);
+            }
+        }
+
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+        }
+
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+            document.body.style.overflow = menu.classList.contains('hidden') ? '' : 'hidden';
+        }
+
+        function toggleMobileFilters() {
+            // Scroll to sidebar on mobile
+            document.querySelector('aside').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Toast
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const icons = {
+                success: '<i class="fas fa-check-circle text-green-500"></i>',
+                info: '<i class="fas fa-info-circle text-blue-500"></i>'
+            };
+            
+            toast.className = 'pointer-events-auto bg-white dark:bg-noir-900 shadow-2xl rounded-xl px-6 py-4 flex items-center gap-3 min-w-[300px] border border-noir-100 dark:border-noir-800 animate-fade-up';
+            toast.innerHTML = `${icons[type]}<span class="font-medium text-sm">${message}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Scroll Observer for sections
+        function setupScrollObserver() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            document.querySelectorAll('section').forEach(section => {
+                observer.observe(section);
+            });
+        }
+
+        // Nav background on scroll
+        function setupNavScroll() {
+            const nav = document.getElementById('main-nav');
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 100) {
+                    nav.classList.add('glass-light', 'dark:glass-dark', 'shadow-sm');
+                } else {
+                    nav.classList.remove('glass-light', 'dark:glass-dark', 'shadow-sm');
+                }
+            });
+        }
+
+        // Close modals on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeProductModal();
+                toggleCart();
+                const searchOverlay = document.getElementById('search-overlay');
+                if (!searchOverlay.classList.contains('hidden')) toggleSearch();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1228,22 +1228,11 @@ def fix_restaurant_reservation_form(html_content: str) -> str:
 
 
 
+
+
 def extract_and_inject_trust_indicators(source_content: str, html_content: str) -> str:
-    """Extract trust indicators from source and inject into hero section - NO DEFAULTS"""
+    """Extract trust indicators from source and inject into hero section"""
     import re
-    
-    # ========== FIRST, REMOVE ALL EXISTING TRUST BADGES ==========
-    patterns_to_remove = [
-        r'<div class="absolute bottom-8 left-0 right-0 z-20">\s*<div class="container mx-auto px-4">\s*<div class="flex flex-wrap items-center justify-center gap-8">\s*<div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i><span class="text-white text-sm font-medium">4\.9/5 Rating</span></div>\s*<div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i><span class="text-white text-sm font-medium">50k\+ Customers</span></div>\s*<div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i><span class="text-white text-sm font-medium">100% Secure</span></div>\s*</div>\s*</div>\s*</div>',
-        
-        r'<div class="absolute bottom-8 left-0 right-0 flex justify-center gap-12 text-sm text-gray-300">\s*<div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i> 4\.9/5 Rating</div>\s*<div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i> 50k\+ Customers</div>\s*<div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i> 100% Secure</div>\s*</div>',
-        
-        # Premium circular badges
-        r'<div class="absolute bottom-8 left-0 right-0 z-10">[\s\S]*?<div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">[\s\S]*?</div>\s*</div>\s*</div>',
-    ]
-    
-    for pattern in patterns_to_remove:
-        html_content = re.sub(pattern, '', html_content, flags=re.DOTALL)
     
     # ========== EXTRACT TRUST INDICATORS FROM SOURCE ==========
     trust_indicators = []
@@ -1263,72 +1252,57 @@ def extract_and_inject_trust_indicators(source_content: str, html_content: str) 
             text = f"{value} {label2}"
             trust_indicators.append(extract_indicator(icon_name, icon_class, text))
     
-    # ❌ REMOVED DEFAULT FALLBACK - if no trust indicators found, return unchanged
     if not trust_indicators:
-        print(f"  ⚠️ No trust indicators found in source - skipping injection")
-        return html_content
+        # Default fallback
+        trust_indicators = [
+            {'icon': 'fa-star', 'color': 'text-yellow-400', 'text': '4.9/5 Rating'},
+            {'icon': 'fa-users', 'color': 'text-cyan-400', 'text': '50k+ Customers'},
+            {'icon': 'fa-shield-alt', 'color': 'text-green-400', 'text': '100% Secure'}
+        ]
+        print(f"  ⚠️ No trust indicators found, using defaults")
     
-    # ========== BUILD PREMIUM CIRCULAR TRUST BADGES ==========
-    trust_badges_html = '''
-            <div class="absolute bottom-8 left-0 right-0 z-10">
-                <div class="container mx-auto px-4">
-                    <div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">
-    '''
+    # ========== BUILD TRUST BADGES HTML ==========
+    trust_items_html = ''.join([
+        f'<div class="flex items-center gap-2"><i class="fas {indicator["icon"]} {indicator["color"]}"></i><span class="text-white text-sm font-medium">{indicator["text"]}</span></div>'
+        for indicator in trust_indicators
+    ])
     
-    for i, indicator in enumerate(trust_indicators):
-        show_separator = i < len(trust_indicators) - 1
-        
-        # Map icon names
-        icon_map = {
-            'fa-star': 'star',
-            'fa-users': 'users',
-            'fa-shield-alt': 'shield',
-        }
-        lucide_icon = icon_map.get(indicator['icon'], 'circle')
-        
-        # Extract value and label from text (e.g., "4.9/5 Rating" -> value="4.9/5", label="Rating")
-        text_parts = indicator['text'].split(' ', 1)
-        value = text_parts[0]
-        label = text_parts[1] if len(text_parts) > 1 else ''
-        
-        trust_badges_html += f'''
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                                <i data-lucide="{lucide_icon}" class="w-5 h-5 {indicator['color']}"></i>
-                            </div>
-                            <div>
-                                <div class="text-white font-bold text-lg leading-none">{value}</div>
-                                <div class="text-gray-400 text-xs">{label}</div>
-                            </div>
-                        </div>
-        '''
-        
-        if show_separator:
-            trust_badges_html += '''
-                        <div class="hidden md:block w-px h-8 bg-white/10"></div>
-        '''
-    
-    trust_badges_html += '''
-                    </div>
+    trust_badges_html = f'''
+        <div class="absolute bottom-8 left-0 right-0 z-20">
+            <div class="container mx-auto px-4">
+                <div class="flex flex-wrap items-center justify-center gap-8">
+                    {trust_items_html}
                 </div>
-            </div>'''
+            </div>
+        </div>'''
     
     # ========== INJECT INTO HERO SECTION ==========
+    # Find the hero section and inject before closing </section>
     hero_pattern = r'(<section class="relative h-screen[^>]*>.*?)(</section>)'
     
     def inject_badges(match):
         hero_content = match.group(1)
         closing = match.group(2)
-        return hero_content + trust_badges_html + closing
+        # Check if badges already exist
+        if '4.9/5' not in hero_content and 'Rating' not in hero_content:
+            return hero_content + trust_badges_html + closing
+        return match.group(0)
     
     modified_html = re.sub(hero_pattern, inject_badges, html_content, flags=re.DOTALL)
     
     if modified_html != html_content:
-        print(f"  ✅ Injected {len(trust_indicators)} premium circular trust badges")
+        print(f"  ✅ Injected {len(trust_indicators)} trust badges into hero section")
         return modified_html
     else:
-        print(f"  ⚠️ Could not find hero section, skipping injection")
-        return html_content
+        print(f"  ⚠️ Could not find hero section, trying alternative injection")
+        # Alternative: inject after hero image overlay
+        alt_pattern = r'(<div class="absolute inset-0 bg-black/50"></div>\s*)(<div class="relative z-10)'
+        modified_html = re.sub(alt_pattern, r'\1' + trust_badges_html + r'\2', html_content, flags=re.DOTALL)
+        if modified_html != html_content:
+            print(f"  ✅ Injected trust badges using alternative method")
+            return modified_html
+    
+    return html_content
     
     
     

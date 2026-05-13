@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            color: #e2e8f0;
+        }
+        .page { display: none; }
+        .page.active { display: block; }
+        
+        .nav-link {
+            transition: all 0.2s ease;
+        }
+        .nav-link.active {
+            color: #c084fc;
+            border-bottom: 3px solid #c084fc;
+        }
+        
+        .kpi-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+        }
+        .kpi-card:hover {
+            transform: translateY(-6px);
+            border-color: #c084fc;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 360px;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-zinc-950 border-b border-white/10 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-chart-line text-3xl text-amber-500"></i>
+                <span class="text-2xl font-bold tracking-tight">Dashboard</span>
+            </div>
+            
+            <div class="flex items-center gap-10 text-sm font-medium">
+                <a href="#" onclick="showPage('home')" class="nav-link active flex items-center gap-2" data-page="home">
+                    <i class="fas fa-home"></i> Overview
+                </a>
+                <a href="#" onclick="showPage('analytics')" class="nav-link flex items-center gap-2" data-page="analytics">
+                    <i class="fas fa-chart-bar"></i> Analytics
+                </a>
+                <a href="#" onclick="showPage('settings')" class="nav-link flex items-center gap-2" data-page="settings">
+                    <i class="fas fa-cog"></i> Settings
+                </a>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div id="current-date-time" class="text-sm text-gray-400"></div>
+                <div class="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center">
+                    <i class="fas fa-user text-gray-300"></i>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- OVERVIEW PAGE -->
+    <div id="page_home" class="page active">
+        <div class="max-w-7xl mx-auto px-6 py-8">
+            <!-- Header -->
+            <div class="flex justify-between items-end mb-10">
+                <div>
+                    <h1 class="text-4xl font-bold">Overview</h1>
+                    <p id="header-date" class="text-gray-400 mt-1"></p>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <div class="kpi-card rounded-3xl p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-400 text-sm">Total Revenue</p>
+                            <p class="text-3xl font-bold mt-2">$248,594</p>
+                        </div>
+                        <div class="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center text-3xl">💰</div>
+                    </div>
+                    <p class="text-emerald-400 text-sm mt-4 flex items-center gap-1">
+                        <i class="fas fa-arrow-up"></i> +12.5% from last month
+                    </p>
+                </div>
+                
+                <div class="kpi-card rounded-3xl p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-400 text-sm">Active Users</p>
+                            <p class="text-3xl font-bold mt-2">12,458</p>
+                        </div>
+                        <div class="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center text-3xl">👥</div>
+                    </div>
+                    <p class="text-blue-400 text-sm mt-4 flex items-center gap-1">
+                        <i class="fas fa-arrow-up"></i> +8.2% from last month
+                    </p>
+                </div>
+                
+                <div class="kpi-card rounded-3xl p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-400 text-sm">Orders</p>
+                            <p class="text-3xl font-bold mt-2">3,249</p>
+                        </div>
+                        <div class="w-12 h-12 bg-purple-500/20 rounded-2xl flex items-center justify-center text-3xl">📦</div>
+                    </div>
+                    <p class="text-purple-400 text-sm mt-4 flex items-center gap-1">
+                        <i class="fas fa-arrow-up"></i> +23% from last month
+                    </p>
+                </div>
+                
+                <div class="kpi-card rounded-3xl p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-400 text-sm">Bounce Rate</p>
+                            <p class="text-3xl font-bold mt-2">42.8%</p>
+                        </div>
+                        <div class="w-12 h-12 bg-orange-500/20 rounded-2xl flex items-center justify-center text-3xl">📉</div>
+                    </div>
+                    <p class="text-orange-400 text-sm mt-4 flex items-center gap-1">
+                        <i class="fas fa-arrow-down"></i> -4.1% from last month
+                    </p>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6">
+                    <h3 class="font-semibold mb-4">Revenue Trend</h3>
+                    <div class="chart-container">
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="bg-white/5 border border-white/10 rounded-3xl p-6">
+                    <h3 class="font-semibold mb-4">User Activity</h3>
+                    <div class="chart-container">
+                        <canvas id="activityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="bg-white/5 border border-white/10 rounded-3xl p-6">
+                <h3 class="font-semibold mb-6">Recent Activity</h3>
+                <div class="space-y-4" id="activity-feed">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ANALYTICS PAGE -->
+    <div id="page_analytics" class="page">
+        <div class="max-w-7xl mx-auto px-6 py-8">
+            <h1 class="text-4xl font-bold mb-8">Analytics</h1>
+            <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
+                <h3 class="font-semibold mb-6">Performance Metrics</h3>
+                <div class="chart-container">
+                    <canvas id="analyticsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div id="page_settings" class="page">
+        <div class="max-w-7xl mx-auto px-6 py-8">
+            <h1 class="text-4xl font-bold mb-8">Settings</h1>
+            <div class="max-w-md bg-white/5 border border-white/10 rounded-3xl p-8">
+                <h3 class="font-semibold mb-6">Preferences</h3>
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Theme</label>
+                        <select class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3">
+                            <option>Dark Mode</option>
+                            <option>Light Mode</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Notification Frequency</label>
+                        <select class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3">
+                            <option>Daily</option>
+                            <option>Weekly</option>
+                            <option>Monthly</option>
+                        </select>
+                    </div>
+                    <button onclick="alert('Settings saved!')" 
+                            class="w-full bg-white text-black font-semibold py-3.5 rounded-2xl hover:bg-white/90 transition">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Navigation
+        function showPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page_' + page).classList.add('active');
+            
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('data-page') === page) link.classList.add('active');
+            });
+        }
+
+        // Date & Time
+        function updateDateTime() {
+            const now = new Date();
+            const options = { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            document.getElementById('current-date-time').textContent = now.toLocaleDateString('en-US', options);
+            document.getElementById('header-date').textContent = now.toLocaleDateString('en-US', { 
+                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
+            });
+        }
+
+        // Charts
+        function createCharts() {
+            // Revenue Chart
+            new Chart(document.getElementById('revenueChart'), {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                    datasets: [{
+                        label: 'Revenue',
+                        data: [18500, 22400, 19800, 26700, 24300, 28900],
+                        borderColor: '#c084fc',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(192, 132, 252, 0.1)'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // Activity Chart
+            new Chart(document.getElementById('activityChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+                    datasets: [{
+                        label: 'Active Users',
+                        data: [1240, 1890, 1670, 2130, 1980, 1450],
+                        backgroundColor: '#60a5fa'
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // Analytics Chart
+            new Chart(document.getElementById('analyticsChart'), {
+                type: 'line',
+                data: {
+                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                    datasets: [
+                        { label: 'Sessions', data: [4200, 4800, 5100, 6300], borderColor: '#c084fc' },
+                        { label: 'Conversions', data: [890, 920, 980, 1250], borderColor: '#34d399' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // Recent Activity
+        function loadActivity() {
+            const activities = [
+                "New user registered - Sarah Chen",
+                "Order #3942 completed - $129.00",
+                "Revenue goal reached for this month",
+                "Server performance optimized",
+                "New report generated"
+            ];
+            
+            let html = '';
+            activities.forEach((act, i) => {
+                html += `
+                    <div class="flex gap-4 items-start">
+                        <div class="w-2 h-2 bg-emerald-400 rounded-full mt-2"></div>
+                        <div class="flex-1">
+                            <p class="text-sm">${act}</p>
+                            <p class="text-xs text-gray-500">${i+1} hour${i===0?'':'s'} ago</p>
+                        </div>
+                    </div>
+                `;
+            });
+            document.getElementById('activity-feed').innerHTML = html;
+        }
+
+        // Initialize
+        window.onload = function() {
+            updateDateTime();
+            createCharts();
+            loadActivity();
+            
+            // Auto refresh time every minute
+            setInterval(updateDateTime, 60000);
+        };
+    </script>
+</body>
+</html>

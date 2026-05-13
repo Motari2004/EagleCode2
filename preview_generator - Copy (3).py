@@ -9,407 +9,6 @@ from datetime import datetime
 
 
 
-def render_dashboard_from_source(content: str) -> str:
-    """
-    Extract kpiData and charts from React dashboard component and render as HTML
-    """
-    import re
-    
-    print("📊 Rendering dashboard from source...")
-    
-    # Step 1: Extract kpiData array
-    kpi_pattern = r'const\s+kpiData\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-    kpi_match = re.search(kpi_pattern, content, re.DOTALL)
-    
-    kpi_cards_html = ""
-    chart_html = ""
-    
-    if kpi_match:
-        kpi_content = kpi_match.group(1)
-        
-        # Extract each KPI item
-        kpi_items = re.findall(
-            r'name:\s*[\'"]([^\'"]+)[\'"]\s*,\s*value:\s*[\'"]([^\'"]+)[\'"]\s*,\s*change:\s*[\'"]([^\'"]+)[\'"]',
-            kpi_content
-        )
-        
-        if kpi_items:
-            print(f"  ✅ Found {len(kpi_items)} KPI items")
-            
-            # Build KPI cards HTML
-            kpi_cards_html = '<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">\n'
-            
-            for name, value, change in kpi_items:
-                # Determine color based on change (positive/negative)
-                is_positive = '+' in change
-                color_class = 'text-green-400' if is_positive else 'text-red-400'
-                
-                # Map name to icon
-                icon_map = {
-                    'Revenue': 'dollar-sign',
-                    'Users': 'users',
-                    'Orders': 'shopping-cart',
-                    'Bounce Rate': 'activity'
-                }
-                icon = icon_map.get(name, 'chart-line')
-                
-                kpi_cards_html += f'''
-            <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
-                <div class="flex justify-between items-start mb-2">
-                    <p class="text-gray-400 text-sm">{name}</p>
-                    <i data-lucide="{icon}" class="w-5 h-5 text-purple-400"></i>
-                </div>
-                <h3 class="text-2xl font-bold mt-1">{value}</h3>
-                <p class="{color_class} text-sm mt-2">{change}</p>
-            </div>'''
-            
-            kpi_cards_html += '\n        </div>'
-        else:
-            print(f"  ⚠️ No KPI items extracted, using defaults")
-            kpi_cards_html = get_default_kpi_cards()
-    else:
-        print(f"  ⚠️ No kpiData array found, using defaults")
-        kpi_cards_html = get_default_kpi_cards()
-    
-    # Step 2: Extract chart data
-    chart_data_pattern = r'const\s+data\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-    chart_match = re.search(chart_data_pattern, content, re.DOTALL)
-    
-    labels = []
-    values = []
-    
-    if chart_match:
-        chart_content = chart_match.group(1)
-        chart_items = re.findall(r'name:\s*[\'"]([^\'"]+)[\'"]\s*,\s*val:\s*(\d+)', chart_content)
-        
-        if chart_items:
-            labels = [item[0] for item in chart_items]
-            values = [item[1] for item in chart_items]
-            print(f"  ✅ Found chart data: {labels} = {values}")
-    
-    if not labels:
-        labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-        values = [400, 300, 600, 500, 700, 650]
-    
-    # Step 3: Build chart HTML
-    chart_html = f'''
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-            <h3 class="text-lg font-bold mb-4">Revenue Trend</h3>
-            <canvas id="revenueChart" height="200"></canvas>
-        </div>
-        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-            <h3 class="text-lg font-bold mb-4">User Growth</h3>
-            <canvas id="userChart" height="200"></canvas>
-        </div>
-    </div>
-    
-    <script>
-        // Revenue Chart
-        const revenueCtx = document.getElementById('revenueChart')?.getContext('2d');
-        if (revenueCtx) {{
-            new Chart(revenueCtx, {{
-                type: 'line',
-                data: {{
-                    labels: {labels},
-                    datasets: [{{
-                        label: 'Revenue',
-                        data: {values},
-                        borderColor: '#8b5cf6',
-                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                        fill: true,
-                        tension: 0.3
-                    }}]
-                }},
-                options: {{
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {{
-                        legend: {{ labels: {{ color: '#9ca3af' }} }}
-                    }},
-                    scales: {{
-                        y: {{ ticks: {{ color: '#9ca3af' }}, beginAtZero: true }},
-                        x: {{ ticks: {{ color: '#9ca3af' }} }}
-                    }}
-                }}
-            }});
-        }}
-        
-        // User Chart
-        const userCtx = document.getElementById('userChart')?.getContext('2d');
-        if (userCtx) {{
-            new Chart(userCtx, {{
-                type: 'bar',
-                data: {{
-                    labels: {labels},
-                    datasets: [{{
-                        label: 'Users',
-                        data: [1850, 2100, 2340, 2580, 2710, 2847],
-                        backgroundColor: '#c084fc',
-                        borderRadius: 8
-                    }}]
-                }},
-                options: {{
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {{
-                        legend: {{ labels: {{ color: '#9ca3af' }} }}
-                    }},
-                    scales: {{
-                        y: {{ ticks: {{ color: '#9ca3af' }}, beginAtZero: true }},
-                        x: {{ ticks: {{ color: '#9ca3af' }} }}
-                    }}
-                }}
-            }});
-        }}
-    </script>
-    '''
-    
-    # Step 4: Build recent activity HTML
-    activity_html = '''
-    <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-        <h3 class="text-lg font-bold mb-4">Recent Activity</h3>
-        <div class="space-y-3">
-            <div class="flex items-center justify-between py-2 border-b border-white/10">
-                <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                    <span class="text-sm">New user registered</span>
-                </div>
-                <span class="text-xs text-gray-500">5 minutes ago</span>
-            </div>
-            <div class="flex items-center justify-between py-2 border-b border-white/10">
-                <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
-                    <span class="text-sm">Order #1234 completed</span>
-                </div>
-                <span class="text-xs text-gray-500">32 minutes ago</span>
-            </div>
-            <div class="flex items-center justify-between py-2 border-b border-white/10">
-                <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 bg-purple-400 rounded-full"></div>
-                    <span class="text-sm">Revenue target reached 75%</span>
-                </div>
-                <span class="text-xs text-gray-500">1 hour ago</span>
-            </div>
-            <div class="flex items-center justify-between py-2">
-                <div class="flex items-center gap-3">
-                    <div class="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                    <span class="text-sm">New feature deployed</span>
-                </div>
-                <span class="text-xs text-gray-500">3 hours ago</span>
-            </div>
-        </div>
-    </div>
-    '''
-    
-    # Step 5: Build complete dashboard HTML
-    dashboard_html = f'''
-    <div class="p-8">
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold">Overview</h1>
-            <p class="text-gray-400" id="currentDateTime"></p>
-        </div>
-        
-        {kpi_cards_html}
-        
-        {chart_html}
-        
-        {activity_html}
-    </div>
-    
-    <script>
-        function updateDateTime() {{
-            const now = new Date();
-            const options = {{ year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }};
-            const dateTimeEl = document.getElementById('currentDateTime');
-            if (dateTimeEl) dateTimeEl.textContent = now.toLocaleDateString('en-US', options);
-        }}
-        updateDateTime();
-        setInterval(updateDateTime, 60000);
-    </script>
-    '''
-    
-    print(f"  ✅ Dashboard rendered with {len(kpi_items) if kpi_items else 4} KPI cards")
-    return dashboard_html
-
-
-def get_default_kpi_cards() -> str:
-    """Return default KPI cards if extraction fails"""
-    return '''
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-            <div class="flex justify-between items-start mb-2">
-                <p class="text-gray-400 text-sm">Revenue</p>
-                <i data-lucide="dollar-sign" class="w-5 h-5 text-green-400"></i>
-            </div>
-            <h3 class="text-2xl font-bold mt-1">$48,293</h3>
-            <p class="text-green-400 text-sm mt-2">+12.5%</p>
-        </div>
-        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-            <div class="flex justify-between items-start mb-2">
-                <p class="text-gray-400 text-sm">Users</p>
-                <i data-lucide="users" class="w-5 h-5 text-blue-400"></i>
-            </div>
-            <h3 class="text-2xl font-bold mt-1">12,402</h3>
-            <p class="text-green-400 text-sm mt-2">+8.2%</p>
-        </div>
-        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-            <div class="flex justify-between items-start mb-2">
-                <p class="text-gray-400 text-sm">Orders</p>
-                <i data-lucide="shopping-cart" class="w-5 h-5 text-purple-400"></i>
-            </div>
-            <h3 class="text-2xl font-bold mt-1">843</h3>
-            <p class="text-green-400 text-sm mt-2">+5.3%</p>
-        </div>
-        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
-            <div class="flex justify-between items-start mb-2">
-                <p class="text-gray-400 text-sm">Bounce Rate</p>
-                <i data-lucide="activity" class="w-5 h-5 text-red-400"></i>
-            </div>
-            <h3 class="text-2xl font-bold mt-1">24.8%</h3>
-            <p class="text-red-400 text-sm mt-2">-2.1%</p>
-        </div>
-    </div>
-    '''
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def enforce_strict_dashboard_rules(html_content: str) -> str:
-    """Ultra-strict enforcement for dashboard projects - removes everything not allowed"""
-    import re
-    
-    print("🔒 ENFORCING STRICT DASHBOARD RULES...")
-    
-    # 1. Remove any footer
-    html_content = re.sub(r'<footer.*?</footer>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-    
-    # 2. Remove hero sections with background images
-    html_content = re.sub(r'<section[^>]*h-screen[^>]*>.*?<img[^>]*>.*?</section>', '', html_content, flags=re.DOTALL)
-    html_content = re.sub(r'<section[^>]*relative[^>]*>.*?<img[^>]*background|hero-bg.*?</section>', '', html_content, flags=re.DOTALL)
-    
-    # 3. Remove forbidden elements
-    remove_patterns = [
-        r'reservation-modal',
-        r'quickReserveBtn',
-        r'cart-sidebar',
-        r'checkout-modal',
-        r'success-modal',
-        r'trust badge',
-        r'Book a Table',
-        r'reservation',
-        r'testimonial',
-        r'4\.9/5 Rating',
-        r'50k\+ Customers'
-    ]
-    
-    for pattern in remove_patterns:
-        html_content = re.sub(pattern, '', html_content, flags=re.IGNORECASE)
-    
-    # 4. Force correct navigation (only 3 links)
-    nav_pattern = r'<nav.*?</nav>'
-    strict_nav = '''
-    <nav class="bg-zinc-950 border-b border-white/10 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <i class="fas fa-chart-line text-3xl text-amber-500"></i>
-                <span class="text-2xl font-bold">Dashboard</span>
-            </div>
-            <div class="flex gap-10 text-sm font-medium">
-                <a href="#" onclick="showPage('home')" class="nav-link active flex items-center gap-2" data-page="home">
-                    <i class="fas fa-home"></i> Overview
-                </a>
-                <a href="#" onclick="showPage('analytics')" class="nav-link flex items-center gap-2" data-page="analytics">
-                    <i class="fas fa-chart-bar"></i> Analytics
-                </a>
-                <a href="#" onclick="showPage('settings')" class="nav-link flex items-center gap-2" data-page="settings">
-                    <i class="fas fa-cog"></i> Settings
-                </a>
-            </div>
-            <div id="current-datetime" class="text-sm text-gray-400"></div>
-        </div>
-    </nav>
-    '''
-    html_content = re.sub(nav_pattern, strict_nav, html_content, flags=re.DOTALL)
-    
-    # 5. Remove any remaining unwanted sections
-    html_content = re.sub(r'id="page_(shop|cart|reservations|menu|login|signup)"', '', html_content)
-    
-    print("✅ Strict dashboard rules fully enforced")
-    return html_content
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def detect_dashboard_from_content(page_contents: Dict[str, Any], user_prompt: str = "") -> bool:
-    """
-    Detect if this is a dashboard/analytics project by checking extracted page content.
-    Returns True if dashboard indicators are found.
-    """
-    # Get home page content (already extracted HTML)
-    home_content = page_contents.get('page', '')
-    
-    # Check for dashboard indicators in the extracted content
-    dashboard_indicators = [
-        'kpiData' in home_content,
-        'ResponsiveContainer' in home_content,
-        'recharts' in home_content,
-        'LineChart' in home_content and 'CartesianGrid' in home_content,
-        'BarChart' in home_content and 'XAxis' in home_content,
-        'KPI' in home_content and ('Revenue' in home_content or 'Users' in home_content),
-        'DollarSign' in home_content and 'Users' in home_content and 'Activity' in home_content,
-    ]
-    
-    is_dashboard = any(dashboard_indicators)
-    
-    # Also check user prompt as fallback
-    if not is_dashboard:
-        prompt_keywords = ['dashboard', 'analytics', 'kpi', 'metrics', 'overview', 'reports', 'monitoring']
-        is_dashboard = any(keyword in user_prompt.lower() for keyword in prompt_keywords)
-    
-    # Print debug info
-    if is_dashboard:
-        print(f"📊 DASHBOARD DETECTED!")
-        for indicator in dashboard_indicators:
-            if indicator:
-                print(f"   ✅ Found: {indicator}")
-    
-    return is_dashboard
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1228,107 +827,166 @@ def fix_restaurant_reservation_form(html_content: str) -> str:
 
 
 
+
+
+
+
 def extract_and_inject_trust_indicators(source_content: str, html_content: str) -> str:
-    """Extract trust indicators from source and inject into hero section - NO DEFAULTS"""
+    """Extract trust indicators from source and inject into HTML dynamically - DETECTS ALL PATTERNS"""
     import re
     
-    # ========== FIRST, REMOVE ALL EXISTING TRUST BADGES ==========
-    patterns_to_remove = [
-        r'<div class="absolute bottom-8 left-0 right-0 z-20">\s*<div class="container mx-auto px-4">\s*<div class="flex flex-wrap items-center justify-center gap-8">\s*<div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i><span class="text-white text-sm font-medium">4\.9/5 Rating</span></div>\s*<div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i><span class="text-white text-sm font-medium">50k\+ Customers</span></div>\s*<div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i><span class="text-white text-sm font-medium">100% Secure</span></div>\s*</div>\s*</div>\s*</div>',
-        
-        r'<div class="absolute bottom-8 left-0 right-0 flex justify-center gap-12 text-sm text-gray-300">\s*<div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i> 4\.9/5 Rating</div>\s*<div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i> 50k\+ Customers</div>\s*<div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i> 100% Secure</div>\s*</div>',
-        
-        # Premium circular badges
-        r'<div class="absolute bottom-8 left-0 right-0 z-10">[\s\S]*?<div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">[\s\S]*?</div>\s*</div>\s*</div>',
+    # ========== STEP 1: REMOVE ALL EXISTING TRUST INDICATORS FROM HTML ==========
+    # Remove any div that looks like a trust indicator container
+    trust_container_patterns = [
+        r'<div class="absolute bottom-8 left-0 right-0[^"]*">[\s\S]*?</div>\s*</div>\s*</div>',
+        r'<div class="flex flex-wrap gap-6 justify-center[^"]*">[\s\S]*?</div>',
+        r'<div class="absolute bottom-8 left-0 right-0 flex justify-center gap-12[^"]*">[\s\S]*?</div>',
+        r'<div class="container mx-auto flex justify-center gap-12[^"]*">[\s\S]*?</div>',
+        r'<div class="container mx-auto px-4 flex flex-wrap justify-center gap-12">[\s\S]*?</div>',
     ]
     
-    for pattern in patterns_to_remove:
+    for pattern in trust_container_patterns:
         html_content = re.sub(pattern, '', html_content, flags=re.DOTALL)
     
-    # ========== EXTRACT TRUST INDICATORS FROM SOURCE ==========
+    # ========== STEP 2: EXTRACT TRUST INDICATORS FROM SOURCE (DYNAMIC) ==========
     trust_indicators = []
     
-    # Pattern for your specific trust badge format
-    pattern = r'<div\s+className="flex items-center gap-2">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*([\d./]+\+?|\w+\+?)\s*</div>\s*<div\s+className="[^"]*">\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>\s*</div>'
-    matches = re.findall(pattern, source_content, re.DOTALL)
+    # Try to find ANY pattern with icons and text
+    # Pattern 1: <div className="flex items-center gap-2"> <Icon... /> text </div>
+    pattern1 = r'<div\s+className="flex items-center gap-2">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*([^<]+)\s*</div>'
+    matches1 = re.findall(pattern1, source_content, re.DOTALL)
     
-    if not matches:
-        # Try simpler pattern
-        pattern2 = r'<div\s+className="flex items-center gap-2">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*([^<]+)\s*</div>'
-        matches2 = re.findall(pattern2, source_content, re.DOTALL)
-        for icon_name, icon_class, text in matches2:
+    if matches1:
+        print(f"  ✅ Pattern 1 matched: {len(matches1)} items")
+        for icon_name, icon_class, text in matches1:
             trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
-    else:
-        for icon_name, icon_class, value, label1, label2 in matches:
-            text = f"{value} {label2}"
-            trust_indicators.append(extract_indicator(icon_name, icon_class, text))
     
-    # ❌ REMOVED DEFAULT FALLBACK - if no trust indicators found, return unchanged
+    # Pattern 2: <div className="flex items-center gap-2"> <Icon... /> <span>text</span> </div>
+    if not trust_indicators:
+        pattern2 = r'<div\s+className="flex items-center gap-2">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*<span[^>]*>([^<]+)</span>\s*</div>'
+        matches2 = re.findall(pattern2, source_content, re.DOTALL)
+        if matches2:
+            print(f"  ✅ Pattern 2 matched: {len(matches2)} items")
+            for icon_name, icon_class, text in matches2:
+                trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
+    
+    # Pattern 3: With wrapper div (your current format: icon inside circle, value in separate divs)
+    if not trust_indicators:
+        pattern3 = r'<div\s+className="flex items-center gap-3">\s*<div\s+className="[^"]*">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*</div>\s*<div>\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>\s*</div>\s*</div>'
+        matches3 = re.findall(pattern3, source_content, re.DOTALL)
+        if matches3:
+            print(f"  ✅ Pattern 3 matched: {len(matches3)} items")
+            for icon_name, icon_class, value, label in matches3:
+                text = f"{value.strip()} {label.strip()}"
+                trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
+    
+    # Pattern 4: Simplified wrapper (no nested value/label divs)
+    if not trust_indicators:
+        pattern4 = r'<div\s+className="flex items-center gap-3">\s*<div[^>]*>\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*</div>\s*<div>\s*([^<]+)\s*</div>\s*<div>\s*([^<]+)\s*</div>\s*</div>'
+        matches4 = re.findall(pattern4, source_content, re.DOTALL)
+        if matches4:
+            print(f"  ✅ Pattern 4 matched: {len(matches4)} items")
+            for icon_name, icon_class, value, label in matches4:
+                text = f"{value.strip()} {label.strip()}"
+                trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
+    
+    # Pattern 5: Inline with Lucide icons (no wrapper className)
+    if not trust_indicators:
+        pattern5 = r'<(\w+)\s+className="([^"]*)"[^>]*/>\s*([\d./]+\+?|\w+\+?)\s*(Rating|reviews|customers|users|secure|shipping|clients)'
+        matches5 = re.findall(pattern5, source_content, re.IGNORECASE)
+        if matches5:
+            print(f"  ✅ Pattern 5 matched: {len(matches5)} items")
+            for icon_name, icon_class, value, label in matches5:
+                text = f"{value} {label}"
+                trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
+                
+                
+                
+    # Pattern 6: Portfolio style (icon + nested divs with value and label)
+    if not trust_indicators:
+        pattern6 = r'<div\s+className="flex items-center gap-3">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*<div>\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>\s*</div>\s*</div>'
+        matches6 = re.findall(pattern6, source_content, re.DOTALL)
+        if matches6:
+            print(f"  ✅ Pattern 6 matched (portfolio style): {len(matches6)} items")
+            for icon_name, icon_class, value, label in matches6:
+                text = f"{value.strip()} {label.strip()}"
+                trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
+                print(f"    📌 {icon_name}: {value.strip()} {label.strip()}")      
+                
+                
+                
+                
+                
+                
+     # ========== STEP 3: SKIP IF NO TRUST INDICATORS FOUND ==========
     if not trust_indicators:
         print(f"  ⚠️ No trust indicators found in source - skipping injection")
+        # Return HTML unchanged - no trust indicators will be added
         return html_content
     
-    # ========== BUILD PREMIUM CIRCULAR TRUST BADGES ==========
-    trust_badges_html = '''
-            <div class="absolute bottom-8 left-0 right-0 z-10">
-                <div class="container mx-auto px-4">
-                    <div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">
-    '''
+    # ========== STEP 4: BUILD TRUST INDICATORS HTML (only if we have indicators) ==========
+    print(f"  ✅ Found {len(trust_indicators)} trust indicators in source")
+    trust_items_html = ''.join([
+        f'<div class="flex items-center gap-2"><i class="fas {indicator["icon"]} w-4 h-4 {indicator["color"]}"></i> {indicator["text"]}</div>'
+        for indicator in trust_indicators
+    ])
     
-    for i, indicator in enumerate(trust_indicators):
-        show_separator = i < len(trust_indicators) - 1
-        
-        # Map icon names
-        icon_map = {
-            'fa-star': 'star',
-            'fa-users': 'users',
-            'fa-shield-alt': 'shield',
-        }
-        lucide_icon = icon_map.get(indicator['icon'], 'circle')
-        
-        # Extract value and label from text (e.g., "4.9/5 Rating" -> value="4.9/5", label="Rating")
-        text_parts = indicator['text'].split(' ', 1)
-        value = text_parts[0]
-        label = text_parts[1] if len(text_parts) > 1 else ''
-        
-        trust_badges_html += f'''
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                                <i data-lucide="{lucide_icon}" class="w-5 h-5 {indicator['color']}"></i>
-                            </div>
-                            <div>
-                                <div class="text-white font-bold text-lg leading-none">{value}</div>
-                                <div class="text-gray-400 text-xs">{label}</div>
-                            </div>
-                        </div>
-        '''
-        
-        if show_separator:
-            trust_badges_html += '''
-                        <div class="hidden md:block w-px h-8 bg-white/10"></div>
-        '''
+    trust_html = f'<div class="flex flex-wrap gap-6 justify-center text-sm text-gray-300 mt-8">{trust_items_html}</div>'
     
-    trust_badges_html += '''
-                    </div>
-                </div>
-            </div>'''
     
-    # ========== INJECT INTO HERO SECTION ==========
-    hero_pattern = r'(<section class="relative h-screen[^>]*>.*?)(</section>)'
     
-    def inject_badges(match):
-        hero_content = match.group(1)
-        closing = match.group(2)
-        return hero_content + trust_badges_html + closing
     
-    modified_html = re.sub(hero_pattern, inject_badges, html_content, flags=re.DOTALL)
     
-    if modified_html != html_content:
-        print(f"  ✅ Injected {len(trust_indicators)} premium circular trust badges")
-        return modified_html
-    else:
-        print(f"  ⚠️ Could not find hero section, skipping injection")
-        return html_content
+    
+       # ========== STEP 5: INJECT TRUST INDICATORS (SMART) ==========
+    # First, remove any existing trust indicators that might have been injected in features
+    features_cleanup = r'(<div class="grid md:grid-cols-4 gap-6">[\s\S]*?)(<div class="flex flex-wrap gap-6 justify-center[^"]*">[\s\S]*?</div>)'
+    html_content = re.sub(features_cleanup, r'\1', html_content, flags=re.DOTALL)
+    
+    # SMART: Detect if trust indicators are inside the buttons div (missing closing tag)
+    # Pattern matches buttons div that contains trust indicators inside it
+    broken_pattern = r'(<div\s+class="[^"]*flex[^"]*gap-[^"]*justify-center[^"]*mb-10[^"]*">.*?<a[^>]*>.*?</a>.*?<a[^>]*>.*?</a>)\s*(<div\s+class="[^"]*flex\s+flex-wrap[^"]*gap-[^"]*justify-center[^"]*")'
+    
+    if re.search(broken_pattern, html_content, re.DOTALL):
+        # Fix: Add closing </div> after buttons, before trust indicators
+        html_content = re.sub(broken_pattern, r'\1</div>\n\n\2', html_content, flags=re.DOTALL)
+        print(f"  ✅ Fixed broken structure - added missing </div> after buttons")
+    
+    # SMART: Find ANY buttons container (flexible pattern matching)
+    button_patterns = [
+        r'(<div\s+class="[^"]*flex[^"]*gap-4[^"]*justify-center[^"]*mb-10[^"]*">.*?</div>)',  # Standard
+        r'(<div\s+class="[^"]*flex[^"]*gap-[^"]*justify-center[^"]*mb-[0-9]+[^"]*">.*?</div>)',  # Any mb-X
+        r'(<div\s+class="[^"]*flex[^"]*gap-[^"]*justify-center[^"]*">.*?</div>)',  # No margin
+        r'(<div\s+class="[^"]*flex\s+gap-[0-9]+\s+justify-center[^"]*">.*?</div>)',  # Simple format
+    ]
+    
+    injected = False
+    for pattern in button_patterns:
+        if re.search(pattern, html_content, re.DOTALL):
+            html_content = re.sub(pattern, r'\1\n\n' + trust_html, html_content, flags=re.DOTALL)
+            print(f"  ✅ Injected {len(trust_indicators)} trust indicators AFTER buttons (pattern matched)")
+            injected = True
+            break
+    
+    if not injected:
+        # SMART: Find any container with buttons
+        button_match = re.search(r'<div\s+class="[^"]*flex[^"]*justify-center[^"]*">\s*<button[^>]*>.*?</button>\s*<button[^>]*>.*?</button>', html_content, re.DOTALL)
+        if button_match:
+            buttons_div = button_match.group(0)
+            # Ensure it has a closing tag
+            if not buttons_div.endswith('</div>'):
+                buttons_div = buttons_div + '</div>'
+            html_content = html_content.replace(button_match.group(0), buttons_div + '\n\n' + trust_html)
+            print(f"  ✅ Injected {len(trust_indicators)} trust indicators using smart button detection")
+            injected = True
+    
+    if not injected:
+        # Last resort: find section end
+        html_content = re.sub(r'(</div>\s*</div>\s*</section>)', trust_html + r'\1', html_content, count=1, flags=re.DOTALL)
+        print(f"  ✅ Injected {len(trust_indicators)} trust indicators at section end")
+    
+    return html_content
+    
     
     
     
@@ -2688,23 +2346,15 @@ async def generate_preview_internal(
 
 
 
+
+
+
+
+
         # ========== COLLECT NAVIGATION ==========
         nav_links = []
         nav_content = ""
         brand_name = project_name
-        
-        # Initialize dashboard detection EARLY to avoid scope issues
-        # Use a DIFFERENT name than the function!
-        detected_as_dashboard = False
-        if user_prompt:
-            dashboard_keywords = ['dashboard', 'analytics', 'kpi', 'metrics', 'overview', 'reports', 'monitoring']
-            detected_as_dashboard = any(keyword in user_prompt.lower() for keyword in dashboard_keywords)
-        
-        # Check page.tsx content for dashboard indicators
-        if not detected_as_dashboard:
-            homepage_content = files.get("app/page.tsx", "")
-            if 'kpiData' in homepage_content or 'recharts' in homepage_content:
-                detected_as_dashboard = True
         
         nav_paths = [
             "components/Navigation.tsx",
@@ -2731,11 +2381,9 @@ async def generate_preview_internal(
         print(f"🔍 DEBUG - nav_content preview: {nav_content[:500] if nav_content else 'EMPTY'}")
         
         if nav_content:
-            # Extract brand name
             brand_patterns = [
                 r'<Link\s+href="/"[^>]*>(.*?)</Link>',
                 r'<div\s+className="[^"]*brand[^"]*"[^>]*>(.*?)</div>',
-                r'<span\s+className="[^"]*text-xl[^"]*font-bold[^"]*"[^>]*>(.*?)</span>',
             ]
             for pattern in brand_patterns:
                 match = re.search(pattern, nav_content, re.DOTALL)
@@ -2744,91 +2392,69 @@ async def generate_preview_internal(
                     if brand_name:
                         break
             
-            # ========== Extract from links array pattern ==========
-            links_array_pattern = r'const\s+links\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-            links_match = re.search(links_array_pattern, nav_content, re.DOTALL)
+            # Extract ALL hrefs first (captures cart with icon)
+            href_pattern = r'<Link\s+href="/([^"]+)"'
+            all_hrefs = re.findall(href_pattern, nav_content)
+            href_pattern2 = r"<Link\s+href='/([^']+)'"
+            all_hrefs.extend(re.findall(href_pattern2, nav_content))
             
-            if links_match:
-                links_content = links_match.group(1)
-                link_items = re.findall(
-                    r'href:\s*[\'"]([^\'"]+)[\'"]\s*,\s*label:\s*[\'"]([^\'"]+)[\'"]',
-                    links_content
-                )
-                
-                if link_items:
-                    print(f"🔍 Found {len(link_items)} links from links array")
-                    for href, label in link_items:
-                        if href == '/':
-                            continue
-                        clean_href = href.lstrip('/')
-                        if clean_href:
-                            nav_links.append((clean_href, label))
-                        else:
-                            nav_links.append(('home', label))
+            print(f"🔍 Found hrefs: {all_hrefs}")
             
-            # If no links from array, try direct Link components
-            if not nav_links:
-                href_pattern = r'<Link\s+href="/([^"]+)"'
-                all_hrefs = re.findall(href_pattern, nav_content)
-                href_pattern2 = r"<Link\s+href='/([^']+)'"
-                all_hrefs.extend(re.findall(href_pattern2, nav_content))
-                
-                print(f"🔍 Found hrefs: {all_hrefs}")
-                
-                seen = set()
-                unique_hrefs = []
-                for href in all_hrefs:
-                    if href not in seen:
-                        seen.add(href)
-                        unique_hrefs.append(href)
-                
-                print(f"🔍 Unique hrefs: {unique_hrefs}")
-                
-                for href in unique_hrefs:
-                    if href != "/" and href.lower() != brand_name.lower():
-                        label_pattern = rf'<Link\s+href="/{href}"[^>]*>(.*?)</Link>'
-                        label_match = re.search(label_pattern, nav_content, re.DOTALL)
-                        if label_match:
-                            label_content = label_match.group(1)
-                            clean_label = re.sub(r'<[^>]+>', '', label_content).strip()
-                            if clean_label:
-                                label = clean_label
-                            else:
-                                label = href.capitalize()
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_hrefs = []
+            for href in all_hrefs:
+                if href not in seen:
+                    seen.add(href)
+                    unique_hrefs.append(href)
+            
+            print(f"🔍 Unique hrefs: {unique_hrefs}")
+            
+            # Generate labels from hrefs
+            for href in unique_hrefs:
+                if href != "/" and href.lower() != brand_name.lower():
+                    # Try to extract label from the link content first
+                    label_pattern = rf'<Link\s+href="/{href}"[^>]*>(.*?)</Link>'
+                    label_match = re.search(label_pattern, nav_content, re.DOTALL)
+                    if label_match:
+                        label_content = label_match.group(1)
+                        # Remove icon tags to get text
+                        clean_label = re.sub(r'<[^>]+>', '', label_content).strip()
+                        if clean_label:
+                            label = clean_label
                         else:
                             label = href.capitalize()
-                        
-                        nav_links.append((href, label))
-                        print(f"🔍 Added link: {href} -> {label}")
-                
-                if not nav_links:
-                    link_patterns = [
-                        r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
-                        r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
-                    ]
-                    for pattern in link_patterns:
-                        matches = re.findall(pattern, nav_content, re.DOTALL)
-                        for href, text in matches:
-                            clean_text = re.sub(r'<[^>]+>', '', text).strip()
-                            if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
-                                nav_links.append((href, clean_text))
-                        if nav_links:
-                            break
+                    else:
+                        label = href.capitalize()
+                    
+                    nav_links.append((href, label))
+                    print(f"🔍 Added link: {href} -> {label}")
+            
+            # If still no links, fallback to old patterns
+            if not nav_links:
+                link_patterns = [
+                    r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
+                    r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
+                ]
+                for pattern in link_patterns:
+                    matches = re.findall(pattern, nav_content, re.DOTALL)
+                    for href, text in matches:
+                        clean_text = re.sub(r'<[^>]+>', '', text).strip()
+                        if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
+                            nav_links.append((href, clean_text))
+                    if nav_links:
+                        break
         
-        # Set default nav_links based on project type (if still empty)
         if not nav_links:
-            if detected_as_dashboard:  # ← USING RENAMED VARIABLE
-                nav_links = [("analytics", "Analytics"), ("settings", "Settings")]
-                print(f"📍 Using dashboard default nav_links: {nav_links}")
-            else:
-                nav_links = [("shop", "Shop"), ("catalog", "Catalog"), ("cart", "Cart")]
-                print("🔍 Using e-commerce default nav_links")
+            nav_links = [("shop", "Shop"), ("catalog", "Catalog"), ("cart", "Cart")]
+            print("🔍 Using default nav_links")
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
         
         # ========== CONVERT NAVIGATION TO HTML ==========
         navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
         navigation_html_for_prompt = navigation_html
+
 
 
 
@@ -2970,20 +2596,8 @@ async def generate_preview_internal(
         
         
         
-                # ========== DETECT DASHBOARD BEFORE EXTRACTING PAGES ==========
-        is_dashboard_project_detected = False
-        if user_prompt:
-            dashboard_keywords = ['dashboard', 'analytics', 'kpi', 'metrics', 'overview', 'reports', 'monitoring']
-            is_dashboard_project_detected = any(keyword in user_prompt.lower() for keyword in dashboard_keywords)
         
-        # Also check page.tsx content
-        if not is_dashboard_project_detected:
-            homepage_content = files.get("app/page.tsx", "")
-            if 'kpiData' in homepage_content or 'recharts' in homepage_content or 'ResponsiveContainer' in homepage_content:
-                is_dashboard_project_detected = True
-                print(f"📊 Dashboard detected from page.tsx content")
         
-        print(f"📊 Dashboard detection result: {is_dashboard_project_detected}")
         
 
 
@@ -3182,25 +2796,55 @@ async def generate_preview_internal(
 
 
 
-        def extract_page_content(content: str, route_name: str, is_dashboard_detected: bool = False) -> str:
+        def extract_page_content(content: str, route_name: str) -> str:
             """Extract meaningful content from page component"""
             
             
   
-  
-  
-  
-  
-  
-  
-                        # ========== USE THE DETECTED FLAG FROM OUTSIDE ==========
-            if is_dashboard_detected and route_name == 'page':
-                return render_dashboard_from_source(content)
-          
             
+            # ========== DETECT DASHBOARD PAGE FIRST ==========
+            is_dashboard = False
+            if 'kpiData' in content or 'KPI' in content or 'Revenue' in content:
+                if 'DollarSign' in content or 'Users' in content:
+                    is_dashboard = True
+                    print(f"📊 DASHBOARD PAGE DETECTED: {route_name}")
             
-            
-            
+            # For dashboard pages - special handling
+            if is_dashboard or route_name in ('page', 'overview', 'dashboard'):
+                print(f"\n📊 EXTRACTING DASHBOARD PAGE: {route_name}")
+                
+                # Extract the return JSX
+                return_match = re.search(r'return\s*\(\s*([\s\S]*?)\s*\)\s*;', content, re.DOTALL)
+                if return_match:
+                    extracted = return_match.group(1)
+                    
+                    # Basic JSX to HTML conversion
+                    extracted = re.sub(r'className=', 'class=', extracted)
+                    
+                    # Convert Lucide icons to Font Awesome
+                    icon_map = {
+                        'DollarSign': '<i class="fas fa-dollar-sign text-purple-400"></i>',
+                        'Users': '<i class="fas fa-users text-purple-400"></i>',
+                        'ShoppingCart': '<i class="fas fa-shopping-cart text-purple-400"></i>',
+                        'Activity': '<i class="fas fa-activity text-purple-400"></i>',
+                        'BarChart3': '<i class="fas fa-chart-bar text-purple-400"></i>',
+                        'TrendingUp': '<i class="fas fa-chart-line text-purple-400"></i>',
+                        'Calendar': '<i class="fas fa-calendar text-purple-400"></i>',
+                        'LayoutDashboard': '<i class="fas fa-chart-line text-purple-400"></i>',
+                        'Settings': '<i class="fas fa-cog text-purple-400"></i>',
+                    }
+                    
+                    for lucide_icon, fa_html in icon_map.items():
+                        extracted = re.sub(rf'<{lucide_icon}[^>]*/>', fa_html, extracted)
+                        extracted = re.sub(rf'<{lucide_icon}[^>]*>.*?</{lucide_icon}>', fa_html, extracted)
+                    
+                    # Remove React state bindings
+                    extracted = re.sub(r'\{[^}]+\}', '', extracted)
+                    extracted = re.sub(r'\{\{', '{', extracted)
+                    extracted = re.sub(r'\}\}', '}', extracted)
+                    
+                    print(f"✅ Dashboard page extracted: {len(extracted)} chars")
+                    return extracted.strip()           
             
             
             
@@ -3237,35 +2881,6 @@ async def generate_preview_internal(
             clean = re.sub(r'^export\s+function\s+\w+\s*\([^)]*\)\s*{?', '', clean, flags=re.MULTILINE)
             print(f"   ✅ Length after import removal: {len(clean)} chars")
        
-            
-            
-            
-            
-            
-            # ========== PRESERVE ORIGINAL CONTENT STRUCTURE ==========
-            # Don't let AI modify the hero text and features
-            # Preserve the badge text
-            badge_match = re.search(r'<span\s+className="text-amber-400[^>]*>([^<]+)</span>', content)
-            if badge_match:
-                original_badge = badge_match.group(1)
-                print(f"  ✅ Preserved badge: {original_badge}")
-            
-            # Preserve the tagline
-            tagline_match = re.search(r'<p\s+className="text-xl md:text-2xl[^>]*>([^<]+)</p>', content)
-            if tagline_match:
-                original_tagline = tagline_match.group(1)
-                print(f"  ✅ Preserved tagline: {original_tagline}")
-            
-            # Preserve the description
-            desc_match = re.search(r'<p\s+className="text-base md:text-lg[^>]*>([^<]+)</p>', content)
-            if desc_match:
-                original_desc = desc_match.group(1)
-                print(f"  ✅ Preserved description: {original_desc[:50]}...")          
-            
-            
-            
-            
-            
             
             # Remove 'use client' directive
             print(f"\n📌 STEP 2: Removing 'use client' directive...")
@@ -3591,39 +3206,6 @@ async def generate_preview_internal(
                   extracted = extracted.replace('fa-shield-check', 'fa-shield-alt')
                   
                   
-                  
-                  
-                  
-                  
-                  # ========== PRESERVE HERO BADGE FROM SOURCE ==========
-                  # Extract the badge from original content (not extracted)
-                  badge_match = re.search(
-                      r'<div\s+className="inline-flex items-center gap-2[^>]*>.*?<Sparkles\s+className="([^"]*)"[^>]*/>\s*<span[^>]*>([^<]+)</span>',
-                      content,
-                      re.DOTALL
-                  )
-                  
-                  if badge_match:
-                      badge_text = badge_match.group(2).strip()
-                      badge_html = f'''
-          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 mb-6">
-            <i class="fas fa-sparkles text-amber-400 w-4 h-4"></i>
-            <span class="text-amber-400 text-sm uppercase tracking-wider">{badge_text}</span>
-          </div>'''
-                      
-                      # Inject badge into hero section
-                      if '<div class="relative z-10 text-center px-4">' in extracted:
-                          extracted = extracted.replace(
-                              '<div class="relative z-10 text-center px-4">',
-                              '<div class="relative z-10 text-center px-4">' + badge_html
-                          )
-                          print(f"  ✅ Injected hero badge: {badge_text}")                  
-                  
-                  
-                  
-                  
-                  
-                  
                   extracted = re.sub(r'htmlFor=', 'for=', extracted)
                   extracted = re.sub(r'<Link\s+href="([^"]+)"[^>]*>', r'<a href="\1">', extracted)
                   extracted = re.sub(r'<Link\s+href=\'([^\']+)\'[^>]*>', r'<a href="\1">', extracted)
@@ -3776,7 +3358,7 @@ async def generate_preview_internal(
                 
                 
                 
-                extracted_content = extract_page_content(content, route_name, is_dashboard_project_detected)
+                extracted_content = extract_page_content(content, route_name)
                 
                 
                 
@@ -4015,9 +3597,7 @@ async def generate_preview_internal(
         
         
         
-        # ========== CALL THE DASHBOARD DETECTION HERE ==========
-        is_dashboard = detect_dashboard_from_content(page_contents, user_prompt)
-        # ======================================================
+        
         
         
         
@@ -4131,42 +3711,31 @@ async def generate_preview_internal(
     
      
         
-          # ========== DETECT PROJECT TYPE ==========
-        # Check user prompt for dashboard keywords
-        prompt_lower = user_prompt.lower()
-        dashboard_keywords = [
-            'dashboard', 'analytics', 'admin', 'metrics', 'statistics',
-            'insights', 'overview', 'reports', 'monitoring', 'kpi',
-            'kpi cards', 'analytics dashboard', 'business intelligence'
-        ]
         
-        is_dashboard = any(keyword in prompt_lower for keyword in dashboard_keywords)
         
-        # ALSO check the actual page.tsx content
-        if not is_dashboard:
-            homepage_content = files.get("app/page.tsx", "")
-            if 'kpiData' in homepage_content or 'ResponsiveContainer' in homepage_content or 'recharts' in homepage_content:
-                is_dashboard = True
-                print(f"📊 Dashboard detected from page.tsx content")
         
-        # If dashboard detected, force skip e-commerce
-        if is_dashboard:
-            has_shop_page = False
-            has_cart_page = False
-            is_ecommerce = False
-            is_gym = False
-            print(f"📊 DASHBOARD MODE ENABLED - e-commerce features disabled")
-        else:
-            has_shop_page = any('shop' in f.lower() or 'products' in f.lower() or 'store' in f.lower() for f in files.keys())
-            has_cart_page = any('cart' in f.lower() for f in files.keys())
-            is_ecommerce = has_shop_page and has_cart_page
         
-        # Detect gym/fitness website (only if not dashboard)
-        is_gym = False
-        if not is_dashboard:
-            is_gym = any('gym' in f.lower() or 'fitness' in f.lower() or 'workout' in f.lower() or 'trainer' in f.lower() or 'classes' in f.lower() or 'membership' in f.lower() for f in files.keys())
+        
+         # ========== DETECT PROJECT TYPE ==========
+        # Check for DASHBOARD first (before e-commerce)
+        is_dashboard = any(keyword in user_prompt.lower() for keyword in [
+            'dashboard', 'analytics', 'admin', 'metrics', 'statistics', 
+            'insights', 'overview', 'reports', 'monitoring', 'kpi'
+        ])
+        
+        has_shop_page = any('shop' in f.lower() or 'products' in f.lower() or 'store' in f.lower() for f in files.keys())
+        has_cart_page = any('cart' in f.lower() for f in files.keys())
+        is_ecommerce = has_shop_page and has_cart_page and not is_dashboard
+        
+        # Detect gym/fitness website
+        is_gym = any('gym' in f.lower() or 'fitness' in f.lower() or 'workout' in f.lower() or 'trainer' in f.lower() or 'classes' in f.lower() or 'membership' in f.lower() for f in files.keys())
         
         print(f"📊 Project detection: dashboard={is_dashboard}, ecommerce={is_ecommerce}, gym={is_gym}, shop={has_shop_page}, cart={has_cart_page}")
+        
+        
+        
+        
+        
         
         
         
@@ -4676,202 +4245,6 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 
-
-
-================================================================================
-🚨 CRITICAL: FIRST DETECT WHAT TYPE OF WEBSITE TO BUILD 🚨
-================================================================================
-
-Read the user's request and determine what type of website they want:
-
-1. DASHBOARD/ADMIN - ONLY if they explicitly say:
-   - "dashboard", "admin panel", "analytics dashboard", "KPI dashboard", 
-   - "metrics dashboard", "admin interface", "data dashboard"
-   
-   → Generate: KPI cards, charts, data tables, NO marketing sections
-
-2. SAAS/MARKETING WEBSITE - for everything else like:
-   - "SaaS website", "landing page", "pricing page", "startup website",
-   - "company website", "business website", "corporate site", "product website"
-   
-   → Generate: Hero section, features, pricing, testimonials, footer
-   → NO KPI cards, NO analytics charts
-
-3. RESTAURANT - "restaurant website", "cafe", "menu", "reservation"
-
-4. E-COMMERCE - "shop", "store", "products", "cart"
-
-================================================================================
-RULE: DEFAULT TO MARKETING WEBSITE UNLESS USER EXPLICITLY SAYS "DASHBOARD"
-================================================================================
-
-If user says "SaaS website" → Marketing site with hero, features, pricing
-If user says "Startup website" → Marketing site with hero, features, CTA
-If user says "Business website" → Marketing site with about, services, contact
-
-DO NOT generate dashboard pages (KPI cards, charts) for marketing websites.
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨🚨🚨 CRITICAL: USE THIS EXTRACTED HTML CONTENT - DO NOT GENERATE NEW CONTENT 🚨🚨🚨
-================================================================================
-
-The extracted content below is the COMPLETE dashboard HTML already rendered for you.
-You MUST use this EXACT HTML content for the home page (page_home).
-
-DO NOT generate new KPI cards.
-DO NOT generate new charts.
-DO NOT create placeholder content.
-
-COPY THIS EXACT HTML INTO THE page_home DIV:
-
-{page_contents.get('page', '')}
-
-================================================================================
-FOR page_analytics and page_settings, use the extracted content below.
-DO NOT modify or replace with placeholders.
-================================================================================
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-🚨 CRITICAL: FOR DASHBOARD/ANALYTICS PROJECTS - USE CHART.JS, NOT RECHARTS 🚨
-================================================================================
-
-When generating dashboard HTML:
-
-1. ❌ DO NOT use React or Recharts
-2. ✅ MUST include Chart.js CDN: https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js
-3. ✅ MUST initialize charts using new Chart(ctx, {...})
-4. ✅ DO NOT use React.createElement or Recharts components
-
-Example of CORRECT chart initialization:
-```javascript
-const ctx = document.getElementById('revenueChart');
-new Chart(ctx, {{
-    data: {{ labels: ['Jan', 'Feb', 'Mar'] }}
-}})
-
-
-
-================================================================================
-📊 DASHBOARD WEBSITE - SPECIAL RULES (NO HERO IMAGE, NO FOOTER)
-================================================================================
-
-When building a DASHBOARD/ANALYTICS website, you MUST follow these rules:
-
-1. ❌ NO hero section with background image
-2. ❌ NO full-screen image backgrounds
-3. ❌ NO footer component (dashboard pages don't need footers)
-4. ✅ ONLY show KPI cards, charts, and data tables
-
-The home page (Overview) MUST contain:
-- Header with title "Overview" and date/time
-- KPI cards (Revenue, Users, Orders, Bounce Rate)
-- Charts for data visualization
-- NO hero image, NO "Get Started" button
-
-Example of CORRECT dashboard home page:
-```html
-<div class="p-8">
-    <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold">Overview</h1>
-        <p class="text-gray-400">March 15, 2024 2:30 PM</p>
-    </div>
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <!-- KPI Cards -->
-    </div>
-    <!-- Charts -->
-</div>
-
-❌ FORBIDDEN - DO NOT generate:
-
-<section class="relative h-screen flex items-center justify-center overflow-hidden">
-    <img src="..." class="absolute inset-0 w-full h-full object-cover" />
-    <div class="absolute inset-0 bg-black/50"></div>
-    <div class="relative z-10 text-center">
-        <h1>Hero Title</h1>
-        <button>Get Started</button>
-    </div>
-</section>
-<footer>...</footer>
-================================================================================
-
-
-
-
-
-
-
-
-IMPORTANT - THIS IS A ANALYTIC DASHBOARD, NOT A MARKETING SITE. FOLLOW THESE STRICT RULES:
-1. ❌ NO hero section with background image
-2. ❌ NO full-screen image backgrounds
-3. ❌ NO "Get Started" buttons
-4. ❌ NO trust badges or testimonials
-5. ❌ NO footer (dashboard pages don't need footers)
-6. ❌ NO shop, cart, catalog, products, or e-commerce pages
-7. ❌ NO restaurant features, reservation modal, menu pages
-8. ✅ ONLY create these pages:
-    - page_home (Dashboard Overview with KPI cards and charts)
-    - page_analytics (Analytics page with metrics)
-    - page_settings (Settings page with preferences)
-9. ✅ Navigation MUST ONLY contain:
-    - Overview (links to page_home)
-    - Analytics (links to page_analytics)
-    - Settings (links to page_settings)
-10. ✅ The Overview page MUST contain:
-    - Header with title "Overview" and date/time
-    - KPI cards (Revenue, Users, Orders, Bounce Rate)
-    - Charts for data visualization
-    - Recent activity feed
-11. ✅ For charts, use Chart.js CDN:
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Convert this Next.js page to HTML. RENDER ALL .map() arrays into ACTUAL HTML elements.
 
 CRITICAL - DO NOT output .map() in the HTML:
@@ -5045,6 +4418,70 @@ DO NOT add hero sections or call-to-action buttons.
 
 
 
+================================================================================
+🚨 CRITICAL: FOR DASHBOARD/ANALYTICS PROJECTS - USE CHART.JS, NOT RECHARTS 🚨
+================================================================================
+
+When generating dashboard HTML:
+
+1. ❌ DO NOT use React or Recharts
+2. ✅ MUST include Chart.js CDN: https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js
+3. ✅ MUST initialize charts using new Chart(ctx, {...})
+4. ✅ DO NOT use React.createElement or Recharts components
+
+Example of CORRECT chart initialization:
+```javascript
+const ctx = document.getElementById('revenueChart');
+new Chart(ctx, {{
+    data: {{ labels: ['Jan', 'Feb', 'Mar'] }}
+}})
+
+
+
+================================================================================
+📊 DASHBOARD WEBSITE - SPECIAL RULES (NO HERO IMAGE, NO FOOTER)
+================================================================================
+
+When building a DASHBOARD/ANALYTICS website, you MUST follow these rules:
+
+1. ❌ NO hero section with background image
+2. ❌ NO full-screen image backgrounds
+3. ❌ NO footer component (dashboard pages don't need footers)
+4. ✅ ONLY show KPI cards, charts, and data tables
+
+The home page (Overview) MUST contain:
+- Header with title "Overview" and date/time
+- KPI cards (Revenue, Users, Orders, Bounce Rate)
+- Charts for data visualization
+- NO hero image, NO "Get Started" button
+
+Example of CORRECT dashboard home page:
+```html
+<div class="p-8">
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold">Overview</h1>
+        <p class="text-gray-400">March 15, 2024 2:30 PM</p>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <!-- KPI Cards -->
+    </div>
+    <!-- Charts -->
+</div>
+
+❌ FORBIDDEN - DO NOT generate:
+
+<section class="relative h-screen flex items-center justify-center overflow-hidden">
+    <img src="..." class="absolute inset-0 w-full h-full object-cover" />
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative z-10 text-center">
+        <h1>Hero Title</h1>
+        <button>Get Started</button>
+    </div>
+</section>
+<footer>...</footer>
+================================================================================
+
+
 
 
 
@@ -5077,17 +4514,6 @@ When the user requests a DASHBOARD, ANALYTICS, or ADMIN website, you MUST genera
 5. Use recharts library for charts: import {{ LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer }} from 'recharts'
 
 ================================================================================
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -10775,37 +10201,12 @@ document.addEventListener('DOMContentLoaded', function() {{
             'insights', 'overview', 'reports', 'monitoring', 'kpi'
         ])
         
-        
-        
-        
-        
-        
-        # ⭐⭐⭐ INJECT RESTAURANT FEATURES (ONLY FOR ACTUAL RESTAURANT WEBSITES) ⭐⭐⭐
-        # Check if this is genuinely a restaurant website
-        is_restaurant = any(keyword in user_prompt.lower() for keyword in [
-            'restaurant', 'cafe', 'dining', 'menu', 'culinary', 'bistro', 
-            'food', 'eatery', 'grill', 'kitchen', 'chef', 'reservation', 'booking'
-        ])
-        
-        # Also check file names for restaurant indicators
-        if not is_restaurant:
-            for file_path in files.keys():
-                if any(keyword in file_path.lower() for keyword in ['menu', 'reservation', 'restaurant']):
-                    is_restaurant = True
-                    break
-        
-        if not is_dashboard and is_restaurant:
+        # ⭐⭐⭐ INJECT RESTAURANT FEATURES (SKIP FOR DASHBOARD) ⭐⭐⭐
+        if not is_dashboard:
             preview_html = inject_restaurant_features(preview_html, brand_name, user_prompt)
             print("🍽️ Restaurant features injected")
-        elif is_dashboard:
-            print("📊 Dashboard detected - skipping restaurant features injection")
         else:
-            print("🚫 Not a restaurant website - skipping restaurant features injection")
-            
-            
-            
-            
-            
+            print("📊 Dashboard detected - skipping restaurant features injection")
         
         # ⭐⭐⭐ INJECT RESERVATION FORM (SKIP FOR DASHBOARD) ⭐⭐⭐
         if not is_dashboard:
@@ -10817,54 +10218,143 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 
 
-
-
-
-
-        # ========== CHECK HOME PAGE CONTENT - SKIP INJECTIONS IF ALREADY EXISTS ==========
+        # ⭐⭐⭐ SUPER WAY: Inject trust indicators dynamically ⭐⭐⭐
         homepage_source = files.get("app/page.tsx", "")
-        
-        # Check if home page already has features and FAQ
-        has_features = 'const features' in homepage_source or 'features.map' in homepage_source
-        has_faq = 'const faqs' in homepage_source or 'faqs.map' in homepage_source
-        
-        print(f"\n📋 HOME PAGE CONTENT CHECK:")
-        print(f"   Features in source: {has_features}")
-        print(f"   FAQ in source: {has_faq}")
-        
-        # Only inject trust badges (these sometimes get lost in conversion)
         preview_html = extract_and_inject_trust_indicators(homepage_source, preview_html)
-        
-        # Skip FAQ injection if already in home page
-        if has_faq:
-            print("  ✅ FAQ already in home page - skipping injection")
-        else:
-            print("  🔧 FAQ missing - would inject (if needed)")
-        
-        
-        
-        # Skip Features injection if already in home page
-        if has_features:
-            print("  ✅ Features already in home page - skipping injection")
-        else:
-            print("  🔧 Features missing - would inject (if needed)")
-            
-            
-            
-            
-            
-            
-            
-            
-# ==================== STRICT DASHBOARD ENFORCEMENT ====================
-        is_dashboard = is_dashboard_project(user_prompt, files) or detect_dashboard_from_content(page_contents, user_prompt)
-        
-        if is_dashboard:
-            preview_html = enforce_strict_dashboard_rules(preview_html)
-            print("🔒 Strict dashboard rules enforced")
 
-        preview_html = enforce_body_background(preview_html)
-           
+        # ========== FORCE INJECT FAQ INTO HTML ==========
+        print(f"\n📋 FORCE INJECTING FAQ INTO HTML...")
+        print(f"📊 FAQ HTML length: {len(faq_html)} chars")
+        print(f"📊 FAQ contains {faq_html.count('faq-btn')} accordion items")
+
+        if faq_html and faq_html != '<p class="text-gray-400 text-center">No FAQ items found</p>':
+            # Check if ACTUAL FAQ CONTENT exists (not just CSS classes)
+            # Look for actual question text from the extracted FAQ
+            has_faq_content = False
+            if 'How do I start?' in preview_html or 'How do I get started?' in preview_html:
+                has_faq_content = True
+            elif 'faq-btn' in preview_html and 'faq-answer' in preview_html:
+                # Additional check - see if there's any actual text content
+                faq_section_match = re.search(r'<div class="faq-answer[^>]*>(.*?)</div>', preview_html)
+                if faq_section_match and len(faq_section_match.group(1).strip()) > 10:
+                    has_faq_content = True
+            
+            if has_faq_content:
+                print("  ✅ FAQ content already exists in HTML - skipping injection")
+            else:
+                print("  🔧 No FAQ content found - injecting...")
+                
+        
+        
+        
+        
+        
+                
+                
+                 # Build FAQ section HTML (NO duplicate script - functions already in main)
+                faq_section_html = f'''
+<section class="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
+    <div class="container mx-auto max-w-3xl">
+        <h2 class="text-4xl font-bold text-center mb-12 gradient-text">Frequently Asked Questions</h2>
+        <div class="space-y-4">
+            {faq_html}
+        </div>
+    </div>
+</section>
+'''
+                # Inject before footer or body
+                if '<footer' in preview_html:
+                    preview_html = preview_html.replace('<footer', faq_section_html + '\n<footer', 1)
+                    print("  ✅ Injected FAQ section before footer")
+                elif '</body>' in preview_html:
+                    preview_html = preview_html.replace('</body>', faq_section_html + '\n</body>')
+                    print("  ✅ Injected FAQ section before body close")
+                else:
+                    preview_html += faq_section_html
+                    print("  ✅ Appended FAQ section at end")
+            
+            
+            
+            
+            
+            
+            
+        # ========== FORCE INJECT FEATURES INTO HTML ==========
+        print(f"\n📋 FORCE INJECTING FEATURES INTO HTML...")
+        
+        # Extract features from the source if not already rendered
+        features_match_in_source = re.search(r'const\s+features\s*=\s*\[\s*([\s\S]*?)\s*\]\s*;', homepage_source, re.DOTALL)
+        
+        if features_match_in_source:
+            features_content = features_match_in_source.group(1)
+            
+            # Extract feature details
+            feature_pattern = r'\{\s*icon:\s*(\w+)\s*,\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']'
+            features = re.findall(feature_pattern, features_content)
+            
+            if features:
+                # Check if features already exist in HTML
+                features_exist = False
+                for _, title, _ in features:
+                    if title in preview_html:
+                        features_exist = True
+                        break
+                
+                if not features_exist:
+                    print(f"  🔧 Injecting {len(features)} feature cards...")
+                    
+                    # Build features HTML
+                    features_html = '<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 container mx-auto px-4">\n'
+                    
+                    icon_map = {
+                        'Zap': 'fa-bolt',
+                        'BarChart': 'fa-chart-bar',
+                        'Lock': 'fa-lock',
+                        'Cpu': 'fa-microchip',
+                        'Sparkles': 'fa-sparkles',
+                        'Users': 'fa-users',
+                        'Shield': 'fa-shield-alt',
+                        'Star': 'fa-star'
+                    }
+                    
+                    for icon_name, title, desc in features:
+                        fa_icon = icon_map.get(icon_name, 'fa-circle')
+                        features_html += f'''
+                    <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all hover:-translate-y-1">
+                        <i class="fas {fa_icon} w-12 h-12 text-4xl mb-4 text-purple-400"></i>
+                        <h3 class="text-xl font-bold mb-2 text-white">{title}</h3>
+                        <p class="text-gray-400 text-sm">{desc}</p>
+                    </div>
+'''
+                    features_html += '\n</div>'
+                    
+                    # Find where to inject features (after hero, before FAQ)
+                    hero_end_match = re.search(r'(</section>\s*)(?=<section|</div>|</main>|</div>\s*<div id="page_)', preview_html)
+                    if hero_end_match:
+                        injection_point = hero_end_match.end()
+                        features_section_html = f'''
+<section class="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
+    <div class="container mx-auto text-center mb-12">
+        <h2 class="text-4xl font-bold gradient-text">Features</h2>
+        <p class="text-gray-400 mt-4">What makes us special</p>
+    </div>
+    {features_html}
+</section>
+'''
+                        preview_html = preview_html[:injection_point] + features_section_html + preview_html[injection_point:]
+                        print(f"  ✅ Injected {len(features)} feature cards")
+                    else:
+                        print("  ⚠️ Could not find injection point for features")
+                else:
+                    print("  ✅ Features already exist in HTML")
+            else:
+                print("  ⚠️ Could not extract features from source")
+        else:
+            print("  ⚠️ No features array found in source") 
+            
+            
+            
+            
             
             
             
