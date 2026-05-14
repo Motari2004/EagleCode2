@@ -9,8 +9,6 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 
-
-
 ================================================================================
 🚨🚨🚨 CRITICAL JSON FORMATTING RULES - MUST FOLLOW 🚨🚨🚨
 ================================================================================
@@ -50,6 +48,230 @@ REMEMBER:
 - NO trailing commas
 - NO comments
 ================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+STEP 1 — PROJECT TYPE DETECTION
+================================================================================
+
+Detect the project type from the user prompt:
+
+| Keywords                                      | Type        | Nav Links (max 4)                    |
+|-----------------------------------------------|-------------|--------------------------------------|
+| gym, fitness, workout, trainer, yoga, hiit    | GYM         | Classes, Trainers, Membership        |
+| school, academy, university, college          | SCHOOL      | Programs, Admissions, Faculty        |
+| restaurant, bistro, cafe, dining              | RESTAURANT  | Menu, Reservations, Gallery          |
+| hotel, resort, lodge, inn                     | HOTEL       | Rooms, Amenities, Gallery, Book Now  |
+| portfolio, creative, designer                 | PORTFOLIO   | Projects, About, Contact       |
+| shop, store, ecommerce, products, cart        | ECOMMERCE   | Shop, Cart                           |
+| coffee, roastery, beanery                     | COFFEE      | Shop, Brew Guide, Story              |
+| saas, software, app, platform, tech           | TECH        | Features, Pricing, Contact           |
+| dashboard, analytics, admin, metrics, statistics, insights, overview, reports, monitoring, kpi | DASHBOARD | Overview, Analytics, Settings | app/page.tsx, app/analytics/page.tsx, app/settings/page.tsx |
+| digital agency, marketing agency, web agency, creative agency, branding agency, seo agency, design agency, we are a team | DIGITAL AGENCY | Services, Work, Contact | app/page.tsx, app/services/page.tsx, app/work/page.tsx, app/contact/page.tsx |
+
+
+
+
+
+
+
+Generate a Next.js page.tsx file with NO duplicate sections.
+
+RULES:
+1. Features section - CREATE ONLY ONCE
+   - Use the `features` array defined at the top of the component
+   - DO NOT create another features section with hardcoded items
+
+2. FAQ section - CREATE ONLY ONCE  
+   - Use the `faqs` array defined at the top of the component
+   - DO NOT create another FAQ section with hardcoded items
+
+3. Sections to include (ONLY ONE OF EACH):
+   - Hero section (with trust badges)
+   - Features section (using features array)
+   - Testimonials section
+   - Stats section
+   - FAQ section (using faqs array)
+
+4. DO NOT duplicate any section
+
+Return the complete corrected page.tsx file.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 🛡️ TRUST INDICATORS - MANDATORY REQUIREMENT
+
+You MUST include trust indicators (social proof badges) in EVERY website you generate. These build user confidence and increase conversions.
+
+### ✅ ALWAYS INCLUDE trust indicators in the hero section:
+
+**Required Trust Badges Format:**
+
+```html
+<div class="absolute bottom-8 left-0 right-0 z-10">
+    <div class="container mx-auto px-4">
+        <div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">
+            <!-- Badge 1: Rating -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i class="fas fa-star w-5 h-5 text-yellow-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">4.9/5</div>
+                    <div class="text-gray-400 text-xs">Rating</div>
+                </div>
+            </div>
+            
+            <!-- Separator Line -->
+            <div class="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <!-- Badge 2: Customers/Users -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i data-lucide="users" class="w-5 h-5 text-cyan-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">10k+</div>
+                    <div class="text-gray-400 text-xs">Customers</div>
+                </div>
+            </div>
+            
+            <div class="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <!-- Badge 3: Satisfaction/Trust -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i data-lucide="shield" class="w-5 h-5 text-green-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">100%</div>
+                    <div class="text-gray-400 text-xs">Secure</div>
+                </div>
+            </div>
+            
+            <div class="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <!-- Badge 4: Support/Availability -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i data-lucide="headphones" class="w-5 h-5 text-purple-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">24/7</div>
+                    <div class="text-gray-400 text-xs">Support</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+## 🛡️ TRUST INDICATORS - MANDATORY REQUIREMENT
+
+You MUST include trust indicators (social proof badges) in EVERY website you generate. These build user confidence and increase conversions.
+
+### ✅ ALWAYS INCLUDE trust indicators in the hero section:
+
+**Required Trust Badges Format:**
+
+```html
+<div class="absolute bottom-8 left-0 right-0 z-10">
+    <div class="container mx-auto px-4">
+        <div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">
+            <!-- Badge 1: Rating -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i class="fas fa-star w-5 h-5 text-yellow-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">4.9/5</div>
+                    <div class="text-gray-400 text-xs">Rating</div>
+                </div>
+            </div>
+            
+            <!-- Separator Line -->
+            <div class="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <!-- Badge 2: Customers/Users -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i data-lucide="users" class="w-5 h-5 text-cyan-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">10k+</div>
+                    <div class="text-gray-400 text-xs">Customers</div>
+                </div>
+            </div>
+            
+            <div class="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <!-- Badge 3: Satisfaction/Trust -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i data-lucide="shield" class="w-5 h-5 text-green-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">100%</div>
+                    <div class="text-gray-400 text-xs">Secure</div>
+                </div>
+            </div>
+            
+            <div class="hidden md:block w-px h-8 bg-white/10"></div>
+            
+            <!-- Badge 4: Support/Availability -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <i data-lucide="headphones" class="w-5 h-5 text-purple-400"></i>
+                </div>
+                <div>
+                    <div class="text-white font-bold text-lg leading-none">24/7</div>
+                    <div class="text-gray-400 text-xs">Support</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 
 
@@ -219,54 +441,6 @@ GOOD: "content": "export default { config }"
 BAD: "content": "export default {\\n  config\\n}"
 
 
-
-
-================================================================================
-STEP 1 — PROJECT TYPE DETECTION
-================================================================================
-
-Detect the project type from the user prompt:
-
-| Keywords                                      | Type        | Nav Links (max 4)                    |
-|-----------------------------------------------|-------------|--------------------------------------|
-| gym, fitness, workout, trainer, yoga, hiit    | GYM         | Classes, Trainers, Membership        |
-| school, academy, university, college          | SCHOOL      | Programs, Admissions, Faculty        |
-| restaurant, bistro, cafe, dining              | RESTAURANT  | Menu, Reservations, Gallery          |
-| hotel, resort, lodge, inn                     | HOTEL       | Rooms, Amenities, Gallery, Book Now  |
-| portfolio, creative, designer                 | PORTFOLIO   | Projects, About, Contact       |
-| shop, store, ecommerce, products, cart        | ECOMMERCE   | Shop, Cart                           |
-| coffee, roastery, beanery                     | COFFEE      | Shop, Brew Guide, Story              |
-| saas, software, app, platform, tech           | TECH        | Features, Pricing, Contact           |
-| dashboard, analytics, admin, metrics, statistics, insights, overview, reports, monitoring, kpi | DASHBOARD | Overview, Analytics, Settings | app/page.tsx, app/analytics/page.tsx, app/settings/page.tsx |
-| digital agency, marketing agency, web agency, creative agency, branding agency, seo agency, design agency, we are a team | DIGITAL AGENCY | Services, Work, Contact | app/page.tsx, app/services/page.tsx, app/work/page.tsx, app/contact/page.tsx |
-
-
-
-
-
-
-
-Generate a Next.js page.tsx file with NO duplicate sections.
-
-RULES:
-1. Features section - CREATE ONLY ONCE
-   - Use the `features` array defined at the top of the component
-   - DO NOT create another features section with hardcoded items
-
-2. FAQ section - CREATE ONLY ONCE  
-   - Use the `faqs` array defined at the top of the component
-   - DO NOT create another FAQ section with hardcoded items
-
-3. Sections to include (ONLY ONE OF EACH):
-   - Hero section (with trust badges)
-   - Features section (using features array)
-   - Testimonials section
-   - Stats section
-   - FAQ section (using faqs array)
-
-4. DO NOT duplicate any section
-
-Return the complete corrected page.tsx file.
 
 
 
@@ -3533,7 +3707,6 @@ SECTION 2 — FEATURES (4 cards, REQUIRED):
       </h2>
       <p className="text-gray-400 mt-4 max-w-2xl mx-auto">[subtitle specific to brand]</p>
     </div>
-    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
       {features.map((f, i) => (
         <div key={i} className="bg-white/5 border border-white/10 hover:border-purple-500/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1">
           <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${f.color} flex items-center justify-center mb-4`}>
@@ -3900,7 +4073,6 @@ SECTION 2 — FEATURES (4 cards, unique content per card):
         <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Features</h2>
         <p className="text-gray-400 mt-4">[SUBTITLE]</p>
       </div>
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         {features.map((f, i) => (
           <div key={i} className="bg-white/5 border border-white/10 hover:border-purple-500/50 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1">
             <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${f.color} flex items-center justify-center mb-4`}>
@@ -5687,7 +5859,6 @@ Your current feature grid format is fine. Just add:
   <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
     Features
   </h2>
-  <p className="text-gray-400 mt-4">What makes us unique</p>
 </div>
 
 BEFORE the grid div.
@@ -5721,10 +5892,9 @@ The features section MUST have a visible heading that says "Features" or similar
       <h2 className="text-3xl md:text-4xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
         Features
       </h2>
-      <p className="text-gray-400 mt-4 max-w-2xl mx-auto">Discover what makes us unique</p>
     </div>
     
-    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+
       {/* Feature cards */}
     </div>
   </div>
@@ -5774,7 +5944,6 @@ Your current feature grid format is fine. Just add:
   <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
     Features
   </h2>
-  <p className="text-gray-400 mt-4">What makes us unique</p>
 </div>
 
 BEFORE the grid div.
@@ -8340,7 +8509,7 @@ REQUIRED STRUCTURE:
       <p className="text-gray-400 mt-4 max-w-2xl mx-auto">Experience excellence with our premium services</p>
     </div>
     
-    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+  
       {[
         { icon: Truck, title: "Free Shipping", desc: "Free delivery on orders over $50", color: "from-blue-500 to-cyan-500" },
         { icon: ShieldCheck, title: "Secure Payment", desc: "100% secure transactions", color: "from-green-500 to-emerald-500" },

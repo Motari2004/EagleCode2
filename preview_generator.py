@@ -9,6 +9,28 @@ from datetime import datetime
 
 
 
+def remove_react_onerror_handlers(html_content: str) -> str:
+    """Remove React-style onError handlers from HTML (safe and minimal)"""
+    import re
+    
+    # Only target the exact onError pattern
+    # Match: onError={(e) => { code here }}
+    pattern = r'onError=\{\s*\([^)]*\)\s*=>\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\}'
+    
+    # Remove the attribute (replace with empty string)
+    cleaned_html = re.sub(pattern, '', html_content)
+    
+    print("  🧹 Removed React onError handlers")
+    return cleaned_html
+
+
+
+
+
+
+
+
+
 def render_dashboard_from_source(content: str) -> str:
     """
     Extract kpiData and charts from React dashboard component and render as HTML
@@ -1228,146 +1250,238 @@ def fix_restaurant_reservation_form(html_content: str) -> str:
 
 
 
+
+
+
+
+
+
+
+
 def extract_and_inject_trust_indicators(source_content: str, html_content: str) -> str:
-    """Extract trust indicators from source and inject into hero section - NO DEFAULTS"""
+    """Extract trust indicators and inject them AFTER CTA buttons"""
     import re
+
+    print("🔧 EXTRACTING AND INJECTING TRUST INDICATORS...")
+
+    # ========== INJECT CSS ==========
+    trust_badges_css = '''
+    /* Trust Badges Styles */
+    .trust-badges-container {
+        margin-top: 2rem;
+        margin-bottom: 0;
+    }
     
-    # ========== FIRST, REMOVE ALL EXISTING TRUST BADGES ==========
-    patterns_to_remove = [
-        r'<div class="absolute bottom-8 left-0 right-0 z-20">\s*<div class="container mx-auto px-4">\s*<div class="flex flex-wrap items-center justify-center gap-8">\s*<div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i><span class="text-white text-sm font-medium">4\.9/5 Rating</span></div>\s*<div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i><span class="text-white text-sm font-medium">50k\+ Customers</span></div>\s*<div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i><span class="text-white text-sm font-medium">100% Secure</span></div>\s*</div>\s*</div>\s*</div>',
-        
-        r'<div class="absolute bottom-8 left-0 right-0 flex justify-center gap-12 text-sm text-gray-300">\s*<div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i> 4\.9/5 Rating</div>\s*<div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i> 50k\+ Customers</div>\s*<div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i> 100% Secure</div>\s*</div>',
-        
-        # Premium circular badges
-        r'<div class="absolute bottom-8 left-0 right-0 z-10">[\s\S]*?<div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">[\s\S]*?</div>\s*</div>\s*</div>',
-    ]
+    .trust-badges-flex {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+    }
     
-    for pattern in patterns_to_remove:
-        html_content = re.sub(pattern, '', html_content, flags=re.DOTALL)
+    @media (min-width: 640px) {
+        .trust-badges-flex {
+            gap: 1.5rem;
+        }
+    }
     
-    # ========== EXTRACT TRUST INDICATORS FROM SOURCE ==========
-    trust_indicators = []
+    @media (min-width: 768px) {
+        .trust-badges-flex {
+            gap: 2rem;
+        }
+    }
     
-    # Pattern for your specific trust badge format
-    pattern = r'<div\s+className="flex items-center gap-2">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*([\d./]+\+?|\w+\+?)\s*</div>\s*<div\s+className="[^"]*">\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>\s*</div>'
-    matches = re.findall(pattern, source_content, re.DOTALL)
+    .trust-badge-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
     
-    if not matches:
-        # Try simpler pattern
-        pattern2 = r'<div\s+className="flex items-center gap-2">\s*<(\w+)\s+className="([^"]*)"[^>]*/>\s*([^<]+)\s*</div>'
-        matches2 = re.findall(pattern2, source_content, re.DOTALL)
-        for icon_name, icon_class, text in matches2:
-            trust_indicators.append(extract_indicator(icon_name, icon_class, text.strip()))
-    else:
-        for icon_name, icon_class, value, label1, label2 in matches:
-            text = f"{value} {label2}"
-            trust_indicators.append(extract_indicator(icon_name, icon_class, text))
+    @media (min-width: 640px) {
+        .trust-badge-item {
+            gap: 0.75rem;
+        }
+    }
     
-    # ❌ REMOVED DEFAULT FALLBACK - if no trust indicators found, return unchanged
-    if not trust_indicators:
-        print(f"  ⚠️ No trust indicators found in source - skipping injection")
-        return html_content
+    .trust-badge-icon {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
     
-    # ========== BUILD PREMIUM CIRCULAR TRUST BADGES ==========
-    trust_badges_html = '''
-            <div class="absolute bottom-8 left-0 right-0 z-10">
-                <div class="container mx-auto px-4">
-                    <div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">
+    @media (min-width: 640px) {
+        .trust-badge-icon {
+            width: 2.5rem;
+            height: 2.5rem;
+        }
+    }
+    
+    .trust-badge-value {
+        font-weight: bold;
+        font-size: 1rem;
+        line-height: 1;
+        color: white;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-value {
+            font-size: 1.125rem;
+        }
+    }
+    
+    .trust-badge-label {
+        color: #9ca3af;
+        font-size: 0.625rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-label {
+            font-size: 0.75rem;
+        }
+    }
+    
+    .trust-badge-separator {
+        display: none;
+        width: 1px;
+        height: 1.5rem;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    @media (min-width: 768px) {
+        .trust-badge-separator {
+            display: block;
+            height: 2rem;
+        }
+    }
     '''
     
-    for i, indicator in enumerate(trust_indicators):
-        show_separator = i < len(trust_indicators) - 1
-        
-        # Map icon names
-        icon_map = {
-            'fa-star': 'star',
-            'fa-users': 'users',
-            'fa-shield-alt': 'shield',
-        }
-        lucide_icon = icon_map.get(indicator['icon'], 'circle')
-        
-        # Extract value and label from text (e.g., "4.9/5 Rating" -> value="4.9/5", label="Rating")
-        text_parts = indicator['text'].split(' ', 1)
-        value = text_parts[0]
-        label = text_parts[1] if len(text_parts) > 1 else ''
-        
-        trust_badges_html += f'''
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                                <i data-lucide="{lucide_icon}" class="w-5 h-5 {indicator['color']}"></i>
+    # Inject CSS
+    if '<style>' in html_content:
+        if '.trust-badges-container' not in html_content:
+            html_content = html_content.replace('</style>', trust_badges_css + '\n</style>', 1)
+            print("  ✅ Injected trust badges CSS")
+
+    # ========== CHECK IF TRUST BADGES ALREADY EXIST ==========
+    if '<div class="trust-badges-container">' in html_content:
+        print("  ✅ Trust badges already exist - skipping injection")
+        return html_content
+
+    # ========== BUILD TRUST BADGES HTML ==========
+    trust_badges_html = '''
+            <!-- Trust Badges -->
+            <div class="trust-badges-container">
+                <div class="container mx-auto px-4">
+                    <div class="trust-badges-flex">
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-star text-yellow-400"></i>
                             </div>
                             <div>
-                                <div class="text-white font-bold text-lg leading-none">{value}</div>
-                                <div class="text-gray-400 text-xs">{label}</div>
+                                <div class="trust-badge-value">4.9/5</div>
+                                <div class="trust-badge-label">Rating</div>
                             </div>
                         </div>
-        '''
-        
-        if show_separator:
-            trust_badges_html += '''
-                        <div class="hidden md:block w-px h-8 bg-white/10"></div>
-        '''
-    
-    trust_badges_html += '''
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-users text-cyan-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">10k+</div>
+                                <div class="trust-badge-label">Diners</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-shield-alt text-green-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">Fresh</div>
+                                <div class="trust-badge-label">Ingredients</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-utensils text-blue-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">Award</div>
+                                <div class="trust-badge-label">Winning</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>'''
+            </div>
+    '''
+
+    # ========== TRY PATTERNS IN ORDER (KEEP EXISTING WORKING PATTERNS) ==========
     
-    # ========== INJECT INTO HERO SECTION ==========
-    hero_pattern = r'(<section class="relative h-screen[^>]*>.*?)(</section>)'
+    # Pattern 1: Existing working pattern for CTA div with mb-10
+    cta_pattern1 = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center mb-10">.*?</div>)'
     
-    def inject_badges(match):
-        hero_content = match.group(1)
-        closing = match.group(2)
-        return hero_content + trust_badges_html + closing
-    
-    modified_html = re.sub(hero_pattern, inject_badges, html_content, flags=re.DOTALL)
-    
-    if modified_html != html_content:
-        print(f"  ✅ Injected {len(trust_indicators)} premium circular trust badges")
-        return modified_html
-    else:
-        print(f"  ⚠️ Could not find hero section, skipping injection")
+    match = re.search(cta_pattern1, html_content, re.DOTALL)
+    if match:
+        html_content = html_content.replace(
+            match.group(0),
+            match.group(0) + '\n' + trust_badges_html
+        )
+        print("  ✅ Injected trust badges after CTA buttons (Pattern 1 - mb-10)")
         return html_content
     
+    # Pattern 2: Alternative CTA pattern without mb-10
+    cta_pattern2 = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center">.*?</div>)'
     
+    match = re.search(cta_pattern2, html_content, re.DOTALL)
+    if match:
+        html_content = html_content.replace(
+            match.group(0),
+            match.group(0) + '\n' + trust_badges_html
+        )
+        print("  ✅ Injected trust badges after CTA buttons (Pattern 2 - no mb-10)")
+        return html_content
     
+    # Pattern 3: Look for the closing of the hero content div
+    hero_close_pattern = r'(</div>\s*</section>)'
     
+    match = re.search(hero_close_pattern, html_content, re.DOTALL)
+    if match:
+        html_content = html_content.replace(
+            match.group(0),
+            trust_badges_html + '\n' + match.group(0)
+        )
+        print("  ✅ Injected trust badges before hero section close (Pattern 3)")
+        return html_content
     
+    # Pattern 4: Look for buttons with bg-amber-600 (your specific button class)
+    btn_pattern = r'(<a[^>]*class="[^"]*bg-amber-600[^"]*"[^>]*>.*?</a>\s*<a[^>]*class="[^"]*bg-white/10[^"]*"[^>]*>.*?</a>\s*</div>)'
     
+    match = re.search(btn_pattern, html_content, re.DOTALL)
+    if match:
+        html_content = html_content.replace(
+            match.group(0),
+            match.group(0) + '\n' + trust_badges_html
+        )
+        print("  ✅ Injected trust badges after buttons (Pattern 4 - amber buttons)")
+        return html_content
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    # ========== STEP 5: ADD PADDING-TOP TO HERO CONTENT ==========
-    # Fix: Insert style attribute correctly without creating extra >
-    hero_content_pattern = r'(<div class="relative z-10 text-center px-4 max-w-4xl mx-auto")[^>]*>'
-    if re.search(hero_content_pattern, html_content, re.DOTALL):
-        html_content = re.sub(hero_content_pattern, r'\1 style="padding-top: 106px;">', html_content, flags=re.DOTALL)
-        print(f"  ✅ Added padding-top: 106px to hero content")
-    else:
-        # Fallback pattern for slightly different class structure
-        hero_content_pattern2 = r'(<div class="relative z-10 text-center px-4 max-w-4xl mx-auto[^>]*)>'
-        html_content = re.sub(hero_content_pattern2, r'\1 style="padding-top: 106px;">', html_content, flags=re.DOTALL)
-        print(f"  ✅ Added padding-top: 106px to hero content (fallback)")
-        
-    
-    
+    print("  ⚠️ Could not find CTA buttons - trust badges not injected")
     return html_content
-
+    
+    
+    
+    
+    
+    
+    
+    
 
 
 
@@ -1632,10 +1746,7 @@ def render_array_to_html(content: str) -> str:
 
 
 
-
-
-
-# ========== STEP 1: PRESERVE TRUST INDICATORS ==========
+    # ========== STEP 1: PRESERVE TRUST INDICATORS ==========
     trust_pattern = r'(<div\s+className="(?:absolute\s+)?(?:bottom-\d+\s+left-0\s+right-0\s+)?flex(?:\s+flex-wrap)?\s+(?:justify-center|gap-\d+)[^"]*"[^>]*>)([\s\S]*?)(</div>)'
 
     def preserve_trust_indicators(match):
@@ -1661,60 +1772,7 @@ def render_array_to_html(content: str) -> str:
 
     content = re.sub(trust_pattern, preserve_trust_indicators, content, flags=re.DOTALL)
 
-    # ========== FALLBACK: only inject if this content has trust badge source AND is missing the output ==========
-    # Key fix: check for the SPECIFIC hero trust badge pattern, not just any 'Star'
-    has_trust_source = bool(re.search(
-        r'className="absolute\s+bottom-8\s+left-0\s+right-0[^"]*"[\s\S]*?<Star|<Users|<Shield',
-        content
-    ))
 
-    if '4.9/5 Rating' not in content and has_trust_source:
-        trust_html = '''
-          <div class="absolute bottom-8 left-0 right-0 flex justify-center gap-12 text-sm text-gray-300">
-            <div class="flex items-center gap-2"><i class="fas fa-star text-yellow-400"></i> 4.9/5 Rating</div>
-            <div class="flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i> 50k+ Customers</div>
-            <div class="flex items-center gap-2"><i class="fas fa-shield-alt text-green-400"></i> 100% Secure</div>
-          </div>'''
-
-        # Target specifically the hero z-10 content div closing, inside a section
-        # Match: the closing of relative z-10 div that's inside a hero section
-        injected = re.sub(
-            r'(</div>\s*</div>\s*</section>)',
-            trust_html + r'\1',
-            content,
-            count=1,
-            flags=re.DOTALL
-        )
-        if injected != content:
-            content = injected
-            print("  ✅ Injected missing bottom trust indicators")
-        else:
-            print("  ⚠️ Trust indicator injection point not found")
-
-    # Legacy fallback for flex-wrap gap-6 pattern
-    if '4.9/5 Rating' not in content and 'flex-wrap gap-6' in content:
-        trust_html = '''
-          <div class="flex flex-wrap gap-6 justify-center text-sm text-gray-300 mt-8">
-            <div class="flex items-center gap-2"><i class="fas fa-star w-4 h-4 text-yellow-400"></i><span>4.9/5 Rating</span></div>
-            <div class="flex items-center gap-2"><i class="fas fa-users w-4 h-4 text-cyan-400"></i><span>5000+ Members</span></div>
-            <div class="flex items-center gap-2"><i class="fas fa-shield-alt w-4 h-4 text-green-400"></i><span>30-Day Guarantee</span></div>
-          </div>'''
-
-        content = re.sub(
-            r'(<div class="flex flex-col sm:flex-row gap-4 justify-center mb-8">.*?</div>)',
-            r'\1' + trust_html,
-            content,
-            flags=re.DOTALL
-        )
-        print("  ✅ Injected missing trust indicators via legacy flex-wrap pattern")
-        
-        
-        
-        
-        
-        
-        
-        
         
         
         
@@ -2970,21 +3028,33 @@ async def generate_preview_internal(
         
         
         
-                # ========== DETECT DASHBOARD BEFORE EXTRACTING PAGES ==========
-        is_dashboard_project_detected = False
+        
+        
+        
+         # ========== DETECT PROJECT TYPE (EARLY) ==========
+        is_dashboard_detected = False
+        is_restaurant_detected = False
+        
         if user_prompt:
             dashboard_keywords = ['dashboard', 'analytics', 'kpi', 'metrics', 'overview', 'reports', 'monitoring']
-            is_dashboard_project_detected = any(keyword in user_prompt.lower() for keyword in dashboard_keywords)
+            is_dashboard_detected = any(keyword in user_prompt.lower() for keyword in dashboard_keywords)
+            
+            restaurant_keywords = ['restaurant', 'cafe', 'dining', 'menu', 'culinary', 'bistro', 'food', 'eatery', 'grill', 'kitchen', 'chef', 'reservation', 'booking']
+            is_restaurant_detected = any(keyword in user_prompt.lower() for keyword in restaurant_keywords)
         
-        # Also check page.tsx content
-        if not is_dashboard_project_detected:
-            homepage_content = files.get("app/page.tsx", "")
-            if 'kpiData' in homepage_content or 'recharts' in homepage_content or 'ResponsiveContainer' in homepage_content:
-                is_dashboard_project_detected = True
-                print(f"📊 Dashboard detected from page.tsx content")
+        # Also check file names for restaurant indicators
+        if not is_restaurant_detected:
+            for file_path in files.keys():
+                if any(keyword in file_path.lower() for keyword in ['menu', 'reservation', 'restaurant', 'gallery']):
+                    is_restaurant_detected = True
+                    break
         
-        print(f"📊 Dashboard detection result: {is_dashboard_project_detected}")
-        
+        print(f"\n{'='*60}")
+        print(f"🏷️ PROJECT TYPE DETECTION")
+        print(f"{'='*60}")
+        print(f"   Dashboard: {'✅ YES' if is_dashboard_detected else '❌ NO'}")
+        print(f"   Restaurant: {'✅ YES' if is_restaurant_detected else '❌ NO'}")
+        print(f"{'='*60}\n")
 
 
 
@@ -3776,7 +3846,7 @@ async def generate_preview_internal(
                 
                 
                 
-                extracted_content = extract_page_content(content, route_name, is_dashboard_project_detected)
+                extracted_content = extract_page_content(content, route_name, is_dashboard_detected)
                 
                 
                 
@@ -4679,6 +4749,159 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 
 
 ================================================================================
+✅ REQUIRED STRUCTURE - YOU MUST OUTPUT:
+================================================================================
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[PROJECT_NAME]</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        /* COMPLETE CSS HERE*/
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }}
+        /* ALL navigation and page styles */
+    </style>
+</head>
+<body>
+
+<header>
+    <nav class="nav-container">
+        <a href="#" class="brand" onclick="handleBrandClick(event)">[BRAND_NAME]</a>
+        <div class="nav-links">
+            <a href="#" class="nav-link" data-page="shop">Shop</a>
+            <a href="#" class="nav-link" data-page="cart">Cart</a>
+        </div>
+    </nav>
+</header>
+
+<div id="page_home" class="page active">
+    <!-- COMPLETE HOME PAGE CONTENT -->
+    <section class="relative h-screen">
+        <!-- Hero section with image,badge,trust indicators, title, description -->
+    </section>
+    <section class="py-20">
+        <!-- Features section -->
+    </section>
+</div>
+
+<div id="page_shop" class="page">
+    <!-- COMPLETE SHOP PAGE WITH PRODUCTS -->
+</div>
+
+<div id="page_cart" class="page">
+    <!-- COMPLETE CART PAGE WITH CONTAINERS -->
+</div>
+
+<footer>
+    <!-- COMPLETE FOOTER -->
+</footer>
+
+<script>
+    // COMPLETE NAVIGATION JAVASCRIPT
+    function showPage(pageId) {{ ... }}
+    function handleBrandClick(e) {{ ... }}
+    // ALL REQUIRED FUNCTIONS
+</script>
+
+</body>
+</html>
+
+================================================================================
+📋 PAGE REQUIREMENTS:
+================================================================================
+
+HOME PAGE (page_home) may contain:
+- Hero section with h1 and button
+- Features section with AT LEAST 3 cards
+- FAQ section with working accordions
+- Trust badges 
+
+SHOP PAGE (page_shop) MUST contain:
+- Product grid with AT LEAST 3 products
+- Each product has add-to-cart-btn with data-id, data-name, data-price
+
+CART PAGE (page_cart) MUST contain:
+- cart-items-list div (empty container)
+- empty-cart-message-cart div
+- cart-summary div with checkout button
+
+================================================================================
+🔧 SELF-VALIDATION CHECKLIST (CHECK BEFORE OUTPUT):
+================================================================================
+
+[ ] Does <!DOCTYPE html> exist at top?
+[ ] Is there a closing </html> at bottom?
+[ ] Does every <div> have a closing </div>?
+[ ] Are all IDs unique and non-empty?
+[ ] Is page_home NOT empty (has content)?
+[ ] Is navigation header present?
+[ ] Is footer present?
+[ ] No stray characters or incomplete tags?
+[ ] CSS selectors are valid (no #. or empty selectors)?
+
+================================================================================
+⚠️ REMEMBER: If any page is empty or missing, REGENERATE!
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+🚨🚨🚨 CRITICAL: YOU ARE GENERATING HTML - FOLLOW THESE RULES EXACTLY 🚨🚨🚨
+
+================================================================================
+❌ FORBIDDEN - NEVER GENERATE THESE:
+================================================================================
+
+1. ❌ NEVER output incomplete tags:
+   - </header> without <header>
+   - </div> without matching <div>
+   - Empty or missing id attributes: id=""
+
+2. ❌ NEVER leave sections empty:
+   - page_home MUST have hero section AND features
+   - page_shop MUST have product grid
+   - page_cart MUST have cart containers
+
+3. ❌ NEVER generate duplicate content:
+   - Trust badges appear ONLY ONCE
+   - No duplicate feature cards
+
+4. ❌ NEVER output CSS with invalid selectors:
+   - WRONG: #.active {{ }}
+   - WRONG: .page.active# {{ }}
+   - WRONG: #{{{{ }}}}
+
+5. ❌ NEVER omit required elements:
+   - MUST have <!DOCTYPE html>
+   - MUST have <html> and <body> tags
+   - MUST have navigation header
+   - MUST have footer
+
+
+
+
+
+
+
+================================================================================
 🚨 CRITICAL: FIRST DETECT WHAT TYPE OF WEBSITE TO BUILD 🚨
 ================================================================================
 
@@ -4710,6 +4933,30 @@ If user says "Startup website" → Marketing site with hero, features, CTA
 If user says "Business website" → Marketing site with about, services, contact
 
 DO NOT generate dashboard pages (KPI cards, charts) for marketing websites.
+
+
+
+
+
+
+
+
+
+## 🚨 CRITICAL: NO REACT SYNTAX IN HTML
+
+You are generating VANILLA HTML, NOT React JSX.
+
+### FORBIDDEN - NEVER use these patterns:
+
+❌ **onError with arrow functions:**
+```html
+<img onError={{(e) => {{ e.currentTarget.style.display = 'none'; }}}} />
+
+
+
+
+
+
 
 
 
@@ -9562,13 +9809,14 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.1, "max_output_tokens": 200000}
+            config={"temperature": 0.1, "max_output_tokens": 60000}
         )
 
         preview_html = clean_html_response(response_text)
         preview_html = enforce_body_background(preview_html)
         
-        
+        # ADD THIS LINE - Remove React onError handlers
+        preview_html = remove_react_onerror_handlers(preview_html)
         
         preview_html = remove_duplicate_cart_systems(preview_html)
         preview_html = ensure_master_cart_only(preview_html)
@@ -10767,37 +11015,16 @@ document.addEventListener('DOMContentLoaded', function() {{
 
 
 
-
-
-        # ========== DETECT PROJECT TYPE FIRST ==========
-        is_dashboard = any(keyword in user_prompt.lower() for keyword in [
-            'dashboard', 'analytics', 'admin', 'metrics', 'statistics',
-            'insights', 'overview', 'reports', 'monitoring', 'kpi'
-        ])
         
         
         
         
         
-        
-        # ⭐⭐⭐ INJECT RESTAURANT FEATURES (ONLY FOR ACTUAL RESTAURANT WEBSITES) ⭐⭐⭐
-        # Check if this is genuinely a restaurant website
-        is_restaurant = any(keyword in user_prompt.lower() for keyword in [
-            'restaurant', 'cafe', 'dining', 'menu', 'culinary', 'bistro', 
-            'food', 'eatery', 'grill', 'kitchen', 'chef', 'reservation', 'booking'
-        ])
-        
-        # Also check file names for restaurant indicators
-        if not is_restaurant:
-            for file_path in files.keys():
-                if any(keyword in file_path.lower() for keyword in ['menu', 'reservation', 'restaurant']):
-                    is_restaurant = True
-                    break
-        
-        if not is_dashboard and is_restaurant:
+          # ⭐⭐⭐ INJECT RESTAURANT FEATURES (ONLY FOR RESTAURANT WEBSITES) ⭐⭐⭐
+        if not is_dashboard_detected and is_restaurant_detected:
             preview_html = inject_restaurant_features(preview_html, brand_name, user_prompt)
             print("🍽️ Restaurant features injected")
-        elif is_dashboard:
+        elif is_dashboard_detected:
             print("📊 Dashboard detected - skipping restaurant features injection")
         else:
             print("🚫 Not a restaurant website - skipping restaurant features injection")
@@ -10806,13 +11033,15 @@ document.addEventListener('DOMContentLoaded', function() {{
             
             
             
-        
-        # ⭐⭐⭐ INJECT RESERVATION FORM (SKIP FOR DASHBOARD) ⭐⭐⭐
-        if not is_dashboard:
+            
+            # ⭐⭐⭐ INJECT RESERVATION FORM (ONLY FOR RESTAURANTS) ⭐⭐⭐
+        if not is_dashboard_detected and is_restaurant_detected:
             preview_html = inject_reservation_form(preview_html)
             print("📅 Reservation form injected")
-        else:
+        elif is_dashboard_detected:
             print("📊 Dashboard detected - skipping reservation form injection")
+        else:
+            print("🚫 Not a restaurant - skipping reservation form injection")
 
 
 
@@ -10855,16 +11084,15 @@ document.addEventListener('DOMContentLoaded', function() {{
             
             
             
-            
-# ==================== STRICT DASHBOARD ENFORCEMENT ====================
-        is_dashboard = is_dashboard_project(user_prompt, files) or detect_dashboard_from_content(page_contents, user_prompt)
-        
-        if is_dashboard:
+        # ==================== STRICT DASHBOARD ENFORCEMENT (CONDITIONAL) ====================
+        # Use the already detected value, don't recalculate
+        if is_dashboard_detected:
             preview_html = enforce_strict_dashboard_rules(preview_html)
             print("🔒 Strict dashboard rules enforced")
+        else:
+            print("✅ Dashboard rules skipped (not a dashboard project)")
 
         preview_html = enforce_body_background(preview_html)
-           
             
             
             

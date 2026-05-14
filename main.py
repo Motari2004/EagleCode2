@@ -2760,7 +2760,7 @@ Return ONLY valid JSON like this:
                 prompt=theme_prompt,
                 config={
                     "temperature": 0.1,
-                    "max_output_tokens": 50000,
+                    "max_output_tokens": 60000,
                     "response_mime_type": "application/json",
                 }
             )
@@ -3297,7 +3297,7 @@ CRITICAL RULES:
                         config={
                             "response_mime_type": "application/json",
                             "temperature": 0.2 if stream_retry_count == 0 else 0.01,
-                            "max_output_tokens": 500000,  # ⭐ Increase this
+                            "max_output_tokens": 60000,  # ⭐ Increase this
                         }
                     )
 
@@ -4340,7 +4340,7 @@ UPDATED CODE:"""
                     try:
                         link_response = await model_router.generate_content(
                             prompt=link_prompt,
-                            config={"temperature": 0.1, "max_output_tokens": 150000}
+                            config={"temperature": 0.1, "max_output_tokens": 60000}
                         )
                         new_content = link_response.strip()
                         
@@ -5482,7 +5482,7 @@ Make the requested change. Return ONLY the updated code, no markdown, no explana
             try:
                 response_text = await model_router.generate_content(
                     prompt=edit_prompt,
-                    config={"temperature": 0.01, "max_output_tokens": 150000}
+                    config={"temperature": 0.01, "max_output_tokens": 60000}
                 )
                 updated_content = extract_code_from_response(response_text.strip())
                 
@@ -5926,7 +5926,7 @@ Updated HTML preview:"""
             prompt=prompt,
             config={
                 "temperature": 0.1,
-                "max_output_tokens": 150000,
+                "max_output_tokens": 60000,
             }
         )
 
@@ -6018,7 +6018,7 @@ Return ONLY the raw HTML code starting with <!DOCTYPE html>:"""
 
             response_text = await model_router.generate_content(
                 prompt=prompt,
-                config={"temperature": 0.2, "max_output_tokens": 150000}
+                config={"temperature": 0.2, "max_output_tokens": 60000}
             )
             updated_preview = clean_html_response(response_text.strip())  # ✅ Define updated_preview here
 
@@ -6102,7 +6102,7 @@ Files: {list(files.keys())[:15]}"""
 
         response_text = await model_router.generate_content(
             prompt=prompt,
-            config={"temperature": 0.3, "max_output_tokens": 150000}
+            config={"temperature": 0.3, "max_output_tokens": 60000}
         )
 
         preview_html = clean_html_response(response_text.strip())
@@ -7239,7 +7239,7 @@ Component:
                     prompt=ai_prompt,
                     config={
                         "temperature": 0.1,
-                        "max_output_tokens": 150000,
+                        "max_output_tokens": 60000,
                     }
                 )
                 
