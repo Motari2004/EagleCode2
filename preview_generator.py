@@ -7,6 +7,228 @@ import os
 from datetime import datetime
 
 
+from styles import (
+    inject_matching_features_faq_css,
+    smart_style_conditional
+)
+
+
+
+
+
+
+
+def preserve_faq_count(original_html: str, new_html: str) -> str:
+    """Preserve the original FAQ count when regenerating preview"""
+    import re
+    
+    # Count FAQs in original HTML
+    original_faq_count = len(re.findall(r'class="faq-btn"', original_html))
+    
+    if original_faq_count == 0:
+        print(f"⚠️ No FAQ items found in original HTML")
+        return new_html
+    
+    # Count FAQs in new HTML
+    new_faq_count = len(re.findall(r'class="faq-btn"', new_html))
+    
+    if new_faq_count >= original_faq_count:
+        print(f"✅ FAQ count OK: {original_faq_count} items found")
+        return new_html
+    
+    print(f"⚠️ FAQ count decreased from {original_faq_count} to {new_faq_count} - restoring original count")
+    
+    # METHOD 1: Extract ALL FAQ items from original HTML using a more robust pattern
+    faq_item_pattern = r'<div[^>]*class="[^"]*bg-white/5[^"]*rounded-2xl[^"]*"[^>]*>.*?<button[^>]*class="faq-btn[^"]*"[^>]*>.*?</button>.*?<div[^>]*class="faq-answer[^"]*"[^>]*>.*?</div>.*?</div>'
+    
+    original_items = re.findall(faq_item_pattern, original_html, re.DOTALL)
+    
+    if len(original_items) >= original_faq_count:
+        print(f"  📦 Extracted {len(original_items)} individual FAQ items from original")
+        
+        # Find the FAQ container in new HTML (the div with space-y-4 class)
+        container_pattern = r'(<div[^>]*class="[^"]*space-y-4[^"]*"[^>]*>)'
+        container_match = re.search(container_pattern, new_html, re.DOTALL)
+        
+        if container_match:
+            container_opening = container_match.group(1)
+            
+            # Find where this container ends
+            search_pos = new_html.find(container_opening) + len(container_opening)
+            div_count = 1
+            end_pos = -1
+            
+            for i in range(search_pos, len(new_html)):
+                if new_html[i:i+5] == '<div ':
+                    div_count += 1
+                elif new_html[i:i+6] == '</div>':
+                    div_count -= 1
+                    if div_count == 0:
+                        end_pos = i + 6
+                        break
+            
+            if end_pos != -1:
+                # Rebuild with ALL original FAQ items
+                rebuilt_container = container_opening + '\n' + '\n'.join(original_items) + '\n</div>'
+                new_html = new_html[:search_pos - len(container_opening)] + rebuilt_container + new_html[end_pos:]
+                print(f"  ✅ Rebuilt FAQ container with {len(original_items)} items")
+                return new_html
+    
+    # METHOD 2: Find the FAQ section by parent section
+    faq_section_pattern = r'(<section[^>]*class="[^"]*py-20[^"]*"[^>]*>.*?<h2[^>]*>FAQ.*?</section>)'
+    original_section = re.search(faq_section_pattern, original_html, re.DOTALL | re.IGNORECASE)
+    
+    if original_section:
+        new_section = re.search(faq_section_pattern, new_html, re.DOTALL | re.IGNORECASE)
+        if new_section:
+            # Replace the entire FAQ section
+            new_html = new_html.replace(new_section.group(0), original_section.group(0))
+            print(f"  ✅ Replaced entire FAQ section with {original_faq_count} items")
+            return new_html
+    
+    # METHOD 3: Direct string replacement - find the FAQ container content
+    if 'space-y-4' in new_html:
+        # Find the FAQ section heading to locate the right container
+        faq_heading_pattern = r'<h2[^>]*>FAQ</h2>\s*<div[^>]*class="[^"]*space-y-4[^"]*"[^>]*>[\s\S]*?</div>'
+        
+        # Get the original FAQ container content
+        original_container_match = re.search(r'<h2[^>]*>FAQ</h2>\s*<div[^>]*class="[^"]*space-y-4[^"]*"[^>]*>([\s\S]*?)</div>', original_html, re.DOTALL)
+        
+        if original_container_match:
+            original_container_content = original_container_match.group(1)
+            
+            # Replace in new HTML
+            new_html = re.sub(
+                r'(<h2[^>]*>FAQ</h2>\s*<div[^>]*class="[^"]*space-y-4[^"]*"[^>]*>)[\s\S]*?(</div>)',
+                r'\1' + original_container_content + r'\2',
+                new_html,
+                flags=re.DOTALL
+            )
+            print(f"  ✅ Replaced FAQ container content with {original_faq_count} items")
+            return new_html
+    
+    return new_html
+
+
+
+
+
+
+
+
+
+
+
+def remove_hero_image_from_html(html_content: str) -> str:
+    """Remove hero section background image from HTML preview"""
+    import re
+    
+    print("🖼️ Removing hero image from preview...")
+    
+    # Pattern 1: Remove img tag with image_1.jpg or Cloudinary URL in hero section
+    html_content = re.sub(
+        r'<img[^>]*src=["\'][^"\']*(?:image_1\.jpg|cloudinary\.com[^"\']*image/upload)[^"\']*["\'][^>]*class="[^"]*absolute inset-0[^"]*"[^>]*/?>',
+        '',
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    # Pattern 2: Remove any img tag that's likely a hero background
+    html_content = re.sub(
+        r'<img[^>]*class="[^"]*absolute inset-0 w-full h-full object-cover[^"]*"[^>]*/?>',
+        '',
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    # Pattern 3: Remove dark overlay div that usually follows hero image
+    html_content = re.sub(
+        r'<div[^>]*class="[^"]*absolute inset-0 bg-black/50[^"]*"[^>]*></div>',
+        '',
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    # Pattern 4: Remove gradient overlays
+    html_content = re.sub(
+        r'<div[^>]*class="[^"]*absolute inset-0 bg-gradient[^"]*"[^>]*></div>',
+        '',
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    # Pattern 5: Remove any img tag with image_1.jpg anywhere
+    html_content = re.sub(
+        r'<img[^>]*image_1\.jpg[^>]*/?>',
+        '',
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    # Pattern 6: Remove the parent section if it becomes empty
+    html_content = re.sub(
+        r'<section[^>]*class="[^"]*relative h-screen[^"]*"[^>]*>\s*</section>',
+        '',
+        html_content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+    
+    print("✅ Hero image removed")
+    return html_content
+
+
+
+
+
+
+
+
+
+
+
+
+
+def inject_hero_padding_fix(html_content: str) -> str:
+    """Inject CSS to push hero content below fixed header"""
+    import re
+    
+    print("🔧 INJECTING HERO PADDING FIX...")
+    
+    hero_padding_css = '''
+    /* Push hero content below fixed header */
+    .relative.z-3 {
+        padding-top: 72px;  /* 72px header + 28px extra */
+    }
+    
+    @media (max-width: 768px) {
+        .relative.z-10 {
+            padding-top: 72px;
+        }
+    }
+    '''
+    
+    # Check if the CSS already exists
+    if 'Push hero content below fixed header' in html_content:
+        print("  ✅ Hero padding fix already exists - skipping injection")
+        return html_content
+    
+    # Inject into existing style tag
+    if '<style>' in html_content:
+        html_content = html_content.replace('</style>', hero_padding_css + '\n</style>', 1)
+        print("  ✅ Injected hero padding fix into style tag")
+    else:
+        # Create style tag if doesn't exist
+        html_content = html_content.replace('<head>', f'<head><style>{hero_padding_css}</style>', 1)
+        print("  ✅ Created style tag with hero padding fix")
+    
+    return html_content
+
+
+
+
+
+
+
 
 
 def remove_react_onerror_handlers(html_content: str) -> str:
@@ -1254,21 +1476,56 @@ def fix_restaurant_reservation_form(html_content: str) -> str:
 
 
 
-
-
-
-
 def extract_and_inject_trust_indicators(source_content: str, html_content: str) -> str:
-    """Extract trust indicators and inject them AFTER CTA buttons"""
+    """Extract trust indicators and inject them AFTER CTA buttons - removes existing duplicates first"""
     import re
 
     print("🔧 EXTRACTING AND INJECTING TRUST INDICATORS...")
 
+    # ========== FIRST, REMOVE ANY EXISTING TRUST BADGES (both formats) ==========
+    
+    # Pattern 1: Remove the absolute bottom positioned badges (original source format)
+    original_badge_pattern = r'<div class="absolute bottom-8 left-0 right-0 z-10">[\s\S]*?<div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">[\s\S]*?</div>\s*</div>\s*</div>'
+    html_content = re.sub(original_badge_pattern, '', html_content, flags=re.DOTALL)
+    
+    # Pattern 2: Remove our injected format if it exists (to avoid duplicates)
+    injected_badge_pattern = r'<!-- Trust Badges -->\s*<div class="trust-badges-container">[\s\S]*?</div>\s*</div>\s*</div>'
+    html_content = re.sub(injected_badge_pattern, '', html_content, flags=re.DOTALL)
+    
+    # Pattern 3: Remove the specific leftover badge remnants (Fresh, Ingredients, Award, Winning)
+    leftover_badge_pattern = r'<div>\s*<div class="text-white font-bold text-lg leading-none">[^<]+</div>\s*<div class="text-gray-400 text-xs">[^<]+</div>\s*</div>\s*</div>\s*</div>\s*</div>'
+    html_content = re.sub(leftover_badge_pattern, '', html_content, flags=re.DOTALL)
+    
+    # Pattern 4: Remove individual orphaned badge divs
+    orphaned_badge_pattern = r'<div>\s*<div class="text-white font-bold text-lg leading-none">[^<]+</div>\s*<div class="text-gray-400 text-xs">[^<]+</div>\s*</div>'
+    html_content = re.sub(orphaned_badge_pattern, '', html_content, flags=re.DOTALL)
+    
+    # Pattern 5: Remove any malformed badge sections
+    malformed_patterns = [
+        r'<div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-12">[\s\S]*?</div>',
+        r'<div class="hidden md:block w-px h-8 bg-white/10"></div>\s*<div class="flex items-center gap-3">[\s\S]*?</div>',
+    ]
+    for pattern in malformed_patterns:
+        html_content = re.sub(pattern, '', html_content, flags=re.DOTALL)
+    
+    print("  🗑️ Removed existing trust badges")
+
     # ========== INJECT CSS ==========
     trust_badges_css = '''
+    /* Push hero content below fixed header */
+    .relative.z-10 {
+        padding-top: 100px;
+    }
+    
+    @media (max-width: 768px) {
+        .relative.z-10 {
+            padding-top: 72px;
+        }
+    }
+    
     /* Trust Badges Styles */
     .trust-badges-container {
-        margin-top: 2rem;
+        margin-top: 0.5rem;
         margin-bottom: 0;
     }
     
@@ -1361,16 +1618,14 @@ def extract_and_inject_trust_indicators(source_content: str, html_content: str) 
     }
     '''
     
+    # Remove any existing broken CSS
+    html_content = re.sub(r'\.relative\.z-3\s*\{\s*padding-top:\s*72px;\s*\}', '', html_content)
+    
     # Inject CSS
     if '<style>' in html_content:
         if '.trust-badges-container' not in html_content:
             html_content = html_content.replace('</style>', trust_badges_css + '\n</style>', 1)
             print("  ✅ Injected trust badges CSS")
-
-    # ========== CHECK IF TRUST BADGES ALREADY EXIST ==========
-    if '<div class="trust-badges-container">' in html_content:
-        print("  ✅ Trust badges already exist - skipping injection")
-        return html_content
 
     # ========== BUILD TRUST BADGES HTML ==========
     trust_badges_html = '''
@@ -1422,9 +1677,9 @@ def extract_and_inject_trust_indicators(source_content: str, html_content: str) 
             </div>
     '''
 
-    # ========== TRY PATTERNS IN ORDER (KEEP EXISTING WORKING PATTERNS) ==========
+    # ========== FIND CTA BUTTONS AND INJECT AFTER ==========
     
-    # Pattern 1: Existing working pattern for CTA div with mb-10
+    # Pattern 1: Look for the CTA div with mb-10
     cta_pattern1 = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center mb-10">.*?</div>)'
     
     match = re.search(cta_pattern1, html_content, re.DOTALL)
@@ -1433,10 +1688,10 @@ def extract_and_inject_trust_indicators(source_content: str, html_content: str) 
             match.group(0),
             match.group(0) + '\n' + trust_badges_html
         )
-        print("  ✅ Injected trust badges after CTA buttons (Pattern 1 - mb-10)")
+        print("  ✅ Injected trust badges after CTA buttons (Pattern 1)")
         return html_content
     
-    # Pattern 2: Alternative CTA pattern without mb-10
+    # Pattern 2: Look for CTA div without mb-10
     cta_pattern2 = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center">.*?</div>)'
     
     match = re.search(cta_pattern2, html_content, re.DOTALL)
@@ -1445,39 +1700,11 @@ def extract_and_inject_trust_indicators(source_content: str, html_content: str) 
             match.group(0),
             match.group(0) + '\n' + trust_badges_html
         )
-        print("  ✅ Injected trust badges after CTA buttons (Pattern 2 - no mb-10)")
-        return html_content
-    
-    # Pattern 3: Look for the closing of the hero content div
-    hero_close_pattern = r'(</div>\s*</section>)'
-    
-    match = re.search(hero_close_pattern, html_content, re.DOTALL)
-    if match:
-        html_content = html_content.replace(
-            match.group(0),
-            trust_badges_html + '\n' + match.group(0)
-        )
-        print("  ✅ Injected trust badges before hero section close (Pattern 3)")
-        return html_content
-    
-    # Pattern 4: Look for buttons with bg-amber-600 (your specific button class)
-    btn_pattern = r'(<a[^>]*class="[^"]*bg-amber-600[^"]*"[^>]*>.*?</a>\s*<a[^>]*class="[^"]*bg-white/10[^"]*"[^>]*>.*?</a>\s*</div>)'
-    
-    match = re.search(btn_pattern, html_content, re.DOTALL)
-    if match:
-        html_content = html_content.replace(
-            match.group(0),
-            match.group(0) + '\n' + trust_badges_html
-        )
-        print("  ✅ Injected trust badges after buttons (Pattern 4 - amber buttons)")
+        print("  ✅ Injected trust badges after CTA buttons (Pattern 2)")
         return html_content
     
     print("  ⚠️ Could not find CTA buttons - trust badges not injected")
     return html_content
-    
-    
-    
-    
     
     
     
@@ -1878,49 +2105,45 @@ def render_array_to_html(content: str) -> str:
 
 
 
+        # ========== STEP 4: FAQS ARRAY ==========
+        faqs_html = None
 
+        # Debug: Check if FAQ section exists
+        if 'FAQ' in content and 'map' in content:
+            print(f"  🔍 FAQ section detected in content")
+            # Print a snippet for debugging
+            faq_snippet = re.search(r'<section\s+className="py-20 px-4">.*?FAQ.*?</section>', content, re.DOTALL)
+            if faq_snippet:
+                print(f"  📄 FAQ snippet: {faq_snippet.group(0)[:200]}...")
 
-    # ========== STEP 4: FAQS ARRAY ==========
-    faqs_html = None
-
- 
-     # Debug: Check if FAQ section exists
-    if 'FAQ' in content and 'map' in content:
-        print(f"  🔍 FAQ section detected in content")
-        # Print a snippet for debugging
-        faq_snippet = re.search(r'<section\s+className="py-20 px-4">.*?FAQ.*?</section>', content, re.DOTALL)
-        if faq_snippet:
-            print(f"  📄 FAQ snippet: {faq_snippet.group(0)[:200]}...")
- 
- 
-     # ========== STEP 4.0: HANDLE INLINE PLACEHOLDER FAQ (NO ARRAY) ==========
-    # More flexible pattern that matches any FAQ section with inline map
-    inline_faq_pattern = r'<section\s+className="py-20 px-4">\s*<div\s+className="container mx-auto max-w-3xl">\s*<h2\s+className="text-4xl font-bold text-center mb-12">FAQ</h2>\s*\{\[.*?\]\.map\([^)]*\)\s*=>\s*\(?\s*<div[^>]*>(.*?)</div>\s*\)?\s*\}'
-    
-    inline_match = re.search(inline_faq_pattern, content, re.DOTALL)
-    
-    if inline_match:
-        question_template = inline_match.group(1)
+        # ========== STEP 4.0: HANDLE INLINE PLACEHOLDER FAQ (NO ARRAY) ==========
+        # More flexible pattern that matches any FAQ section with inline map
+        inline_faq_pattern = r'<section\s+className="py-20 px-4">\s*<div\s+className="container mx-auto max-w-3xl">\s*<h2\s+className="text-4xl font-bold text-center mb-12">FAQ</h2>\s*\{\[.*?\]\.map\([^)]*\)\s*=>\s*\(?\s*<div[^>]*>(.*?)</div>\s*\)?\s*\}'
         
-        # Extract the number range from the source (e.g., [1,2,3,4])
-        range_match = re.search(r'\[([0-9,\s]+)\]', content[inline_match.start():inline_match.end()])
-        if range_match:
-            numbers_str = range_match.group(1)
-            numbers = re.findall(r'\d+', numbers_str)
-            total_items = len(numbers) if numbers else 4
-        else:
-            total_items = 4
+        inline_match = re.search(inline_faq_pattern, content, re.DOTALL)
         
-        # Generate proper accordion FAQ HTML
-        faqs_html = '<div class="space-y-4">\n'
-        for i in range(1, total_items + 1):
-            question_text = question_template.replace('{i}', str(i))
-            question_text = re.sub(r'\{[^}]+\}', str(i), question_text)
-            # Remove any key={i} or other JSX attributes
-            question_text = re.sub(r'key=\{[^}]+\}', '', question_text)
-            question_text = question_text.strip()
+        if inline_match:
+            question_template = inline_match.group(1)
             
-            faqs_html += f'''
+            # Extract the number range from the source (e.g., [1,2,3,4])
+            range_match = re.search(r'\[([0-9,\s]+)\]', content[inline_match.start():inline_match.end()])
+            if range_match:
+                numbers_str = range_match.group(1)
+                numbers = re.findall(r'\d+', numbers_str)
+                total_items = len(numbers) if numbers else 4
+            else:
+                total_items = 4
+            
+            # Generate proper accordion FAQ HTML
+            faqs_html = '<div class="space-y-4">\n'
+            for i in range(1, total_items + 1):
+                question_text = question_template.replace('{i}', str(i))
+                question_text = re.sub(r'\{[^}]+\}', str(i), question_text)
+                # Remove any key={i} or other JSX attributes
+                question_text = re.sub(r'key=\{[^}]+\}', '', question_text)
+                question_text = question_text.strip()
+                
+                faqs_html += f'''
     <div class="bg-gradient-to-br from-white/5 to-white/3 rounded-2xl border border-white/10 overflow-hidden">
         <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
             <span class="font-semibold text-white">{question_text}</span>
@@ -1930,47 +2153,40 @@ def render_array_to_html(content: str) -> str:
             Answer for {question_text}
         </div>
     </div>'''
-        faqs_html += '\n</div>'
-        
-        # Replace the entire placeholder section
-        new_faq_section = f'''<section class="py-20 px-4">
+            faqs_html += '\n</div>'
+            
+            # Replace the entire placeholder section
+            new_faq_section = f'''<section class="py-20 px-4">
         <div class="container mx-auto max-w-3xl">
           <h2 class="text-4xl font-bold text-center mb-12 gradient-text">FAQ</h2>
           {faqs_html}
         </div>
       </section>'''
-        
-        content = re.sub(inline_faq_pattern, new_faq_section, content, flags=re.DOTALL)
-        print(f"  ✅ Converted inline placeholder FAQ to accordion with {total_items} items")
-        
-        
-        
-        
-        
-        
-        
+            
+            content = re.sub(inline_faq_pattern, new_faq_section, content, flags=re.DOTALL)
+            print(f"  ✅ Converted inline placeholder FAQ to accordion with {total_items} items")
 
-    # ========== STEP 4.1: Try to find faqs array ANYWHERE in the file ==========
-    if not faqs_html:
-        faqs_match = re.search(r'(?:const|let)\s+faqs\s*=\s*\[([\s\S]*?)\];?\s*(?=\n\s*(?:const|let|return|\}))', content, re.DOTALL)
-        
-        # Fallback: find inside the component function
-        if not faqs_match:
-            faqs_match = re.search(r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*\{[\s\S]*?(?:const|let)\s+faqs\s*=\s*\[([\s\S]*?)\];', content, re.DOTALL)
-        
-        # Try 'faq' singular as fallback
-        if not faqs_match:
-            faqs_match = re.search(r'(?:const|let)\s+faq\s*=\s*\[([\s\S]*?)\];', content, re.DOTALL)
+        # ========== STEP 4.1: Try to find faqs array ANYWHERE in the file ==========
+        if not faqs_html:
+            faqs_match = re.search(r'(?:const|let)\s+faqs\s*=\s*\[([\s\S]*?)\];?\s*(?=\n\s*(?:const|let|return|\}))', content, re.DOTALL)
+            
+            # Fallback: find inside the component function
+            if not faqs_match:
+                faqs_match = re.search(r'export\s+default\s+function\s+\w+\s*\([^)]*\)\s*\{[\s\S]*?(?:const|let)\s+faqs\s*=\s*\[([\s\S]*?)\];', content, re.DOTALL)
+            
+            # Try 'faq' singular as fallback
+            if not faqs_match:
+                faqs_match = re.search(r'(?:const|let)\s+faq\s*=\s*\[([\s\S]*?)\];', content, re.DOTALL)
 
-        if faqs_match:
-            faqs_content = faqs_match.group(1)
-            faq_pattern = r'\{\s*(?:q|question):\s*["\']([^"\']+)["\']\s*,\s*(?:a|answer):\s*["\']([^"\']+)["\']\s*\}'
-            faqs = re.findall(faq_pattern, faqs_content)
+            if faqs_match:
+                faqs_content = faqs_match.group(1)
+                faq_pattern = r'\{\s*(?:q|question):\s*["\']([^"\']+)["\']\s*,\s*(?:a|answer):\s*["\']([^"\']+)["\']\s*\}'
+                faqs = re.findall(faq_pattern, faqs_content)
 
-            if faqs:
-                faqs_html = '<div class="space-y-4">\n'
-                for q, a in faqs:
-                    faqs_html += f'''
+                if faqs:
+                    faqs_html = '<div class="space-y-4">\n'
+                    for q, a in faqs:
+                        faqs_html += f'''
     <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
         <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
             <span class="font-semibold text-white">{q}</span>
@@ -1978,24 +2194,31 @@ def render_array_to_html(content: str) -> str:
         </button>
         <div class="faq-answer hidden px-6 pb-4 text-gray-400">{a}</div>
     </div>'''
-                faqs_html += '\n</div>'
-                print(f"  ✅ Rendered {len(faqs)} FAQs from source array")
+                    faqs_html += '\n</div>'
+                    print(f"  ✅ Rendered {len(faqs)} FAQs from source array")
+                else:
+                    print(f"  ⚠️ FAQs array found but no items extracted")
             else:
-                print(f"  ⚠️ FAQs array found but no items extracted")
+                print(f"  ⚠️ No faqs array found in source")
+
+        if faqs_html:
+            # ⭐ CRITICAL FIX: Find and replace the ENTIRE FAQ section, not just the map block
+            # Look for the FAQ section by its structure
+            faq_section_pattern = r'(<section[^>]*class="[^"]*py-20[^"]*"[^>]*>.*?<h2[^>]*>FAQ.*?<div class="space-y-4">)[\s\S]*?(</div>\s*</div>\s*</section>)'
+            faq_section_match = re.search(faq_section_pattern, content, re.DOTALL)
+            
+            if faq_section_match:
+                # Replace the entire FAQ container content
+                new_section = faq_section_match.group(1) + faqs_html + faq_section_match.group(2)
+                content = content.replace(faq_section_match.group(0), new_section)
+                print(f"  ✅ Replaced entire FAQ section with {faqs_html.count('faq-btn')} items")
+            else:
+                # Fallback: try to replace just the map block
+                content = replace_map_block(content, 'faqs', faqs_html)
         else:
-            print(f"  ⚠️ No faqs array found in source")
-
-    if faqs_html:
-        content = replace_map_block(content, 'faqs', faqs_html)
-    else:
-        # If no FAQ was generated, remove the entire FAQ section
-        content = re.sub(r'<section\s+className="py-20 px-4">\s*<div\s+className="container mx-auto max-w-3xl">\s*<h2\s+className="text-4xl font-bold text-center mb-12">FAQ</h2>.*?</div>\s*</section>', '', content, flags=re.DOTALL)
-        print(f"  ✅ Removed empty FAQ section (no content)")
-
-
-
-
-
+            # If no FAQ was generated, remove the entire FAQ section
+            content = re.sub(r'<section\s+className="py-20 px-4">\s*<div\s+className="container mx-auto max-w-3xl">\s*<h2\s+className="text-4xl font-bold text-center mb-12">FAQ</h2>.*?</div>\s*</section>', '', content, flags=re.DOTALL)
+            print(f"  ✅ Removed empty FAQ section (no content)")
 
 
 
@@ -2264,13 +2487,63 @@ async def generate_preview_internal(
     project_name: str,
     existing_image_url: str = None,
     user_prompt: str = "",
+    project_type: str = "",
+    
     model_router=None,           # ← add this
     get_cloudinary_url_for_preview=None  # ← add this
+    
 ) -> Dict[str, Any]:
     
     
+    # ✅ Initialize preview_result at the very beginning
+    preview_result = None
     
     
+    
+    
+    
+    # ✅ CHECK IF HERO WAS REMOVED
+    hero_removed = files.get("__hero_removed__") == "true"
+    
+    if hero_removed:
+        print(f"🚫 Hero image was previously removed - skipping Cloudinary URL injection")
+        existing_image_url = None
+        # Also remove from files to be safe
+        files.pop("__cloudinary_image_url__", None)
+    
+    
+    
+    
+    
+    
+    
+    
+    # ✅ ADD THE PROJECT TYPE DETECTION CODE RIGHT HERE
+    # ========== PROJECT TYPE DETECTION ==========
+    project_type = ""  # Initialize
+    
+    # If project_type not provided, try to get from files
+    if not project_type:
+        project_type = files.get("__project_type__", "")
+    
+    # If still no project_type, detect from navigation
+    if not project_type:
+        nav_content = files.get("components/Navigation.tsx", "")
+        if "shop" in nav_content.lower() or "cart" in nav_content.lower():
+            project_type = "ecommerce"
+        elif "classes" in nav_content.lower() or "trainers" in nav_content.lower():
+            project_type = "gym"
+        elif "menu" in nav_content.lower() or "reservations" in nav_content.lower():
+            project_type = "restaurant"
+        elif "features" in nav_content.lower() and "pricing" in nav_content.lower():
+            project_type = "saas"
+        elif "programs" in nav_content.lower() or "admissions" in nav_content.lower():
+            project_type = "school"
+        else:
+            project_type = "general"
+    
+    print(f"📌 Generating preview for project type: {project_type}")
+    # ========== END PROJECT TYPE DETECTION ==========
     
     
     
@@ -2297,6 +2570,26 @@ async def generate_preview_internal(
     
     import re  # ⭐ ADD THIS LINE - MUST BE FIRST
     """Generate beautiful HTML preview - extracts ALL pages and footer content"""
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     
     
@@ -2742,17 +3035,12 @@ async def generate_preview_internal(
 
 
 
-
-
-
-
         # ========== COLLECT NAVIGATION ==========
         nav_links = []
         nav_content = ""
         brand_name = project_name
         
-        # Initialize dashboard detection EARLY to avoid scope issues
-        # Use a DIFFERENT name than the function!
+        # Initialize dashboard detection EARLY
         detected_as_dashboard = False
         if user_prompt:
             dashboard_keywords = ['dashboard', 'analytics', 'kpi', 'metrics', 'overview', 'reports', 'monitoring']
@@ -2794,6 +3082,7 @@ async def generate_preview_internal(
                 r'<Link\s+href="/"[^>]*>(.*?)</Link>',
                 r'<div\s+className="[^"]*brand[^"]*"[^>]*>(.*?)</div>',
                 r'<span\s+className="[^"]*text-xl[^"]*font-bold[^"]*"[^>]*>(.*?)</span>',
+                r'<span\s+className="[^"]*font-bold[^"]*"[^>]*>([^<]+)</span>',
             ]
             for pattern in brand_patterns:
                 match = re.search(pattern, nav_content, re.DOTALL)
@@ -2802,84 +3091,71 @@ async def generate_preview_internal(
                     if brand_name:
                         break
             
-            # ========== Extract from links array pattern ==========
-            links_array_pattern = r'const\s+links\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
-            links_match = re.search(links_array_pattern, nav_content, re.DOTALL)
+            # ========== IMPROVED LINK EXTRACTION FOR RESTAURANT NAVIGATION ==========
+            # Pattern 1: Direct Link components with href (works for <Link href="/menu">Menu</Link>)
+            link_patterns = [
+                r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
+                r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
+                r'href="/([^"]+)".*?>([^<]+)</Link>',
+            ]
             
-            if links_match:
-                links_content = links_match.group(1)
-                link_items = re.findall(
-                    r'href:\s*[\'"]([^\'"]+)[\'"]\s*,\s*label:\s*[\'"]([^\'"]+)[\'"]',
-                    links_content
-                )
-                
-                if link_items:
-                    print(f"🔍 Found {len(link_items)} links from links array")
-                    for href, label in link_items:
-                        if href == '/':
-                            continue
-                        clean_href = href.lstrip('/')
-                        if clean_href:
-                            nav_links.append((clean_href, label))
-                        else:
-                            nav_links.append(('home', label))
+            for pattern in link_patterns:
+                matches = re.findall(pattern, nav_content, re.DOTALL)
+                for href, label in matches:
+                    clean_label = re.sub(r'<[^>]+>', '', label).strip()
+                    if href and clean_label and href not in ['', '/']:
+                        # Skip brand/home links
+                        if clean_label.lower() != brand_name.lower() and clean_label.lower() != 'home':
+                            nav_links.append((href, clean_label))
+                if nav_links:
+                    break
             
-            # If no links from array, try direct Link components
+            # Pattern 2: Look for the hidden md:flex div structure (your Navigation component)
             if not nav_links:
-                href_pattern = r'<Link\s+href="/([^"]+)"'
-                all_hrefs = re.findall(href_pattern, nav_content)
-                href_pattern2 = r"<Link\s+href='/([^']+)'"
-                all_hrefs.extend(re.findall(href_pattern2, nav_content))
-                
-                print(f"🔍 Found hrefs: {all_hrefs}")
-                
-                seen = set()
-                unique_hrefs = []
-                for href in all_hrefs:
-                    if href not in seen:
-                        seen.add(href)
-                        unique_hrefs.append(href)
-                
-                print(f"🔍 Unique hrefs: {unique_hrefs}")
-                
-                for href in unique_hrefs:
-                    if href != "/" and href.lower() != brand_name.lower():
-                        label_pattern = rf'<Link\s+href="/{href}"[^>]*>(.*?)</Link>'
-                        label_match = re.search(label_pattern, nav_content, re.DOTALL)
+                # Find the div with hidden md:flex class
+                flex_pattern = r'<div\s+className="hidden md:flex[^"]*"[^>]*>(.*?)</div>'
+                flex_match = re.search(flex_pattern, nav_content, re.DOTALL)
+                if flex_match:
+                    links_html = flex_match.group(1)
+                    # Extract all Link components inside
+                    inner_matches = re.findall(r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>', links_html)
+                    for href, label in inner_matches:
+                        nav_links.append((href, label.strip()))
+            
+            # Pattern 3: Look for any Link with href that's not the brand
+            if not nav_links:
+                all_links = re.findall(r'<Link\s+href="/([^"]+)"[^>]*>', nav_content)
+                for href in all_links:
+                    if href not in ['', '/'] and href.lower() != brand_name.lower():
+                        # Try to find the label
+                        label_pattern = rf'<Link\s+href="/{href}"[^>]*>([^<]+)</Link>'
+                        label_match = re.search(label_pattern, nav_content)
                         if label_match:
-                            label_content = label_match.group(1)
-                            clean_label = re.sub(r'<[^>]+>', '', label_content).strip()
-                            if clean_label:
-                                label = clean_label
-                            else:
-                                label = href.capitalize()
+                            label = label_match.group(1).strip()
                         else:
                             label = href.capitalize()
-                        
                         nav_links.append((href, label))
-                        print(f"🔍 Added link: {href} -> {label}")
-                
-                if not nav_links:
-                    link_patterns = [
-                        r'<Link\s+href="/([^"]+)"[^>]*>([^<]+)</Link>',
-                        r'<Link\s+href=\'/([^\']+)\'[^>]*>([^<]+)</Link>',
-                    ]
-                    for pattern in link_patterns:
-                        matches = re.findall(pattern, nav_content, re.DOTALL)
-                        for href, text in matches:
-                            clean_text = re.sub(r'<[^>]+>', '', text).strip()
-                            if href and clean_text and href != "/" and clean_text.lower() != brand_name.lower():
-                                nav_links.append((href, clean_text))
-                        if nav_links:
-                            break
         
-        # Set default nav_links based on project type (if still empty)
+        # ========== FALLBACK: Use restaurant defaults if no links found and it's a restaurant ==========
         if not nav_links:
-            if detected_as_dashboard:  # ← USING RENAMED VARIABLE
+            # Check if this is a restaurant website (based on file names or user prompt)
+            is_restaurant = False
+            for file_path in files.keys():
+                if any(keyword in file_path.lower() for keyword in ['menu', 'reservation', 'restaurant', 'gallery']):
+                    is_restaurant = True
+                    break
+            
+            if 'restaurant' in user_prompt.lower() or 'cafe' in user_prompt.lower() or 'dining' in user_prompt.lower():
+                is_restaurant = True
+            
+            if is_restaurant:
+                nav_links = [("menu", "Menu"), ("reservations", "Reservations"), ("gallery", "Gallery")]
+                print(f"📍 Using restaurant default nav_links: {nav_links}")
+            elif detected_as_dashboard:
                 nav_links = [("analytics", "Analytics"), ("settings", "Settings")]
                 print(f"📍 Using dashboard default nav_links: {nav_links}")
             else:
-                nav_links = [("shop", "Shop"), ("catalog", "Catalog"), ("cart", "Cart")]
+                nav_links = [("shop", "Shop"), ("cart", "Cart")]
                 print("🔍 Using e-commerce default nav_links")
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
@@ -2887,7 +3163,6 @@ async def generate_preview_internal(
         # ========== CONVERT NAVIGATION TO HTML ==========
         navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
         navigation_html_for_prompt = navigation_html
-
 
 
 
@@ -3680,6 +3955,7 @@ async def generate_preview_internal(
             <i class="fas fa-sparkles text-amber-400 w-4 h-4"></i>
             <span class="text-amber-400 text-sm uppercase tracking-wider">{badge_text}</span>
           </div>'''
+            
                       
                       # Inject badge into hero section
                       if '<div class="relative z-10 text-center px-4">' in extracted:
@@ -3688,6 +3964,94 @@ async def generate_preview_internal(
                               '<div class="relative z-10 text-center px-4">' + badge_html
                           )
                           print(f"  ✅ Injected hero badge: {badge_text}")                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                                   # ========== PRESERVE CTA BUTTONS AND TRUST BADGES WITH CORRECT ORDER ==========
+                  
+                  # Extract CTA buttons from source
+                  cta_pattern = r'<div\s+className="flex\s+flex-col\s+sm:flex-row\s+gap-4\s+justify-center\s+mb-10">(.*?)</div>'
+                  cta_match = re.search(cta_pattern, content, re.DOTALL)
+                  
+                  # Extract trust badges from source
+                  trust_pattern = r'<div\s+className="absolute\s+bottom-8\s+left-0\s+right-0\s+z-10">(.*?)</div>\s*</div>\s*</section>'
+                  trust_match = re.search(trust_pattern, content, re.DOTALL)
+                  
+                  if cta_match and trust_match:
+                      cta_html = cta_match.group(1)
+                      # Convert React Links to HTML
+                      cta_html = re.sub(r'<Link\s+href="([^"]+)"', r'<a href="\1"', cta_html)
+                      cta_html = re.sub(r'</Link>', '</a>', cta_html)
+                      # Add proper button styling
+                      cta_html = re.sub(r'View Work', r'View Work', cta_html)
+                      
+                      trust_html = trust_match.group(1)
+                      # Convert JSX to HTML
+                      trust_html = re.sub(r'className=', 'class=', trust_html)
+                      # Convert Lucide icons to Font Awesome
+                      trust_html = trust_html.replace('<Star', '<i class="fas fa-star')
+                      trust_html = trust_html.replace('</Star>', '</i>')
+                      trust_html = trust_html.replace('<Users', '<i class="fas fa-users')
+                      trust_html = trust_html.replace('</Users>', '</i>')
+                      trust_html = trust_html.replace('<Shield', '<i class="fas fa-shield-alt')
+                      trust_html = trust_html.replace('</Shield>', '</i>')
+                      trust_html = re.sub(r'className="([^"]*)"', r'class="\1"', trust_html)
+                      trust_html = re.sub(r'fill-yellow-400', '', trust_html)
+                      # Update text for agency
+                      trust_html = trust_html.replace('Diners', 'Clients')
+                      trust_html = trust_html.replace('Fresh', '100%')
+                      trust_html = trust_html.replace('Ingredients', 'Secure')
+                      trust_html = trust_html.replace('Award', 'Trusted')
+                      trust_html = trust_html.replace('Winning', 'Partner')
+                      
+                      print(f"  ✅ Extracted CTA buttons and trust badges")
+                      
+                      # Find the hero content div
+                      hero_content_pattern = r'(<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">)'
+                      hero_match = re.search(hero_content_pattern, extracted)
+                      
+                      if hero_match:
+                          # Build the correct hero structure
+                          correct_hero = f'''{hero_match.group(1)}
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 mb-6">
+                <i class="fas fa-sparkles text-amber-400 w-4 h-4"></i>
+                <span class="text-amber-400 text-sm font-medium uppercase tracking-wider">Elite Development</span>
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold text-white mb-4 drop-shadow-2xl">Estate Palace Agency</h1>
+            <p class="text-xl md:text-2xl text-amber-400 font-semibold mb-3">Crafting Digital Excellence for Modern Brands</p>
+            <p class="text-base md:text-lg text-gray-300 mb-8 max-w-2xl mx-auto">We build high-performance digital products that define the future of your industry. Let's create something extraordinary together.</p>
+            {cta_html}
+            {trust_html}
+        </div>'''
+                          
+                          # Replace the entire hero content
+                          extracted = re.sub(
+                              r'<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">.*?</div>',
+                              correct_hero,
+                              extracted,
+                              flags=re.DOTALL
+                          )
+                          print(f"  ✅ Rebuilt hero section with correct order")
+                      else:
+                          print(f"  ⚠️ Could not find hero container")
+                  else:
+                      print(f"  ⚠️ Could not extract CTA buttons or trust badges")
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
                   
                   
                   
@@ -4853,6 +5217,85 @@ CART PAGE (page_cart) MUST contain:
 ================================================================================
 ⚠️ REMEMBER: If any page is empty or missing, REGENERATE!
 ================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: FAQ & FOOTER - MUST PRESERVE ALL CONTENT 🚨🚨🚨
+================================================================================
+
+**FAQ SECTION REQUIREMENTS:**
+
+1. You MUST include ALL {faq_html.count('faq-btn') if faq_html else '4'} FAQ items from the source below
+2. DO NOT add, remove, or modify any FAQ questions or answers
+3. Each FAQ item MUST have:
+   - class="faq-btn" on the button
+   - class="faq-answer hidden" on the answer div
+   - A plus/minus icon (fa-plus/fa-minus) for toggle functionality
+4. FAQ accordion JavaScript MUST be included in the <script> tag
+
+**EXACT FAQ HTML TO USE (COPY THIS ENTIRELY):**
+
+{faq_html if faq_html else '''
+<div class="space-y-4">
+    <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+        <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+            <span class="font-semibold text-white">How does it work?</span>
+            <i class="fas fa-plus text-purple-400"></i>
+        </button>
+        <div class="faq-answer hidden px-6 pb-4 text-gray-400">Answer here.</div>
+    </div>
+</div>
+'''}
+
+**FOOTER REQUIREMENTS:**
+
+1. You MUST include the EXACT footer HTML extracted from the source below
+2. DO NOT modify, simplify, or replace the footer content
+3. Footer MUST be placed AFTER all page divs, before closing </body>
+4. Footer icons MUST use Font Awesome classes (fab fa-*, fas fa-*)
+
+**EXACT FOOTER HTML TO USE (COPY THIS ENTIRELY):**
+
+{footer_html if footer_html else '''
+<footer class="bg-zinc-950 border-t border-white/10 py-12">
+    <div class="container mx-auto px-4 text-center">
+        <p class="text-gray-400 text-sm">© 2024 Company Name. All rights reserved.</p>
+    </div>
+</footer>
+'''}
+
+================================================================================
+⚠️ VERIFICATION CHECKLIST BEFORE OUTPUT:
+================================================================================
+
+[ ] FAQ section has ALL {faq_html.count('faq-btn') if faq_html else '4'} items
+[ ] Each FAQ item has class="faq-btn" and class="faq-answer hidden"
+[ ] FAQ JavaScript (accordion toggle) is present in <script>
+[ ] Footer HTML is EXACTLY as provided above
+[ ] Footer uses Font Awesome icons (not Lucide)
+[ ] No FAQ items are missing, truncated, or replaced with placeholders
+
+================================================================================
+
+
+
+
+
+
 
 
 
@@ -9014,6 +9457,12 @@ COMPLETE JAVASCRIPT:
             brandLink.addEventListener('click', handleBrandClick);
         }}
     }});
+    
+    
+    
+    
+    
+    
 </script>
 
 
@@ -9813,7 +10262,20 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
         )
 
         preview_html = clean_html_response(response_text)
+
+
+        
         preview_html = enforce_body_background(preview_html)
+        
+        
+        
+        
+        preview_html = inject_matching_features_faq_css(preview_html)
+        
+        
+        preview_html = smart_style_conditional(preview_html, user_prompt)
+        
+        
         
         # ADD THIS LINE - Remove React onError handlers
         preview_html = remove_react_onerror_handlers(preview_html)
@@ -11063,6 +11525,10 @@ document.addEventListener('DOMContentLoaded', function() {{
         
         # Only inject trust badges (these sometimes get lost in conversion)
         preview_html = extract_and_inject_trust_indicators(homepage_source, preview_html)
+        
+        
+        # Inject hero padding fix to prevent header overlap
+        preview_html = inject_hero_padding_fix(preview_html)
         
         # Skip FAQ injection if already in home page
         if has_faq:

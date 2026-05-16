@@ -56,41 +56,6 @@ REMEMBER:
 
 
 
-================================================================================
-🚨 CRITICAL: NO NUMBERED PLACEHOLDERS - GENERATE REAL CONTENT 🚨
-================================================================================
-
-When generating arrays of items (features, products, classes, menu items, testimonials, etc.):
-
-❌ FORBIDDEN - NEVER generate numbered placeholders:
-```jsx
-const features = [
-  { title: "Feature 1", description: "Description for feature 1" },
-  { title: "Feature 2", description: "Description for feature 2" },
-  { title: "Feature 3", description: "Description for feature 3" }
-]
-
-
-
-✅ REQUIRED - Generate REAL, MEANINGFUL content:
-'''jsx
-const features = [
-  { title: "Cloud Analytics", description: "Real-time data insights with AI-powered predictions" },
-  { title: "Team Collaboration", description: "Seamless communication and project management" },
-  { title: "Enterprise Security", description: "Bank-grade encryption and 24/7 monitoring" }
-]
-
-RULES:
-1. NEVER use numbered placeholders like "Feature 1", "Product 2"
-2. NEVER use {{i}} or {{index}} in the final output
-3. Write unique content for EACH item in the array
-4. Match the content to the project type (e.g. restaurant features should be about food, service, ambiance, etc.)
-5. DO NOT use .map() in the final output - render all items as static HTML
-Example: [1,2,3].map(i => <div>Feature {{i}}</div>)
-MUST become:
-<div>Feature 1: Cloud Analytics</div>
-<div>Feature 2: Team Collaboration</div>
-<div>Feature 3: Enterprise Security</div>
 
 
 
@@ -118,157 +83,12 @@ Detect the project type from the user prompt:
 | school, academy, university, college          | SCHOOL      | Programs, Admissions, Faculty        |
 | restaurant, bistro, cafe, dining              | RESTAURANT  | Menu, Reservations, Gallery          |
 | hotel, resort, lodge, inn                     | HOTEL       | Rooms, Amenities, Gallery, Book Now  |
-| portfolio, creative, designer                 | PORTFOLIO   | Projects, About, Contact             |
+| portfolio, creative, designer                 | PORTFOLIO   | Projects, About, Contact       |
 | shop, store, ecommerce, products, cart        | ECOMMERCE   | Shop, Cart                           |
 | coffee, roastery, beanery                     | COFFEE      | Shop, Brew Guide, Story              |
 | saas, software, app, platform, tech           | TECH        | Features, Pricing, Contact           |
-| dashboard, analytics, admin, metrics, statistics, insights, overview, reports, monitoring, kpi | DASHBOARD | Overview, Analytics, Settings |
-| digital agency, marketing agency, web agency, creative agency, branding agency, seo agency, design agency, we are a team | DIGITAL AGENCY | Services, Work, Contact |
-| **NEW: football, soccer, sports team, fc, stadium, match, fixture, league, championship** | **SPORTS** | **Home, Matches, Squad, Tickets, Shop, Fan Zone** |
-| **NEW: real estate, property, apartment, house, rental, agent, listing** | **REAL ESTATE** | **Properties, Agents, Blog, Contact** |
-| **NEW: healthcare, clinic, doctor, hospital, medical, wellness** | **HEALTHCARE** | **Services, Doctors, Appointments, Contact** |
-| **NEW: travel, tourism, vacation, destination, tour** | **TRAVEL** | **Destinations, Tours, Blog, Contact** |
-| **NEW: event, conference, wedding, concert, tickets, booking** | **EVENT** | **Events, Speakers, Tickets, Contact** |
-| **NEW: beauty, salon, spa, makeup, nails** | **BEAUTY** | **Services, Gallery, Book Now, Contact** |
-| **NEW: law, attorney, legal, lawyer** | **LEGAL** | **Practice Areas, Attorneys, Contact** |
-| **NEW: construction, contractor, building, renovation** | **CONSTRUCTION** | **Services, Projects, Contact** |
-| **NEW: automotive, car, dealer, repair** | **AUTOMOTIVE** | **Inventory, Services, Financing, Contact** |
-| **NEW: pet, pet store, veterinary, animal** | **PET** | **Shop, Services, Grooming, Contact** |
-| **NEW: photography, photographer, photo** | **PHOTOGRAPHY** | **Portfolio, Pricing, Contact** |
-| **NEW: wedding, bride, groom, marriage** | **WEDDING** | **Gallery, Packages, Contact** |
-| **NEW: music, band, artist, concert** | **MUSIC** | **Music, Shows, Store, Contact** |
-
-
-
-
-
-
-
-
-
-================================================================================
-STEP 2 — PAGES TO GENERATE PER TYPE
-================================================================================
-
-GYM       → app/page.tsx, app/classes/page.tsx, app/trainers/page.tsx, app/membership/page.tsx
-SCHOOL    → app/page.tsx, app/programs/page.tsx, app/admissions/page.tsx, app/faculty/page.tsx
-RESTAURANT→ app/page.tsx, app/menu/page.tsx, app/reservations/page.tsx, app/gallery/page.tsx
-HOTEL     → app/page.tsx, app/rooms/page.tsx, app/amenities/page.tsx, app/gallery/page.tsx
-PORTFOLIO → app/page.tsx, app/projects/page.tsx, app/about/page.tsx, app/contact/page.tsx
-DIGITAL AGENCY → app/page.tsx, app/services/page.tsx, app/work/page.tsx, app/contact/page.tsx
-ECOMMERCE → app/page.tsx, app/shop/page.tsx, app/cart/page.tsx
-COFFEE    → app/page.tsx, app/shop/page.tsx, app/about/page.tsx, app/contact/page.tsx
-TECH      → app/page.tsx, app/features/page.tsx, app/pricing/page.tsx, app/contact/page.tsx
-
-**NEW TYPES:**
-
-SPORTS    → app/page.tsx, app/matches/page.tsx, app/squad/page.tsx, app/tickets/page.tsx, app/shop/page.tsx, app/fan-zone/page.tsx
-REAL ESTATE → app/page.tsx, app/properties/page.tsx, app/agents/page.tsx, app/contact/page.tsx
-HEALTHCARE → app/page.tsx, app/services/page.tsx, app/doctors/page.tsx, app/appointments/page.tsx, app/contact/page.tsx
-TRAVEL    → app/page.tsx, app/destinations/page.tsx, app/tours/page.tsx, app/blog/page.tsx, app/contact/page.tsx
-EVENT     → app/page.tsx, app/events/page.tsx, app/speakers/page.tsx, app/tickets/page.tsx, app/contact/page.tsx
-BEAUTY    → app/page.tsx, app/services/page.tsx, app/gallery/page.tsx, app/book/page.tsx, app/contact/page.tsx
-LEGAL     → app/page.tsx, app/practice-areas/page.tsx, app/attorneys/page.tsx, app/contact/page.tsx
-CONSTRUCTION → app/page.tsx, app/services/page.tsx, app/projects/page.tsx, app/contact/page.tsx
-AUTOMOTIVE → app/page.tsx, app/inventory/page.tsx, app/services/page.tsx, app/financing/page.tsx, app/contact/page.tsx
-PET       → app/page.tsx, app/shop/page.tsx, app/services/page.tsx, app/grooming/page.tsx, app/contact/page.tsx
-PHOTOGRAPHY → app/page.tsx, app/portfolio/page.tsx, app/pricing/page.tsx, app/contact/page.tsx
-WEDDING   → app/page.tsx, app/gallery/page.tsx, app/packages/page.tsx, app/contact/page.tsx
-MUSIC     → app/page.tsx, app/music/page.tsx, app/shows/page.tsx, app/store/page.tsx, app/contact/page.tsx
-
-
-
-
-
-
-
-
-
-
-
-================================================================================
-SITE STRUCTURE & NAVIGATION
-================================================================================
-- Brand name = home link. NEVER add a separate "Home" text link.
-- Brand icon MUST appear next to brand name in Navigation.tsx ONLY.
-- Maximum 5 navigation links (excluding brand).
-- ALL links MUST have a corresponding page file — 1 link = 1 page. Missing pages = 404 errors.
-- NEVER use the full user prompt as button labels. Labels = 1-2 words max.
-
-
-
-
-
-
-
-NAVIGATION LABELS BY PROJECT TYPE (pick a DIFFERENT option each time):
-  SCHOOL:     A["Courses","Enroll","Faculty","Events","Visit"]  B["Programs","Admissions","Staff","Calendar","Connect"]  C["Academics","Apply","Teachers","Activities","Directions"]
-  COFFEE:     A["Our Coffees","Subscribe","Brew Guide","Story","Contact"]  B["Shop","Delivery","Recipes","About","Locations"]
-  HOTEL:      A["Suites","Amenities","Gallery","Reservations","Location"]  B["Rooms","Services","Moments","Book Now","Directions"]
-  GYM:        A["Classes","Trainers","Membership","Schedule"]  B["Workouts","Coaches","Plans","Timetable"]
-  RESTAURANT: A["Menu","Reservations","Gallery","Contact"]  B["Dining","Book a Table","Photos","Location"]
-  ECOMMERCE:  A["Store","Browse","Cart"]  B["Shop","Catalog","Bag"]
-  PORTFOLIO:  A["Projects","About","Services","Contact"]  B["Work","Bio","Expertise","Connect"]
-  
-  **NEW TYPES:**
-  SPORTS:     A["Matches","Squad","Tickets","Fan Zone"]  B["Fixtures","Players","Book Tickets","Gallery"]
-  REAL ESTATE: A["Properties","Agents","Contact"]  B["Listings","Our Team","Inquire"]
-  HEALTHCARE:  A["Services","Doctors","Appointments"]  B["Treatments","Specialists","Book Now"]
-  TRAVEL:      A["Destinations","Tours","Blog"]  B["Places","Packages","Stories"]
-  EVENT:       A["Events","Speakers","Tickets"]  B["Schedule","Lineup","Register"]
-  BEAUTY:      A["Services","Gallery","Book Now"]  B["Treatments","Portfolio","Reserve"]
-  LEGAL:       A["Practice Areas","Attorneys","Contact"]  B["Expertise","Our Team","Consultation"]
-  CONSTRUCTION: A["Services","Projects","Contact"]  B["What We Do","Portfolio","Quote"]
-  AUTOMOTIVE:  A["Inventory","Services","Financing"]  B["Vehicles","Repair","Apply"]
-  PET:         A["Shop","Services","Grooming"]  B["Products","Care","Book"]
-  PHOTOGRAPHY: A["Portfolio","Pricing","Contact"]  B["Gallery","Investment","Connect"]
-  WEDDING:     A["Gallery","Packages","Contact"]  B["Portfolio","Options","Inquire"]
-  MUSIC:       A["Music","Shows","Store"]  B["Discography","Tour","Merch"]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-ADAPTIVE ICON SELECTION — CHOOSE BASED ON PROJECT TYPE
-================================================================================
-SCHOOL/ACADEMY:   import { GraduationCap } from 'lucide-react'; → <GraduationCap className="w-6 h-6 text-purple-400" />
-COFFEE/ROASTERY:  import { Coffee } from 'lucide-react';        → <Coffee className="w-6 h-6 text-amber-400" />
-HOTEL/RESORT:     import { Hotel } from 'lucide-react';         → <Hotel className="w-6 h-6 text-blue-400" />
-RESTAURANT:       import { Utensils } from 'lucide-react';      → <Utensils className="w-6 h-6 text-orange-400" />
-GYM/FITNESS:      import { Dumbbell } from 'lucide-react';      → <Dumbbell className="w-6 h-6 text-green-400" />
-E-COMMERCE:       import { ShoppingBag } from 'lucide-react';   → <ShoppingBag className="w-6 h-6 text-pink-400" />
-PORTFOLIO:        import { Sparkles } from 'lucide-react';      → <Sparkles className="w-6 h-6 text-purple-400" />
-TECHNOLOGY:       import { Cpu } from 'lucide-react';           → <Cpu className="w-6 h-6 text-cyan-400' />
-REAL ESTATE:      import { Home } from 'lucide-react';          → <Home className="w-6 h-6 text-emerald-400" />
-HEALTH/MEDICAL:   import { Heart } from 'lucide-react';         → <Heart className="w-6 h-6 text-red-400" />
-TRAVEL:           import { Plane } from 'lucide-react';         → <Plane className="w-6 h-6 text-sky-400" />
-SPORTS:           import { Trophy } from 'lucide-react';        → <Trophy className="w-6 h-6 text-rose-500" />
-BEAUTY/SALON:     import { Sparkles } from 'lucide-react';      → <Sparkles className="w-6 h-6 text-pink-500" />
-LEGAL:            import { Scale } from 'lucide-react';         → <Scale className="w-6 h-6 text-indigo-500" />
-CONSTRUCTION:     import { HardHat } from 'lucide-react';       → <HardHat className="w-6 h-6 text-orange-500" />
-AUTOMOTIVE:       import { Car } from 'lucide-react';           → <Car className="w-6 h-6 text-slate-400" />
-PET:              import { Dog } from 'lucide-react';           → <Dog className="w-6 h-6 text-amber-600" />
-PHOTOGRAPHY:      import { Camera } from 'lucide-react';        → <Camera className="w-6 h-6 text-purple-500" />
-WEDDING:          import { Heart } from 'lucide-react';         → <Heart className="w-6 h-6 text-pink-500" />
-MUSIC:            import { Music } from 'lucide-react';         → <Music className="w-6 h-6 text-rose-500" />
-
-
-
-
-
-
-
+| dashboard, analytics, admin, metrics, statistics, insights, overview, reports, monitoring, kpi | DASHBOARD | Overview, Analytics, Settings | app/page.tsx, app/analytics/page.tsx, app/settings/page.tsx |
+| digital agency, marketing agency, web agency, creative agency, branding agency, seo agency, design agency, we are a team | DIGITAL AGENCY | Services, Work, Contact | app/page.tsx, app/services/page.tsx, app/work/page.tsx, app/contact/page.tsx |
 
 
 
@@ -7574,13 +7394,23 @@ REAL ESTATE:      import { Home } from 'lucide-react';          → <Home classN
 HEALTH/MEDICAL:   import { Heart } from 'lucide-react';         → <Heart className="w-6 h-6 text-red-400" />
 TRAVEL:           import { Plane } from 'lucide-react';         → <Plane className="w-6 h-6 text-sky-400" />
 
+================================================================================
+SITE STRUCTURE & NAVIGATION
+================================================================================
+- Brand name = home link. NEVER add a separate "Home" text link.
+- Brand icon MUST appear next to brand name in Navigation.tsx ONLY.
+- Maximum 5 navigation links (excluding brand).
+- ALL links MUST have a corresponding page file — 1 link = 1 page. Missing pages = 404 errors.
+- NEVER use the full user prompt as button labels. Labels = 1-2 words max.
 
-
-
-
-
-
-
+NAVIGATION LABELS BY PROJECT TYPE (pick a DIFFERENT option each time):
+  SCHOOL:     A["Courses","Enroll","Faculty","Events","Visit"]  B["Programs","Admissions","Staff","Calendar","Connect"]  C["Academics","Apply","Teachers","Activities","Directions"]
+  COFFEE:     A["Our Coffees","Subscribe","Brew Guide","Story","Contact"]  B["Shop","Delivery","Recipes","About","Locations"]
+  HOTEL:      A["Suites","Amenities","Gallery","Reservations","Location"]  B["Rooms","Services","Moments","Book Now","Directions"]
+  GYM:        A["Classes","Trainers","Membership","Schedule"]  B["Workouts","Coaches","Plans","Timetable"]
+  RESTAURANT: A["Menu","Reservations","Gallery","Contact"]  B["Dining","Book a Table","Photos","Location"]
+  E-COMMERCE: A["Store","Browse","Cart"]  B["Shop","Catalog","Bag"]
+  PORTFOLIO:  A["Projects","About","Services","Contact"]  B["Work","Bio","Expertise","Connect"]
 
 ================================================================================
 UNIQUE BUSINESS NAME GENERATION
@@ -10693,6 +10523,70 @@ Example variations for Hotel websites:
 - NEVER use the full user prompt as button text
 
 
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+ADAPTIVE ICON SELECTION - CHOOSE BASED ON PROJECT TYPE:
+================================================================================
+
+When generating Navigation.tsx, REPLACE "ADAPTIVE_ICON" with the appropriate icon:
+
+SCHOOL / ACADEMY / UNIVERSITY:
+import { GraduationCap } from 'lucide-react';
+<GraduationCap className="w-6 h-6 text-purple-400" />
+
+COFFEE / ROASTERY / CAFE:
+import { Coffee } from 'lucide-react';
+<Coffee className="w-6 h-6 text-amber-400" />
+
+HOTEL / RESORT / LODGE:
+import { Hotel } from 'lucide-react';
+<Hotel className="w-6 h-6 text-blue-400" />
+
+RESTAURANT / BISTRO / DINING:
+import { Utensils } from 'lucide-react';
+<Utensils className="w-6 h-6 text-orange-400" />
+
+GYM / FITNESS / TRAINING:
+import { Dumbbell } from 'lucide-react';
+<Dumbbell className="w-6 h-6 text-green-400" />
+
+E-COMMERCE / STORE / SHOP:
+import { ShoppingBag } from 'lucide-react';
+<ShoppingBag className="w-6 h-6 text-pink-400" />
+
+PORTFOLIO / CREATIVE / AGENCY:
+import { Sparkles } from 'lucide-react';
+<Sparkles className="w-6 h-6 text-purple-400" />
+
+MOVIES / STREAMING / ENTERTAINMENT:
+import { Film } from 'lucide-react';
+<Film className="w-6 h-6 text-purple-400" />
+
+TECHNOLOGY / SOFTWARE:
+import { Cpu } from 'lucide-react';
+<Cpu className="w-6 h-6 text-cyan-400" />
+
+REAL ESTATE:
+import { Home } from 'lucide-react';
+<Home className="w-6 h-6 text-emerald-400" />
+
+HEALTH / MEDICAL:
+import { Heart } from 'lucide-react';
+<Heart className="w-6 h-6 text-red-400" />
+
+TRAVEL / TOURISM:
+import { Plane } from 'lucide-react';
+<Plane className="w-6 h-6 text-sky-400" />
 
 
 

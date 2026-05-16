@@ -9,6 +9,11 @@ from html2image import Html2Image
 
 
 
+from ecosystem import EcosystemPromptBuilder, WebsiteType, WEBSITE_PATTERNS
+
+
+
+
 
 from build_prompts import MASTER_BUILD_PROMPT
 
@@ -18,7 +23,7 @@ from build_prompts import MASTER_BUILD_PROMPT
 
 from pathlib import Path
 
-from preview_generator import generate_preview_internal, clean_html_response, preserve_faq_count
+from preview_generator import generate_preview_internal, clean_html_response 
 
 
 import json as json_module
@@ -128,74 +133,6 @@ import zipfile
 
 
 load_dotenv()
-
-
-
-
-
-
-
-
-
-
-async def add_hero_removed_column():
-    """Add hero_removed column to projects table if it doesn't exist"""
-    try:
-        # Need to import engine here or use global reference
-        from sqlalchemy import text
-        from main import engine  # This might cause circular import, better to pass engine as parameter
-        
-        if engine is None:
-            print("⚠️ Engine not available, skipping column addition")
-            return
-            
-        async with engine.begin() as conn:
-            if "postgresql" in str(DATABASE_URL):
-                await conn.execute(text("""
-                    DO $$ 
-                    BEGIN 
-                        BEGIN
-                            ALTER TABLE projects ADD COLUMN hero_removed BOOLEAN DEFAULT FALSE;
-                        EXCEPTION
-                            WHEN duplicate_column THEN RAISE NOTICE 'Column hero_removed already exists, skipping';
-                        END;
-                    END $$;
-                """))
-                print("✅ hero_removed column verified for PostgreSQL")
-            else:
-                # SQLite - check if column exists first
-                result = await conn.execute(text("PRAGMA table_info(projects)"))
-                columns = await result.fetchall()
-                column_names = [col[1] for col in columns]
-                
-                if 'hero_removed' not in column_names:
-                    await conn.execute(text("ALTER TABLE projects ADD COLUMN hero_removed BOOLEAN DEFAULT FALSE"))
-                    print("✅ Added hero_removed column to SQLite projects table")
-                else:
-                    print("✅ hero_removed column already exists in SQLite")
-    except Exception as e:
-        print(f"⚠️ Could not add hero_removed column: {e}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # ========== UPDATE YOUR AVAILABLE_MODELS ==========
 AVAILABLE_MODELS = {
@@ -865,9 +802,6 @@ try:
         is_public = Column(Boolean, default=False)
         version = Column(Integer, default=1)
         
-        
-        hero_removed = Column(Boolean, default=False)
-        
         # ✅ Store ONLY URLs (large files go to Cloudinary)
         preview_url = Column(String(500), nullable=True)   # Cloudinary URL for HTML preview
         thumbnail_url = Column(String(500), nullable=True) # Cloudinary URL for thumbnail
@@ -988,30 +922,6 @@ try:
         created_at = Column(DateTime, nullable=False, default=datetime.now, index=True)
         updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     async def init_db():
         """Initialize database tables"""
         try:
@@ -1068,36 +978,6 @@ except Exception as e:
     UpgradeRequest = None
     async def init_db():
         print("⚠️ Database not available")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1720,7 +1600,6 @@ async def lifespan(app: FastAPI):
     # Startup
     if DATABASE_URL:
         await init_db()
-        await add_hero_removed_column()
         print("🚀 Neon database ready")
         
 
@@ -2836,50 +2715,6 @@ async def websocket_endpoint(websocket: WebSocket):
         project_name = name_tracker.generate_unique_name("school", user_prompt)
         project_id = str(uuid.uuid4())  # Generate once at the beginning
   
-  
-  
-  
-  
-  
-
-
-
-
-
-
-        # ✅ ADD THIS BLOCK - Define project_type based on user_prompt
-        project_type = "general"
-        _pl = user_prompt.lower()
-        if any(w in _pl for w in ['dashboard', 'analytics', 'kpi', 'metrics', 'overview', 'reports', 'monitoring']):
-            project_type = "dashboard"
-        elif any(w in _pl for w in ['gym', 'fitness', 'workout', 'trainer', 'classes', 'membership']):
-            project_type = "gym"
-        elif any(w in _pl for w in ['school', 'academy', 'university', 'college', 'education']):
-            project_type = "school"
-        elif any(w in _pl for w in ['restaurant', 'cafe', 'bistro', 'dining', 'menu', 'reservations']):
-            project_type = "restaurant"
-        elif any(w in _pl for w in ['hotel', 'resort', 'lodge', 'inn']):
-            project_type = "hotel"
-        elif any(w in _pl for w in ['shop', 'store', 'ecommerce', 'cart', 'products']):
-            project_type = "ecommerce"
-        elif any(w in _pl for w in ['portfolio', 'creative', 'agency', 'designer']):
-            project_type = "portfolio"
-        elif any(w in _pl for w in ['coffee', 'roastery', 'brew', 'cafe']):
-            project_type = "coffee"
-        elif any(w in _pl for w in ['saas', 'software', 'app', 'platform', 'tech']):
-            project_type = "saas"
-        else:
-            project_type = "general"
-
-        print(f"📌 Project type detected: {project_type}")
-
-
-  
-  
-  
-  
-  
-  
         # ✅ FIXED: Change "project_name" to "project_id"
         await websocket.send_json({
             "type": "project_id",      # ← CHANGE THIS LINE
@@ -3116,9 +2951,6 @@ Return ONLY valid JSON like this:
             base_prompt = MASTER_BUILD_PROMPT
 
             name_instruction = f"""
-            
-            
-            
 ================================================================================
 CRITICAL: USE THIS EXACT PROJECT NAME
 ================================================================================
@@ -3960,7 +3792,6 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
                 preview_result = await generate_preview_internal(
             project_files,
             user_prompt,
-            project_type=project_type,
             model_router=model_router,
             get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
         )
@@ -4065,93 +3896,10 @@ export default function BackgroundImage({ children, imageKey = 'image_1', height
 
 
 
-# ========== CONTENT SEARCH AND REPLACE ==========
-async def find_and_replace_content(files: Dict[str, Any], edit_description: str) -> List[Dict]:
-    """Find specific text content in files and replace it"""
-    
-    # Extract the "change X to Y" pattern
-    import re
-    
-    results = []
-    
-    # Pattern 1: "change [old text] to [new text]"
-    pattern1 = r'change\s+(.+?)\s+to\s+(.+?)(?:\.|$)'
-    match = re.search(pattern1, edit_description, re.IGNORECASE)
-    
-    # Pattern 2: "replace [old] with [new]"
-    pattern2 = r'replace\s+(.+?)\s+with\s+(.+?)(?:\.|$)'
-    match2 = re.search(pattern2, edit_description, re.IGNORECASE)
-    
-    # Pattern 3: "update [old] to [new]"
-    pattern3 = r'update\s+(.+?)\s+to\s+(.+?)(?:\.|$)'
-    match3 = re.search(pattern3, edit_description, re.IGNORECASE)
-    
-    old_text = None
-    new_text = None
-    
-    if match:
-        old_text = match.group(1).strip()
-        new_text = match.group(2).strip()
-        print(f"🔍 Pattern 'change X to Y' detected")
-    elif match2:
-        old_text = match2.group(1).strip()
-        new_text = match2.group(2).strip()
-        print(f"🔍 Pattern 'replace X with Y' detected")
-    elif match3:
-        old_text = match3.group(1).strip()
-        new_text = match3.group(2).strip()
-        print(f"🔍 Pattern 'update X to Y' detected")
-    
-    if old_text and new_text:
-        print(f"📝 Looking for: '{old_text}'")
-        print(f"📝 Replacing with: '{new_text}'")
-        
-        # Search through all files
-        for file_path, content in files.items():
-            if not isinstance(content, str):
-                continue
-            if file_path == "preview_html":
-                continue
-            
-            # Check if old_text exists in the file
-            if old_text in content:
-                # Replace the text
-                new_content = content.replace(old_text, new_text)
-                
-                results.append({
-                    "file_path": file_path,
-                    "original_content": content,
-                    "updated_content": new_content,
-                    "old_text": old_text,
-                    "new_text": new_text,
-                    "success": True
-                })
-                print(f"  ✅ Found and replaced in: {file_path}")
-        
-        if not results:
-            print(f"  ⚠️ Text '{old_text}' not found in any file")
-    
-    return results
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # ====================== INTELLIGENT AI-DRIVEN EDIT WITH DB INTEGRATION ======================
 @app.post("/api/edit-file")
 async def edit_file(request: Dict[str, Any]):
-    import re 
     try:
         edit_description: str = request.get("edit_description", "")
         all_files: Dict[str, Any] = request.get("all_files", {})
@@ -4161,57 +3909,6 @@ async def edit_file(request: Dict[str, Any]):
         
         # ========== ADD THIS LINE ==========
         user_prompt: str = request.get("user_prompt", edit_description)  # ← Use edit_description as fallback
-        
-        
-        
-        
-        
-        
-        
-        
-        # ✅ ADD THIS - Get project type from request
-        project_type: str = request.get("project_type", "")
-        project_id: Optional[str] = request.get("project_id")
-        project_name_from_request: str = request.get("project_name", "")
-        
-        # If project_type not provided, try to detect from files or database
-        if not project_type and project_id:
-            async with AsyncSessionLocal() as session:
-                stmt = select(Project).where(Project.id == project_id)
-                result = await session.execute(stmt)
-                existing_project = result.scalar_one_or_none()
-                if existing_project and existing_project.project_type:
-                    project_type = existing_project.project_type
-                    print(f"📌 Loaded project type from DB: {project_type}")
-        
-        # If still no project_type, detect from files
-        if not project_type:
-            # Check navigation links to determine type
-            nav_content = all_files.get("components/Navigation.tsx", "")
-            if "shop" in nav_content.lower() or "cart" in nav_content.lower():
-                project_type = "ecommerce"
-            elif "classes" in nav_content.lower() or "trainers" in nav_content.lower():
-                project_type = "gym"
-            elif "menu" in nav_content.lower() or "reservations" in nav_content.lower():
-                project_type = "restaurant"
-            elif "features" in nav_content.lower() and "pricing" in nav_content.lower():
-                project_type = "saas"
-            elif "programs" in nav_content.lower() or "admissions" in nav_content.lower():
-                project_type = "school"
-            else:
-                project_type = "general"
-            print(f"🔍 Detected project type from files: {project_type}")
-        
-        # Store project type in all_files for preview generation
-        all_files["__project_type__"] = project_type
-        
-        
-        
-        
-        
-        
-        
-        
         
         # Extract project identifiers for saving preview
         project_id: Optional[str] = request.get("project_id")
@@ -4225,9 +3922,13 @@ async def edit_file(request: Dict[str, Any]):
 
 
 
+
+
+
         # ========== ADD THIS BLOCK - LOAD CLOUDINARY URL FROM DATABASE ==========
         original_cloudinary_image_url = None
-        hero_removed_flag = False
+        
+        
         
         if project_id:
             try:
@@ -4236,38 +3937,19 @@ async def edit_file(request: Dict[str, Any]):
                     result = await session.execute(stmt)
                     existing_project = result.scalar_one_or_none()
                     
-                    if existing_project:
-                        # ✅ Check the hero_removed flag first
-                        hero_removed_flag = existing_project.hero_removed if hasattr(existing_project, 'hero_removed') else False
+                    if existing_project and existing_project.cloudinary_image_url:
+                        original_cloudinary_image_url = existing_project.cloudinary_image_url
+                        print(f"📸 Loaded Cloudinary URL from database: {original_cloudinary_image_url[:80]}...")
                         
-                        if hero_removed_flag:
-                            print(f"🚫 Hero image was previously removed - will NOT restore Cloudinary URL")
-                            original_cloudinary_image_url = None
-                        elif existing_project.cloudinary_image_url:
-                            original_cloudinary_image_url = existing_project.cloudinary_image_url
-                            print(f"📸 Loaded Cloudinary URL from database: {original_cloudinary_image_url[:80]}...")
-                            
-                            # Store in all_files for preservation
-                            all_files["__original_cloudinary_url__"] = original_cloudinary_image_url
-                        else:
-                            print(f"⚠️ No Cloudinary URL found in database")
+                        # Store in all_files for preservation
+                        all_files["__original_cloudinary_url__"] = original_cloudinary_image_url
                         
-                        # Set project name
                         if not project_name_from_request:
                             project_name_from_request = existing_project.name
-                        
-                        # ✅ Store the flag in all_files for later use
-                        if hero_removed_flag:
-                            all_files["__hero_removed__"] = "true"
-                            
-                    else:
-                        print(f"⚠️ Project {project_id} not found in database")
-                        
             except Exception as e:
                 print(f"⚠️ Could not load existing project: {e}")
-                import traceback
-                traceback.print_exc()
         # ========== END OF ADDED BLOCK ==========
+
 
 
 
@@ -4445,566 +4127,6 @@ async def edit_file(request: Dict[str, Any]):
         deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
         is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-                # ========== STEP 1: CHECK FOR DELETION REQUESTS (HIGHEST PRIORITY) ==========
-        deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
-        is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
-        
-        
-        
-        
-        
-        
-        
-        
-               # ========== STEP 1: CHECK FOR DELETION REQUESTS (HIGHEST PRIORITY) ==========
-        deletion_keywords = ['remove', 'delete', 'drop', 'erase', 'get rid of', 'remove the', 'delete the']
-        is_deletion_request = any(keyword in edit_description.lower() for keyword in deletion_keywords)
-        
-        # ========== ADD THIS - CHECK FOR HERO IMAGE REMOVAL (BEFORE ANY AI ANALYSIS) ==========
-        hero_removal_keywords = [
-            'hero image', 'hero background', 'background image', 'hero section',
-            'remove hero', 'delete hero', 'remove the hero', 'delete the hero',
-            'remove background', 'delete background', 'take out hero',
-            'remove hero image', 'delete hero image', 'hero picture',
-            'remove the background image', 'delete the hero section'
-        ]
-        is_hero_removal = any(keyword in edit_description.lower() for keyword in hero_removal_keywords)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        if is_hero_removal:
-                print(f"\n{'='*60}")
-                print(f"🖼️ HERO IMAGE REMOVAL REQUEST DETECTED")
-                print(f"📝 Edit: {edit_description}")
-                print(f"{'='*60}\n")
-                
-                # 1. Remove hero image from preview HTML
-                current_preview = existing_preview
-                from preview_generator import remove_hero_image_from_html
-                updated_preview = remove_hero_image_from_html(current_preview)
-                
-                # 2. ALSO remove ONLY the img tag from app/page.tsx source file (preserve everything else)
-                page_tsx_path = "app/page.tsx"
-                if page_tsx_path in updated_files:
-                        page_content = updated_files[page_tsx_path]
-                        original_page_content = page_content
-                        
-                        print(f"📝 Updating {page_tsx_path} - removing ONLY the hero image...")
-                        
-                        # Remove ONLY the img tag - preserve all other content
-                        new_page_content = re.sub(
-                                r'<img[^>]*src=["\'][^"\']*image_1\.jpg[^"\']*["\'][^>]*onError=\{\(e\)\s*=>\s*\{[^}]+\}\}[^>]*\/?>',
-                                '',
-                                page_content,
-                                flags=re.DOTALL
-                        )
-                        
-                        # If the above didn't work, try simpler pattern
-                        if new_page_content == page_content:
-                                new_page_content = re.sub(
-                                        r'<img[^>]*src=["\'][^"\']*image_1\.jpg[^"\']*["\'][^>]*\/?>',
-                                        '',
-                                        page_content,
-                                        flags=re.DOTALL
-                                )
-                        
-                        # Remove the dark overlay div (but keep the content container)
-                        new_page_content = re.sub(
-                                r'<div className="absolute inset-0 bg-black/50"></div>\s*',
-                                '',
-                                new_page_content,
-                                flags=re.DOTALL
-                        )
-                        
-                        # Remove gradient overlays
-                        new_page_content = re.sub(
-                                r'<div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent"></div>\s*',
-                                '',
-                                new_page_content,
-                                flags=re.DOTALL
-                        )
-                        
-                        new_page_content = re.sub(
-                                r'<div className="absolute inset-0 bg-gradient-to-t from-purple-950/80 via-transparent to-transparent"></div>\s*',
-                                '',
-                                new_page_content,
-                                flags=re.DOTALL
-                        )
-                        
-                        # IMPORTANT: DO NOT remove the section or any content divs
-                        # Keep everything: h1, p, buttons, trust badges, etc.
-                        
-                        # Also add a solid background to the section so it's not empty
-                        new_page_content = re.sub(
-                                r'(<section className="relative h-screen[^>]*>)',
-                                r'\1<div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-800"></div>',
-                                new_page_content,
-                                flags=re.DOTALL
-                        )
-                        
-                        if new_page_content != original_page_content:
-                                updated_files[page_tsx_path] = new_page_content
-                                print(f"✅ Updated {page_tsx_path} - hero image removed, all content preserved")
-                                
-                                edit_results.append({
-                                        "file_path": page_tsx_path,
-                                        "original_content": original_page_content,
-                                        "updated_content": new_page_content,
-                                        "success": True,
-                                        "is_new_file": False,
-                                        "changes": ["Removed hero background image (preserved all content)"]
-                                })
-                        else:
-                                print(f"⚠️ No changes made to {page_tsx_path}")
-                
-                # 3. Update the preview in files
-                updated_files["preview_html"] = updated_preview
-                
-                # 4. Save the updated preview to disk
-                await save_regenerated_preview(
-                        preview_html=updated_preview,
-                        project_name=project_name_from_request or "Scorpio Project",
-                        project_id=project_id
-                )
-                
-                # 5. Mark that hero was removed (IN MEMORY)
-                updated_files["__hero_removed__"] = "true"
-                
-                # 6. Clear Cloudinary URL from files
-                if "__cloudinary_image_url__" in updated_files:
-                        del updated_files["__cloudinary_image_url__"]
-                
-                # 7. Update database if project_id exists
-                if project_id:
-                        try:
-                                async with AsyncSessionLocal() as session:
-                                        stmt = select(Project).where(Project.id == project_id)
-                                        result = await session.execute(stmt)
-                                        project = result.scalar_one_or_none()
-                                        if project:
-                                                project.hero_removed = True
-                                                project.cloudinary_image_url = None
-                                                await session.commit()
-                                                print(f"✅ Database updated: hero_removed=True, cloudinary_image_url cleared")
-                                        else:
-                                                print(f"⚠️ Project {project_id} not found in database")
-                        except Exception as e:
-                                print(f"⚠️ Could not update database: {e}")
-                                import traceback
-                                traceback.print_exc()
-                
-                print(f"✅ Hero image removed - all other content preserved")
-                
-                return {
-                        "success": True,
-                        "message": "✅ Hero image removed successfully! All content (headings, buttons, trust badges) preserved.",
-                        "preview_html": updated_preview,
-                        "hero_removed": True,
-                        "edits": edit_results,
-                        "files_edited": [r["file_path"] for r in edit_results],
-                        "updated_files": {r["file_path"]: r["updated_content"] for r in edit_results}
-                }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-                # Check for text replacement patterns like "change X to Y"
-        import re
-        
-        # Improved patterns that capture everything after "to " until the end of string
-        text_replacement_patterns = [
-            r'change\s+(.+?)\s+to\s+(.+)$',           # Captures everything after "to " to end of string
-            r'replace\s+(.+?)\s+with\s+(.+)$',        # Captures everything after "with " to end of string
-            r'update\s+(.+?)\s+to\s+(.+)$',           # Captures everything after "to " to end of string
-        ]
-        
-        is_text_replacement = False
-        old_text = None
-        new_text = None
-        
-        for pattern in text_replacement_patterns:
-            match = re.search(pattern, edit_description, re.IGNORECASE | re.DOTALL)
-            if match:
-                old_text = match.group(1).strip()
-                new_text = match.group(2).strip()
-                is_text_replacement = True
-                print(f"🔍 Text replacement detected!")
-                print(f"   Old: '{old_text}'")
-                print(f"   New: '{new_text}'")
-                break
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        if is_text_replacement and old_text and new_text:
-                print(f"\n{'='*60}")
-                print(f"📝 SPECIFIC TEXT REPLACEMENT REQUEST")
-                print(f"{'='*60}\n")
-                
-                # Clean the search text (normalize whitespace)
-                clean_old_text = ' '.join(old_text.split()).strip()
-                print(f"🔍 Cleaned search text: '{clean_old_text[:100]}...'")
-                
-                # Search through all files for the exact text
-                text_replacements = []
-                found_files = []
-                choices = []
-                
-                for file_path, content in updated_files.items():
-                        if not isinstance(content, str):
-                                continue
-                        if file_path == "preview_html":
-                                continue
-                        
-                        # Try exact match first
-                        if old_text in content:
-                                found_files.append(file_path)
-                                print(f"  📄 Found exact match in: {file_path}")
-                                continue
-                        
-                        # Try normalized match (remove extra whitespace)
-                        clean_content = ' '.join(content.split())
-                        if clean_old_text in clean_content:
-                                found_files.append(file_path)
-                                print(f"  📄 Found normalized match in: {file_path}")
-                                continue
-                        
-                        # Try partial match (first 50 chars)
-                        partial_match = clean_old_text[:50]
-                        if partial_match in clean_content:
-                                found_files.append(file_path)
-                                print(f"  📄 Found partial match in: {file_path}")
-                                continue
-                
-                # If only one file found, replace automatically
-                if len(found_files) == 1:
-                        print(f"\n✅ Only one file found - automatically replacing text...")
-                        file_path = found_files[0]
-                        content = updated_files[file_path]
-                        new_content = content.replace(old_text, new_text)
-                        
-                        text_replacements.append({
-                                "file_path": file_path,
-                                "original_content": content,
-                                "updated_content": new_content,
-                                "success": True
-                        })
-                        updated_files[file_path] = new_content
-                        edit_results.append({
-                                "file_path": file_path,
-                                "original_content": content,
-                                "updated_content": new_content,
-                                "success": True,
-                                "is_new_file": False,
-                                "changes": [f"Replaced text in {file_path}: '{old_text[:50]}...' -> '{new_text[:50]}...'"]
-                        })
-                        
-                        # Regenerate preview automatically
-                        print(f"\n🔄 Regenerating preview after text replacement...")
-                        
-                        hero_removed_flag = updated_files.get("__hero_removed__") == "true"
-                        
-                        preview_result = await generate_preview_internal(
-                                updated_files,
-                                project_name_from_request or "Lily Table",
-                                existing_image_url=None if hero_removed_flag else original_cloudinary_image_url,
-                                user_prompt=edit_description,
-                                project_type=project_type,
-                                model_router=model_router,
-                                get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
-                        )
-                        
-                        preview_html = preview_result.get("preview_html", existing_preview) if preview_result.get("success") else existing_preview
-                        updated_files["preview_html"] = preview_html
-                        
-                        
-                        
-                        
-                        
-                        
-                        
-                    # ✅ PRESERVE FAQ COUNT FROM ORIGINAL PREVIEW
-                        if existing_preview:
-                            preview_html = preserve_faq_count(existing_preview, preview_html)
-                            print(f"📋 FAQ preservation applied")                         
-                        
-                        
-                        
-                        
-                        
-                        
-                        await save_regenerated_preview(
-                                preview_html=preview_html,
-                                project_name=project_name_from_request or "Scorpio Project",
-                                project_id=project_id
-                        )
-                        
-                        return {
-                                "success": True,
-                                "message": f"✅ Successfully replaced text in {len(text_replacements)} file(s)",
-                                "preview_html": preview_html,
-                                "edits": edit_results,
-                                "files_edited": [r["file_path"] for r in edit_results],
-                                "updated_files": {r["file_path"]: r["updated_content"] for r in edit_results}
-                        }
-                
-                # If multiple files found, build enhanced choices with context
-                elif len(found_files) > 1:
-                        print(f"\n⚠️ Found {len(found_files)} files containing the text:")
-                        
-                        for i, file_path in enumerate(found_files, 1):
-                                # Determine file type and purpose for better UX
-                                file_type = ""
-                                display_name = ""
-                                description = ""
-                                
-                                if "layout.tsx" in file_path:
-                                        file_type = "Layout"
-                                        display_name = "Global Layout"
-                                        description = "Affects ALL pages - layout structure"
-                                elif "page.tsx" in file_path:
-                                        # Extract the route from the path
-                                        route = file_path.replace("app/", "").replace("/page.tsx", "")
-                                        if route == "" or route == "page":
-                                                route = "home"
-                                                display_name = "Homepage"
-                                                description = "Main landing page content"
-                                        else:
-                                                display_name = f"{route.capitalize()} Page"
-                                                description = f"Page content for /{route}"
-                                        file_type = "Page"
-                                elif "Navigation.tsx" in file_path:
-                                        file_type = "Component"
-                                        display_name = "Navigation Menu"
-                                        description = "Navigation component - affects all pages"
-                                elif "Footer.tsx" in file_path:
-                                        file_type = "Component"
-                                        display_name = "Footer Component"
-                                        description = "Footer component - affects all pages"
-                                else:
-                                        file_type = "File"
-                                        display_name = file_path.split('/')[-1].replace('.tsx', '').replace('.jsx', '')
-                                        description = f"Source file: {file_path}"
-                                
-                                # Extract a snippet of the content around the match for context
-                                content = updated_files.get(file_path, "")
-                                snippet = ""
-                                search_text = old_text if old_text in content else clean_old_text
-                                if search_text in content:
-                                        pos = content.find(search_text)
-                                        start = max(0, pos - 40)
-                                        end = min(len(content), pos + len(search_text) + 40)
-                                        snippet = content[start:end].replace('\n', ' ').strip()
-                                        snippet = snippet[:100] + "..." if len(snippet) > 100 else snippet
-                                
-                                choices.append({
-                                        "number": i,
-                                        "file_path": file_path,
-                                        "display_name": display_name,
-                                        "description": description,
-                                        "file_type": file_type,
-                                        "route": description,
-                                        "snippet": snippet
-                                })
-                                
-                                print(f"    {i}. {file_path}")
-                                print(f"       → {display_name}: {description}")
-                        
-                        print(f"\n❓ Which file should be edited?")
-                        
-                        # Return enhanced response for frontend modal
-                        return {
-                                "success": False,
-                                "requires_confirmation": True,
-                                "confirmation_type": "text_replacement",
-                                "message": f"The text was found in {len(found_files)} files. Which file do you want to edit?",
-                                "found_files": found_files,
-                                "old_text": old_text,
-                                "new_text": new_text,
-                                "project_id": project_id,
-                                "project_name": project_name_from_request,
-                                "all_files": updated_files,
-                                "existing_preview": existing_preview,
-                                "hero_removed_flag": updated_files.get("__hero_removed__") == "true",
-                                "original_cloudinary_image_url": original_cloudinary_image_url,
-                                "choices": choices
-                        }
-                
-                else:
-                        print(f"⚠️ Text '{old_text}' not found in any file")
-                        # Try fuzzy matching as fallback
-                        print(f"🔍 Attempting fuzzy search...")
-                        
-                        # Search for partial matches
-                        found_files = []
-                        choices = []
-                        
-                        for file_path, content in updated_files.items():
-                                if not isinstance(content, str):
-                                        continue
-                                if file_path == "preview_html":
-                                        continue
-                                
-                                # Try partial match with cleaned text
-                                clean_content = ' '.join(content.split()).lower()
-                                clean_search = clean_old_text[:50].lower()
-                                if clean_search in clean_content:
-                                        found_files.append(file_path)
-                                        print(f"  📄 Found partial match in: {file_path}")
-                        
-                        if len(found_files) == 1:
-                                print(f"\n✅ Found partial match in one file - automatically replacing...")
-                                file_path = found_files[0]
-                                content = updated_files[file_path]
-                                new_content = content.replace(old_text, new_text)
-                                
-                                text_replacements.append({
-                                        "file_path": file_path,
-                                        "original_content": content,
-                                        "updated_content": new_content,
-                                        "success": True
-                                })
-                                updated_files[file_path] = new_content
-                                edit_results.append({
-                                        "file_path": file_path,
-                                        "original_content": content,
-                                        "updated_content": new_content,
-                                        "success": True,
-                                        "is_new_file": False,
-                                        "changes": [f"Replaced text (partial match) in {file_path}: '{old_text[:50]}...' -> '{new_text[:50]}...'"]
-                                })
-                                
-                                # Regenerate preview automatically
-                                print(f"\n🔄 Regenerating preview after text replacement...")
-                                
-                                hero_removed_flag = updated_files.get("__hero_removed__") == "true"
-                                
-                                preview_result = await generate_preview_internal(
-                                        updated_files,
-                                        project_name_from_request or "Lily Table",
-                                        existing_image_url=None if hero_removed_flag else original_cloudinary_image_url,
-                                        user_prompt=edit_description,
-                                        project_type=project_type,
-                                        model_router=model_router,
-                                        get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
-                                )
-                                
-                                preview_html = preview_result.get("preview_html", existing_preview) if preview_result.get("success") else existing_preview
-                                updated_files["preview_html"] = preview_html
-                                
-                                await save_regenerated_preview(
-                                        preview_html=preview_html,
-                                        project_name=project_name_from_request or "Scorpio Project",
-                                        project_id=project_id
-                                )
-                                
-                                return {
-                                        "success": True,
-                                        "message": f"✅ Successfully replaced text (partial match) in {len(text_replacements)} file(s)",
-                                        "preview_html": preview_html,
-                                        "edits": edit_results,
-                                        "files_edited": [r["file_path"] for r in edit_results],
-                                        "updated_files": {r["file_path"]: r["updated_content"] for r in edit_results}
-                                }
-                        
-                        elif len(found_files) > 1:
-                                print(f"\n⚠️ Found {len(found_files)} files with partial matches:")
-                                for i, file_path in enumerate(found_files, 1):
-                                        print(f"    {i}. {file_path}")
-                                        
-                                        # Build simple choice for partial matches
-                                        choices.append({
-                                                "number": i,
-                                                "file_path": file_path,
-                                                "display_name": file_path.split('/')[-1],
-                                                "description": f"Edit {file_path}",
-                                                "file_type": "File",
-                                                "snippet": ""
-                                        })
-                                
-                                return {
-                                        "success": False,
-                                        "requires_confirmation": True,
-                                        "confirmation_type": "text_replacement_partial",
-                                        "message": f"The text (partial match) was found in {len(found_files)} files. Which file do you want to edit?",
-                                        "found_files": found_files,
-                                        "old_text": old_text,
-                                        "new_text": new_text,
-                                        "is_partial_match": True,
-                                        "project_id": project_id,
-                                        "project_name": project_name_from_request,
-                                        "all_files": updated_files,
-                                        "existing_preview": existing_preview,
-                                        "hero_removed_flag": updated_files.get("__hero_removed__") == "true",
-                                        "original_cloudinary_image_url": original_cloudinary_image_url,
-                                        "choices": choices
-                                }
-                        
-                        else:
-                                print(f"⚠️ No matches found for text replacement")
-                                # Continue to normal AI edit
-        # End of text replacement block
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         # Also check for package.json specific deletions
         is_package_json_deletion = 'package.json' in edit_description.lower() and any(keyword in edit_description.lower() for keyword in ['remove', 'delete'])
         
@@ -5046,7 +4168,6 @@ async def edit_file(request: Dict[str, Any]):
                                 updated_files,
                                 user_prompt, 
                                 project_name_from_request or "Scorpio Project",
-                                project_type=project_type,
                                 model_router=model_router,
                                 get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
                             )
@@ -5284,7 +4405,6 @@ UPDATED CODE:"""
                     updated_files,
                     project_name,
                     model_router=model_router,
-                    project_type=project_type,
                     user_prompt=edit_description,
                     get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
                 )
@@ -6494,22 +5614,19 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                 
                 
                 
-                        preview_result = await generate_preview_internal(
+                
+                
+                
+                preview_result = await generate_preview_internal(
                     updated_files,
                     project_name,
                     existing_image_url=original_cloudinary_image_url,
                     user_prompt=edit_description,
-                    project_type=project_type,
                     model_router=model_router,
                     get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
                 )
                 if preview_result.get("success"):
                     preview_html = preview_result.get("preview_html")
-                    
-                    # ✅ PRESERVE FAQ COUNT FROM ORIGINAL PREVIEW
-                    if existing_preview:
-                        preview_html = preserve_faq_count(existing_preview, preview_html)
-                        print(f"📋 FAQ preservation applied")
                     
                     # ✅ PRESERVE CLOUDINARY IMAGE URL IN THE HTML
                     if original_cloudinary_image_url:
@@ -6526,7 +5643,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
                     preview_html = preserve_cloudinary_urls(preview_html, updated_files)
                     
                     updated_files["preview_html"] = preview_html
-                    print(f"✅ Preview regenerated and FAQ preserved!")
+                    print(f"✅ Preview regenerated!")
                     
                     # SAVE TO DISK - Option A
                     await save_regenerated_preview(
@@ -6539,6 +5656,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
             except Exception as e:
                 print(f"⚠️ Preview error: {e}")
                 preview_html = existing_preview
+                
+                
                 
                 
                 
@@ -10586,130 +9705,8 @@ async def signup(request: Request):
 
 
 
-@app.post("/api/confirm-text-replacement")
-async def confirm_text_replacement(request: Request):
-    """Handle user's choice for which file to edit when multiple files contain the text"""
-    try:
-        data = await request.json()
-        project_id = data.get("project_id")
-        file_path = data.get("file_path")  # Single file path
-        edit_all = data.get("edit_all", False)  # If True, edit all files
-        old_text = data.get("old_text", "")
-        new_text = data.get("new_text", "")
-        existing_preview = data.get("existing_preview", "")
-        project_name = data.get("project_name", "Scorpio Project")
-        is_partial_match = data.get("is_partial_match", False)
-        
-        
-        
-        project_type = data.get("project_type", "general")
-        
-        
-        
-        # Load project files from database or passed data
-        # You'll need to fetch the current files or have them passed
-        all_files = data.get("all_files", {})
-        
-        # Load hero removed flag
-        hero_removed_flag = all_files.get("__hero_removed__") == "true"
-        original_cloudinary_image_url = all_files.get("__original_cloudinary_url__")
-        
-        updated_files = {**all_files}
-        edit_results = []
-        
-        if edit_all:
-            # Edit all files that contain the text
-            print(f"📝 Editing ALL files containing the text...")
-            for file_path_check, content in updated_files.items():
-                if not isinstance(content, str):
-                    continue
-                if file_path_check == "preview_html":
-                    continue
-                
-                if old_text in content:
-                    new_content = content.replace(old_text, new_text)
-                    updated_files[file_path_check] = new_content
-                    edit_results.append({
-                        "file_path": file_path_check,
-                        "original_content": content,
-                        "updated_content": new_content,
-                        "success": True,
-                        "changes": [f"Replaced text in {file_path_check}"]
-                    })
-                    print(f"  ✅ Edited: {file_path_check}")
-        else:
-            # Edit only the selected file
-            if file_path in updated_files:
-                content = updated_files[file_path]
-                if old_text in content:
-                    new_content = content.replace(old_text, new_text)
-                    updated_files[file_path] = new_content
-                    edit_results.append({
-                        "file_path": file_path,
-                        "original_content": content,
-                        "updated_content": new_content,
-                        "success": True,
-                        "changes": [f"Replaced text in {file_path}"]
-                    })
-                    print(f"  ✅ Edited: {file_path}")
-                else:
-                    # Try partial match if exact not found
-                    if is_partial_match:
-                        partial_match = old_text[:50]
-                        if partial_match in content:
-                            new_content = content.replace(partial_match, new_text)
-                            updated_files[file_path] = new_content
-                            edit_results.append({
-                                "file_path": file_path,
-                                "original_content": content,
-                                "updated_content": new_content,
-                                "success": True,
-                                "changes": [f"Replaced text (partial match) in {file_path}"]
-                            })
-                            print(f"  ✅ Edited (partial): {file_path}")
-                        else:
-                            return {"success": False, "message": f"Text not found in {file_path}"}
-                    else:
-                        return {"success": False, "message": f"Text not found in {file_path}"}
-            else:
-                return {"success": False, "message": f"File {file_path} not found"}
-        
-        # Regenerate preview
-        print(f"\n🔄 Regenerating preview after text replacement...")
-        
-        preview_result = await generate_preview_internal(
-            updated_files,
-            project_name,
-            project_type=project_type,
-            existing_image_url=None if hero_removed_flag else original_cloudinary_image_url,
-            user_prompt=f"Replace text in {len(edit_results)} file(s)",
-            model_router=model_router,
-            get_cloudinary_url_for_preview=get_cloudinary_url_for_preview
-        )
-        
-        preview_html = preview_result.get("preview_html", existing_preview) if preview_result.get("success") else existing_preview
-        updated_files["preview_html"] = preview_html
-        
-        await save_regenerated_preview(
-            preview_html=preview_html,
-            project_name=project_name,
-            project_id=project_id
-        )
-        
-        return {
-            "success": True,
-            "message": f"✅ Successfully replaced text in {len(edit_results)} file(s)",
-            "preview_html": preview_html,
-            "edits": edit_results,
-            "files_edited": [r["file_path"] for r in edit_results],
-            "updated_files": {r["file_path"]: r["updated_content"] for r in edit_results}
-        }
-        
-    except Exception as e:
-        print(f"❌ Error in confirm_text_replacement: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "message": str(e)}
+
+
 
 
 

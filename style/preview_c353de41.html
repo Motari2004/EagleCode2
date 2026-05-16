@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oak Lodge College Prep</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        header {
+            background: rgba(26, 26, 30, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 100;
+            height: 72px;
+        }
+
+        .nav-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            height: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 1.5rem;
+        }
+
+        .brand {
+            font-size: 1.5rem;
+            font-weight: 800;
+            text-decoration: none;
+            background: linear-gradient(135deg, #c084fc, #f472b6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .nav-link {
+            color: #9ca3af;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: #c084fc;
+            background: rgba(192,132,252,0.1);
+        }
+
+        .page {
+            display: none;
+            min-height: calc(100vh - 72px);
+            padding-top: 88px;
+        }
+
+        .page.active { display: block; }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: #c084fc;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #c084fc, #f472b6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #c084fc, #f472b6);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 2rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(192,132,252,0.3);
+        }
+
+        .hero {
+            min-height: 70vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            border-radius: 1rem;
+            margin: 1rem;
+            overflow: hidden;
+        }
+
+        .hero-bg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.35;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 10;
+            padding: 3rem;
+        }
+
+        .hero-content h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .hero-content p {
+            font-size: 1.2rem;
+            color: #9ca3af;
+            margin-bottom: 2rem;
+        }
+
+        .grid {
+            display: grid;
+            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        /* Footer */
+        footer {
+            background: linear-gradient(180deg, rgba(15,15,18,0.8) 0%, #1a1a2e 100%);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            margin-top: 4rem;
+            padding: 3rem 0 2rem;
+        }
+
+        .footer-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: grid;
+            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+
+        .footer-section h4 {
+            color: #c084fc;
+            margin-bottom: 1rem;
+        }
+
+        .footer-section a {
+            color: #9ca3af;
+            text-decoration: none;
+            display: block;
+            margin-bottom: 0.5rem;
+            transition: color 0.2s;
+        }
+
+        .footer-section a:hover { color: #c084fc; }
+
+        .copyright {
+            text-align: center;
+            padding-top: 2rem;
+            margin-top: 2rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+
+        /* Mobile Menu */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 3px;
+            background: #9ca3af;
+            border-radius: 2px;
+        }
+
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 280px;
+            height: 100vh;
+            background: #1a1a1e;
+            z-index: 200;
+            transition: right 0.3s;
+            padding: 80px 24px;
+        }
+
+        .mobile-menu.active { right: 0; }
+
+        .mobile-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 199;
+            display: none;
+        }
+
+        .mobile-overlay.active { display: block; }
+
+        .mobile-nav-link {
+            display: block;
+            padding: 12px 16px;
+            color: #9ca3af;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hamburger { display: flex; }
+            .hero-content h1 { font-size: 2rem; }
+            .footer-container { grid-template-columns: 1fr; text-align: center; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .page { animation: fadeIn 0.3s ease; }
+
+        /* Hamburger animation to X when open */
+        .hamburger.active span:nth-child(1) {
+            transform: rotate(45deg) translate(5px, 5px);
+        }
+
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger.active span:nth-child(3) {
+            transform: rotate(-45deg) translate(5px, -5px);
+        }
+
+        /* Add transition to hamburger spans */
+        .hamburger span {
+            width: 25px;
+            height: 3px;
+            background: #9ca3af;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        /* ========== FAQ ACCORDION STYLES ========== */
+        .faq-answer {
+            transition: all 0.3s ease;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+        }
+
+        .faq-answer.hidden {
+            display: none;
+        }
+
+        .faq-btn, .faq-question {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+
+        .faq-btn:hover, .faq-question:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .faq-btn i, .faq-question i {
+            transition: transform 0.2s ease;
+        }
+
+        /* Increase feature icon sizes */
+        .feature-icon {
+            font-size: 3rem;
+            width: auto;
+            height: auto;
+        }
+
+        /* For all icons in feature cards */
+        .grid.md\:grid-cols-4 > div i {
+            font-size: 2rem;
+            width: auto;
+            height: auto;
+            margin-bottom: 1rem;
+        }
+    
+    /* ========== FEATURES & FAQ - MATCHING PROFESSIONAL PURPLE STYLE ========== */
+    /* NOTE: All styles are scoped to #page_home to prevent affecting footer */
+
+    /* ===== SECTION BACKGROUNDS ===== */
+    #page_home section.py-20.px-4,
+    #page_home section.py-20.px-4:last-of-type {
+        background: linear-gradient(180deg, #0a0a0f 0%, #12121a 100%);
+        position: relative;
+    }
+
+    /* Remove any pseudo-element orbs or patterns */
+    #page_home section.py-20.px-4::before,
+    #page_home section.py-20.px-4::after,
+    #page_home section.py-20.px-4:last-of-type::before,
+    #page_home section.py-20.px-4:last-of-type::after {
+        display: none;
+    }
+
+    /* ===== SECTION HEADERS ===== */
+    #page_home section.py-20.px-4 .text-center.mb-12 h2,
+    #page_home section.py-20.px-4:last-of-type .text-center.mb-12 h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.75rem;
+        background: linear-gradient(135deg, #ffffff, #c084fc, #f472b6);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        position: relative;
+        display: inline-block;
+        padding-bottom: 0.75rem;
+    }
+
+    /* Animated underline for headers */
+    #page_home section.py-20.px-4 .text-center.mb-12 h2::after,
+    #page_home section.py-20.px-4:last-of-type .text-center.mb-12 h2::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 70px;
+        height: 3px;
+        background: linear-gradient(90deg, #c084fc, #f472b6, #c084fc);
+        border-radius: 3px;
+        animation: underlinePulse 2s ease-in-out infinite;
+    }
+
+    @keyframes underlinePulse {
+        0%, 100% { width: 70px; opacity: 0.6; }
+        50% { width: 100px; opacity: 1; }
+    }
+
+    /* Section subheadings */
+    #page_home section.py-20.px-4 .text-center.mb-12 p,
+    #page_home section.py-20.px-4:last-of-type .text-center.mb-12 p {
+        color: #94a3b8;
+        font-size: 1rem;
+        margin-top: 0.5rem;
+    }
+
+    /* ===== CARDS - Features Grid ===== */
+    #page_home .grid.md\:grid-cols-4 {
+        gap: 1.5rem;
+    }
+
+    /* Feature cards */
+    #page_home .grid.md\:grid-cols-4 > div {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-radius: 20px;
+        transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* FAQ items */
+    #page_home .space-y-4 > div {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-radius: 20px;
+        transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* Card hover effect */
+    #page_home .grid.md\:grid-cols-4 > div:hover,
+    #page_home .space-y-4 > div:hover {
+        transform: translateY(-4px);
+        border-color: rgba(139, 92, 246, 0.5);
+        background: rgba(139, 92, 246, 0.08);
+        box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.2);
+    }
+
+    /* Subtle shine on hover */
+    #page_home .grid.md\:grid-cols-4 > div::before,
+    #page_home .space-y-4 > div::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent);
+        transition: left 0.5s ease;
+        pointer-events: none;
+    }
+
+    #page_home .grid.md\:grid-cols-4 > div:hover::before,
+    #page_home .space-y-4 > div:hover::before {
+        left: 100%;
+    }
+
+    /* ===== FEATURE ICONS ===== */
+    #page_home .grid.md\:grid-cols-4 > div i {
+        font-size: 2.2rem;
+        background: linear-gradient(135deg, #c084fc, #f472b6);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        margin-bottom: 1rem;
+        display: inline-block;
+        transition: transform 0.2s ease;
+    }
+
+    #page_home .grid.md\:grid-cols-4 > div:hover i {
+        transform: scale(1.05);
+    }
+
+    /* Feature titles */
+    #page_home .grid.md\:grid-cols-4 > div h3 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Feature descriptions */
+    #page_home .grid.md\:grid-cols-4 > div p {
+        font-size: 0.875rem;
+        color: #94a3b8;
+        line-height: 1.5;
+    }
+
+    /* ===== FAQ SECTION SPECIFIC ===== */
+    #page_home .space-y-4 {
+        max-width: 768px;
+        margin: 0 auto;
+    }
+
+    /* FAQ buttons */
+    #page_home .faq-btn {
+        width: 100%;
+        font-weight: 500;
+        font-size: 1rem;
+        padding: 1.25rem 1.5rem;
+        color: #f1f5f9;
+        background: transparent;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.2s ease;
+    }
+
+    #page_home .faq-btn span {
+        transition: color 0.2s ease;
+    }
+
+    #page_home .faq-btn:hover span {
+        color: #c084fc;
+    }
+
+    /* FAQ icons */
+    #page_home .faq-btn i {
+        color: #a855f7;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+    }
+
+    #page_home .faq-btn:hover i {
+        color: #c084fc;
+        transform: scale(1.1);
+    }
+
+    /* Rotate icon when open */
+    #page_home .faq-btn i.fa-minus {
+        transform: rotate(180deg);
+        color: #c084fc;
+    }
+
+    /* FAQ answers */
+    #page_home .faq-answer {
+        color: #94a3b8;
+        line-height: 1.6;
+        font-size: 0.875rem;
+        padding: 0 1.5rem 1.25rem 1.5rem;
+        border-top: 1px solid rgba(139, 92, 246, 0.15);
+    }
+
+    /* ===== RESPONSIVE ADJUSTMENTS ===== */
+    @media (max-width: 768px) {
+        #page_home .grid.md\:grid-cols-4 {
+            gap: 1rem;
+        }
+        
+        #page_home .grid.md\:grid-cols-4 > div,
+        #page_home .space-y-4 > div {
+            border-radius: 16px;
+        }
+        
+        #page_home .faq-btn {
+            padding: 1rem 1.25rem;
+            font-size: 0.875rem;
+        }
+        
+        #page_home section.py-20.px-4 .text-center.mb-12 h2,
+        #page_home section.py-20.px-4:last-of-type .text-center.mb-12 h2 {
+            font-size: 1.5rem;
+        }
+    }
+
+    /* ===== OPTIONAL: Subtle background depth ===== */
+    #page_home section.py-20.px-4,
+    #page_home section.py-20.px-4:last-of-type {
+        background-image: 
+            radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 50%),
+            radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.03) 0%, transparent 50%);
+    }
+    
+
+    /* Restaurant Reservation Modal Styles */
+    .reservation-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(12px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .reservation-modal.active {
+        display: flex;
+    }
+    
+    .reservation-modal-content {
+        background: linear-gradient(135deg, #1a1a2e, #0f0f12);
+        border-radius: 28px;
+        padding: 2rem;
+        max-width: 500px;
+        width: 90%;
+        text-align: center;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        animation: modalSlideIn 0.3s ease-out;
+    }
+    
+    @keyframes modalSlideIn {
+        from {
+            transform: translateY(-50px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+    
+    .reservation-success-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #10b981, #059669);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem;
+    }
+    
+    .reservation-success-icon i {
+        font-size: 40px;
+        color: white;
+    }
+    
+    .reservation-modal h3 {
+        font-size: 1.8rem;
+        margin-bottom: 1rem;
+        background: linear-gradient(135deg, #c084fc, #f472b6);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    
+
+    /* Push hero content below fixed header */
+    .relative.z-10 {
+        padding-top: 100px;
+    }
+    
+    @media (max-width: 768px) {
+        .relative.z-10 {
+            padding-top: 72px;
+        }
+    }
+    
+    /* Trust Badges Styles */
+    .trust-badges-container {
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+    }
+    
+    .trust-badges-flex {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badges-flex {
+            gap: 1.5rem;
+        }
+    }
+    
+    @media (min-width: 768px) {
+        .trust-badges-flex {
+            gap: 2rem;
+        }
+    }
+    
+    .trust-badge-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-item {
+            gap: 0.75rem;
+        }
+    }
+    
+    .trust-badge-icon {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-icon {
+            width: 2.5rem;
+            height: 2.5rem;
+        }
+    }
+    
+    .trust-badge-value {
+        font-weight: bold;
+        font-size: 1rem;
+        line-height: 1;
+        color: white;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-value {
+            font-size: 1.125rem;
+        }
+    }
+    
+    .trust-badge-label {
+        color: #9ca3af;
+        font-size: 0.625rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-label {
+            font-size: 0.75rem;
+        }
+    }
+    
+    .trust-badge-separator {
+        display: none;
+        width: 1px;
+        height: 1.5rem;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    @media (min-width: 768px) {
+        .trust-badge-separator {
+            display: block;
+            height: 2rem;
+        }
+    }
+    
+</style>
+</head>
+<body>
+
+<header>
+    <nav class="nav-container">
+        <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+            <i data-lucide="graduation-cap" class="w-8 h-8" style="color: #d8a219;"></i>
+            <span class="text-white text-xl font-bold">Oak Lodge College Prep</span>
+        </a>
+        <div class="hidden md:flex space-x-2 items-center">
+            <a href="programs" class="nav-link group" data-page="programs">
+                <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Programs</span>
+            </a>
+            <a href="admissions" class="nav-link group" data-page="admissions">
+                <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Admissions</span>
+            </a>
+            <a href="faculty" class="nav-link group" data-page="faculty">
+                <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Faculty</span>
+            </a>
+        </div>
+        <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
+        </button>
+    </nav>
+    <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+        <a href="programs" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="programs">
+            <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Programs</span>
+        </a>
+        <a href="admissions" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="admissions">
+            <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Admissions</span>
+        </a>
+        <a href="faculty" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="faculty">
+            <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">Faculty</span>
+        </a>
+        <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
+            <a href="/cart" class="mobile-nav-link flex items-center gap-3" data-page="cart">
+                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>
+                <span class="text-gray-300">Cart</span>
+            </a>
+            <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+        </div>
+    </div>
+    <div id="mobileOverlay" class="mobile-overlay"></div>
+</header>
+
+<div id="page_home" class="page active">
+    <section class="relative h-screen flex items-center justify-center overflow-hidden">
+        <img src="https://res.cloudinary.com/djrxuieyu/image/upload/v1777977116/preview_images/preview_b669720b73ee5142.jpg" alt="Hero" class="absolute inset-0 w-full h-full object-cover" onError={this.style.display='none'; this.parentElement?.classList.add('bg-gradient-to-br', 'from-purple-950', 'to-pink-950');} />
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="relative z-10 text-center px-4 max-w-4xl mx-auto">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 mb-6">
+                <i class="fas fa-sparkles w-4 h-4 text-amber-400"></i>
+                <span class="text-amber-400 text-sm font-medium uppercase tracking-wider">PREMIER ACADEMY</span>
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold text-white mb-4">Oak Lodge College Prep</h1>
+            <p class="text-xl md:text-2xl text-amber-400 font-semibold mb-3">Empowering Future Leaders Today</p>
+            <p class="text-gray-300 mb-8">We provide world-class academic preparation for students aiming for top-tier universities.</p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-10">
+                <a href="/programs" class="btn">
+                    Explore Programs <i data-lucide="arrow-right" class="w-4 h-4 inline-block ml-1"></i>
+                </a>
+                <a href="/admissions" class="btn">
+                    Apply Now
+                </a>
+            </div>
+
+            <!-- Trust Badges -->
+            <div class="trust-badges-container">
+                <div class="container mx-auto px-4">
+                    <div class="trust-badges-flex">
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-star text-yellow-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">4.9/5</div>
+                                <div class="trust-badge-label">Rating</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-users text-cyan-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">10k+</div>
+                                <div class="trust-badge-label">Diners</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-shield-alt text-green-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">Fresh</div>
+                                <div class="trust-badge-label">Ingredients</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-utensils text-blue-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">Award</div>
+                                <div class="trust-badge-label">Winning</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    
+        </div>
+    </section>
+    <section class="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
+        <div class="container mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold gradient-text">Features</h2>
+            </div>
+            <div class="grid md:grid-cols-4 gap-8">
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-purple-500/50 transition-all">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center mb-4">
+                        <i data-lucide="graduation-cap" class="w-7 h-7 text-white"></i>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2 text-white">Expert Guidance</h3>
+                    <p class="text-gray-400 text-sm">Personalized college counseling and application support.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-purple-500/50 transition-all">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center mb-4">
+                        <i data-lucide="book-open" class="w-7 h-7 text-white"></i>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2 text-white">Rigorous Curriculum</h3>
+                    <p class="text-gray-400 text-sm">Challenging courses designed to prepare you for top universities.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-purple-500/50 transition-all">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 flex items-center justify-center mb-4">
+                        <i data-lucide="users" class="w-7 h-7 text-white"></i>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2 text-white">Community Support</h3>
+                    <p class="text-gray-400 text-sm">Join a network of ambitious students and dedicated mentors.</p>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl p-6 hover:border-purple-500/50 transition-all">
+                    <div class="w-14 h-14 rounded-xl bg-gradient-to-r from-green-500 to-teal-500 flex items-center justify-center mb-4">
+                        <i data-lucide="trending-up" class="w-7 h-7 text-white"></i>
+                    </div>
+                    <h3 class="text-lg font-bold mb-2 text-white">Proven Success</h3>
+                    <p class="text-gray-400 text-sm">Our students consistently gain admission to prestigious institutions.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <section class="py-20 px-4">
+        <div class="container mx-auto max-w-3xl">
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-12 gradient-text">Frequently Asked Questions</h2>
+            <div class="space-y-4">
+                <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                        <span class="font-semibold text-white">What is the acceptance rate?</span>
+                        <i class="fas fa-plus text-purple-400"></i>
+                    </button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                        Our students consistently achieve a 98% acceptance rate into their top-choice universities.
+                    </div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                        <span class="font-semibold text-white">Do you offer scholarships?</span>
+                        <i class="fas fa-plus text-purple-400"></i>
+                    </button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                        Yes, we provide merit-based scholarships for exceptional students.
+                    </div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                        <span class="font-semibold text-white">How long are the programs?</span>
+                        <i class="fas fa-plus text-purple-400"></i>
+                    </button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                        Programs range from 8-week intensives to 2-year comprehensive prep.
+                    </div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors">
+                        <span class="font-semibold text-white">Are classes online or in-person?</span>
+                        <i class="fas fa-plus text-purple-400"></i>
+                    </button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">
+                        We offer both hybrid and fully in-person options at our campus.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<div id="page_programs" class="page">
+    <div class="container mx-auto px-4 py-20">
+        <h1 class="text-4xl font-bold mb-8">Academic Programs</h1>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="bg-white/5 p-6 rounded-xl">Program 1</div>
+            <div class="bg-white/5 p-6 rounded-xl">Program 2</div>
+            <div class="bg-white/5 p-6 rounded-xl">Program 3</div>
+        </div>
+    </div>
+</div>
+
+<div id="page_admissions" class="page">
+    <div class="container mx-auto px-4 py-20">
+        <h1 class="text-4xl font-bold mb-8">Admissions</h1>
+        <p>Apply to join our academy.</p>
+    </div>
+</div>
+
+<div id="page_faculty" class="page">
+    <div class="container mx-auto px-4 py-20">
+        <h1 class="text-4xl font-bold mb-8">Our Faculty</h1>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="bg-white/5 p-6 rounded-xl">Teacher 1</div>
+            <div class="bg-white/5 p-6 rounded-xl">Teacher 2</div>
+            <div class="bg-white/5 p-6 rounded-xl">Teacher 3</div>
+        </div>
+    </div>
+</div>
+
+<div id="page_shop" class="page">
+    <div class="container mx-auto px-4 py-20">
+        <h1 class="text-4xl font-bold mb-8 gradient-text">Shop Our Merchandise</h1>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="product-card">
+                <div class="product-image">
+                    <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <div class="product-info">
+                    <h3 class="product-title">Premium Hoodie</h3>
+                    <p class="product-price">$79.99</p>
+                    <button class="add-to-cart-btn" data-id="prod_001" data-name="Premium Hoodie" data-price="79.99">Add to Cart</button>
+                </div>
+            </div>
+            <div class="product-card">
+                <div class="product-image">
+                    <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <div class="product-info">
+                    <h3 class="product-title">Scholar Tee</h3>
+                    <p class="product-price">$29.99</p>
+                    <button class="add-to-cart-btn" data-id="prod_002" data-name="Scholar Tee" data-price="29.99">Add to Cart</button>
+                </div>
+            </div>
+            <div class="product-card">
+                <div class="product-image">
+                    <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <div class="product-info">
+                    <h3 class="product-title">Leather Notebook</h3>
+                    <p class="product-price">$19.99</p>
+                    <button class="add-to-cart-btn" data-id="prod_003" data-name="Leather Notebook" data-price="19.99">Add to Cart</button>
+                </div>
+            </div>
+            <div class="product-card">
+                <div class="product-image">
+                    <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <div class="product-info">
+                    <h3 class="product-title">Canvas Tote</h3>
+                    <p class="product-price">$24.99</p>
+                    <button class="add-to-cart-btn" data-id="prod_004" data-name="Canvas Tote" data-price="24.99">Add to Cart</button>
+                </div>
+            </div>
+            <div class="product-card">
+                <div class="product-image">
+                    <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <div class="product-info">
+                    <h3 class="product-title">Ceramic Mug</h3>
+                    <p class="product-price">$15.99</p>
+                    <button class="add-to-cart-btn" data-id="prod_005" data-name="Ceramic Mug" data-price="15.99">Add to Cart</button>
+                </div>
+            </div>
+            <div class="product-card">
+                <div class="product-image">
+                    <i data-lucide="shopping-bag" class="w-16 h-16 text-purple-400"></i>
+                </div>
+                <div class="product-info">
+                    <h3 class="product-title">Varsity Jacket</h3>
+                    <p class="product-price">$89.99</p>
+                    <button class="add-to-cart-btn" data-id="prod_006" data-name="Varsity Jacket" data-price="89.99">Add to Cart</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="page_cart" class="page">
+    <div class="min-h-screen pt-24 container mx-auto px-4">
+        <h1 class="text-3xl font-bold mb-8 gradient-text">Shopping Cart (<span id="cart-total-count">0</span> items)</h1>
+        <div class="lg:grid lg:grid-cols-3 lg:gap-8">
+            <div class="lg:col-span-2">
+                <div id="cart-items-list" class="space-y-4">
+                    <!-- Cart items injected here by JavaScript -->
+                </div>
+                <div id="empty-cart-message-cart" class="text-center py-12">
+                    <i data-lucide="shopping-bag" class="w-20 h-20 text-gray-600 mx-auto mb-6"></i>
+                    <h2 class="text-2xl font-bold mb-4">Your Cart is Empty</h2>
+                    <button onclick="showPage('shop')" class="btn">Continue Shopping</button>
+                </div>
+            </div>
+            <div class="lg:col-span-1 mt-8 lg:mt-0">
+                <div id="cart-summary" class="bg-white/5 rounded-xl p-6 border border-white/10 h-fit hidden">
+                    <h3 class="text-xl font-bold mb-4 gradient-text">Order Summary</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Subtotal</span>
+                            <span id="cart-page-subtotal" class="font-semibold">$0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Shipping</span>
+                            <span class="text-green-400">Free</span>
+                        </div>
+                    </div>
+                    <div class="border-t border-white/10 my-4"></div>
+                    <div class="flex justify-between font-bold text-lg mb-6">
+                        <span>Total</span>
+                        <span id="cart-page-total" class="text-purple-400">$0.00</span>
+                    </div>
+                    <button onclick="openCheckoutModal()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold text-white hover:opacity-90 transition duration-300">
+                        Proceed to Checkout →
+                    </button>
+                    <button onclick="clearCart()" class="w-full mt-3 py-2 text-gray-400 hover:text-white transition text-sm">
+                        Clear Cart
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <footer class="bg-zinc-950 border-t border-white/10 py-12">
+        <div class="container mx-auto px-4 grid md:grid-cols-4 gap-8">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-sparkles text-purple-400"></i> Oak Lodge College Prep
+            </div>
+            <div>
+                <h4 class="font-bold mb-4">Links</h4>
+                <ul class="space-y-2 text-gray-400">
+                    <li>Programs</li>
+                    <li>Admissions</li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-bold mb-4">Contact</h4>
+                <ul class="space-y-2 text-gray-400">
+                    <li><i class="fas fa-envelope inline w-4"></i> info@oaklodge.edu</li>
+                    <li><i class="fas fa-phone inline w-4"></i> (555) 123-4567</li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-bold mb-4">Location</h4>
+                <p class="text-gray-400"><i class="fas fa-map-marker-alt inline w-4"></i> 123 Prep Lane, NY</p>
+            </div>
+        </div>
+    </footer>
+</footer>
+
+<button id="scrollToTop" class="fixed bottom-8 right-8 z-50 w-12 h-12 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:scale-110 transition-all duration-300 flex items-center justify-center opacity-0 invisible">
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<script>
+    function showPage(pageId) {
+        console.log('🔄 showPage called with:', pageId);
+        
+        document.querySelectorAll('.page').forEach(page => {
+            page.classList.remove('active');
+            page.style.display = 'none';
+        });
+        
+        const targetPage = document.getElementById('page_' + pageId);
+        if (targetPage) {
+            targetPage.classList.add('active');
+            targetPage.style.display = 'block';
+            console.log('✅ Showing page:', pageId);
+        } else {
+            console.log('❌ Page not found:', 'page_' + pageId);
+            const homePage = document.getElementById('page_home');
+            if (homePage) {
+                homePage.classList.add('active');
+                homePage.style.display = 'block';
+            }
+        }
+        
+        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('data-page') === pageId) {
+                link.classList.add('active');
+            }
+        });
+        
+        if (pageId !== 'home') {
+            window.history.pushState({}, '', '/' + pageId);
+        } else {
+            window.history.pushState({}, '', '/');
+        }
+        window.scrollTo(0, 0);
+    }
+
+    function toggleMenu() {
+        const menu = document.getElementById('mobileMenu');
+        const overlay = document.getElementById('mobileOverlay');
+        const hamburger = document.querySelector('.hamburger');
+        
+        if (menu) menu.classList.toggle('active');
+        if (overlay) overlay.classList.toggle('active');
+        if (hamburger) hamburger.classList.toggle('active');
+    }
+
+    function handleBrandClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showPage('home');
+        if (window.innerWidth <= 768) toggleMenu();
+    }
+
+    function handleNavClick(e) {
+        e.preventDefault();
+        const pageId = this.getAttribute('data-page');
+        if (pageId) {
+            showPage(pageId);
+            if (window.innerWidth <= 768) toggleMenu();
+        }
+    }
+
+    function init() {
+        console.log('🎯 Initializing navigation...');
+        
+        let currentPath = window.location.pathname.slice(1);
+        if (!currentPath || currentPath === '') {
+            currentPath = 'home';
+        }
+        console.log('📍 Current path:', currentPath);
+        
+        document.querySelectorAll('.page').forEach(page => {
+            page.classList.remove('active');
+            page.style.display = 'none';
+        });
+        
+        const targetPageId = currentPath === 'home' ? 'page_home' : 'page_' + currentPath;
+        const targetPage = document.getElementById(targetPageId);
+        
+        if (targetPage) {
+            targetPage.classList.add('active');
+            targetPage.style.display = 'block';
+            console.log('✅ Activated page:', targetPageId);
+        } else {
+            const homePage = document.getElementById('page_home');
+            if (homePage) {
+                homePage.classList.add('active');
+                homePage.style.display = 'block';
+                console.log('✅ Fallback: Activated home page');
+            }
+        }
+        
+        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('data-page') === currentPath) {
+                link.classList.add('active');
+            }
+        });
+        
+        const brandLink = document.querySelector('.brand');
+        if (brandLink) {
+            brandLink.addEventListener('click', handleBrandClick);
+            console.log('✅ Brand click handler attached');
+        }
+        
+        const hamburger = document.querySelector('.hamburger');
+        const overlay = document.getElementById('mobileOverlay');
+        if (hamburger) hamburger.addEventListener('click', toggleMenu);
+        if (overlay) overlay.addEventListener('click', toggleMenu);
+        
+        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {
+            link.removeEventListener('click', handleNavClick);
+            link.addEventListener('click', handleNavClick);
+        });
+        
+        console.log('✅ Navigation initialized successfully');
+    }
+
+    window.addEventListener('popstate', () => {
+        const path = window.location.pathname.slice(1) || 'home';
+        showPage(path);
+    });
+
+    // ========== FAQ ACCORDION FUNCTIONS ==========
+    function initFaqAccordion() {
+        const faqButtons = document.querySelectorAll('.faq-btn');
+        faqButtons.forEach(button => {
+            button.removeEventListener('click', handleFaqClick);
+            button.addEventListener('click', handleFaqClick);
+        });
+    }
+    
+    function handleFaqClick(event) {
+        const button = event.currentTarget;
+        const answer = button.nextElementSibling;
+        const icon = button.querySelector('i');
+        if (answer && answer.classList.contains('hidden')) {
+            answer.classList.remove('hidden');
+            if (icon) {
+                icon.classList.remove('fa-plus');
+                icon.classList.add('fa-minus');
+            }
+        } else if (answer) {
+            answer.classList.add('hidden');
+            if (icon) {
+                icon.classList.remove('fa-minus');
+                icon.classList.add('fa-plus');
+            }
+        }
+    }
+
+    // ========== SCROLL TO TOP BUTTON ==========
+    function initScrollToTop() {
+        const scrollBtn = document.getElementById('scrollToTop');
+        if (!scrollBtn) return;
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 500) {
+                scrollBtn.classList.remove('opacity-0', 'invisible');
+                scrollBtn.classList.add('opacity-100', 'visible');
+            } else {
+                scrollBtn.classList.add('opacity-0', 'invisible');
+                scrollBtn.classList.remove('opacity-100', 'visible');
+            }
+        });
+        scrollBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+    
+    // ========== CART SYSTEM PLACEHOLDERS (Backend will inject actual logic) ==========
+    function addToCart(product) {
+        console.log('🛒 Add to cart:', product);
+        alert(`"${product.name}" added to cart! (Backend integration needed)`);
+    }
+
+    function openCheckoutModal() {
+        console.log('💳 Opening checkout modal...');
+        alert('Checkout modal functionality needs backend integration.');
+    }
+
+    function clearCart() {
+        console.log('🧹 Clearing cart...');
+        alert('Cart cleared! (Backend integration needed)');
+        // Simulate UI update
+        document.getElementById('cart-total-count').textContent = '0';
+        document.getElementById('cart-page-subtotal').textContent = '$0.00';
+        document.getElementById('cart-page-total').textContent = '$0.00';
+        document.getElementById('cart-items-list').innerHTML = '';
+        document.getElementById('cart-summary').classList.add('hidden');
+        document.getElementById('empty-cart-message-cart').classList.remove('hidden');
+    }
+
+    function updateCartPage() {
+        console.log('🔄 Updating cart page UI...');
+        // This function would normally fetch cart data and update the UI.
+        // For this preview, we simulate the empty state.
+        const cartItems = []; // Simulate empty cart
+        const cartTotalCount = 0;
+        const cartSubtotal = 0.00;
+        const cartTotal = 0.00;
+
+        document.getElementById('cart-total-count').textContent = cartTotalCount;
+        document.getElementById('cart-page-subtotal').textContent = `$${cartSubtotal.toFixed(2)}`;
+        document.getElementById('cart-page-total').textContent = `$${cartTotal.toFixed(2)}`;
+
+        const cartItemsList = document.getElementById('cart-items-list');
+        const emptyCartMessage = document.getElementById('empty-cart-message-cart');
+        const cartSummary = document.getElementById('cart-summary');
+
+        if (cartItems.length > 0) {
+            cartItemsList.innerHTML = ''; // Clear previous items
+            // In a real app, loop through cartItems and render them here
+            cartItemsList.innerHTML = '<p class="text-gray-400">Cart items will be displayed here.</p>'; // Placeholder
+            cartSummary.classList.remove('hidden');
+            emptyCartMessage.classList.add('hidden');
+        } else {
+            cartItemsList.innerHTML = ''; // Ensure it's empty
+            cartSummary.classList.add('hidden');
+            emptyCartMessage.classList.remove('hidden');
+        }
+    }
+
+    // ========== INITIALIZATION ==========
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+        
+        const hamburger = document.querySelector('.hamburger');
+        const overlay = document.getElementById('mobileOverlay');
+        if (hamburger) hamburger.addEventListener('click', toggleMenu);
+        if (overlay) overlay.addEventListener('click', toggleMenu);
+        
+        document.querySelectorAll('.nav-link, .mobile-nav-link').forEach(link => {
+            link.addEventListener('click', handleNavClick);
+        });
+        
+        const brandLink = document.querySelector('.brand');
+        if (brandLink) {
+            brandLink.addEventListener('click', handleBrandClick);
+        }
+        
+        init(); // Initialize navigation and page display
+        initFaqAccordion(); // Initialize FAQ accordions
+        initScrollToTop(); // Initialize scroll to top button
+        updateCartPage(); // Initialize cart UI (shows empty state)
+    });
+</script>
+
+
+<script>
+const BACKEND_URL = "http://localhost:8000";
+
+// Get connection string directly from localStorage
+function getDbConnection() {
+    let conn = localStorage.getItem("neon_db_connection");
+    if (!conn) {
+        conn = sessionStorage.getItem("neon_db_connection");
+    }
+    return conn;
+}
+
+async function handleSignup(event) {
+    event.preventDefault();
+    const form = event.target;
+    const name = form.querySelector('[name="name"], [name="fullName"]')?.value || '';
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    console.log("🔑 DB Connection found:", dbConnection ? "Yes ✅" : "No ❌");
+    
+    if (!dbConnection) {
+        alert('❌ Database not connected. Please add your Neon DB connection string first.\n\nOpen console and run:\nlocalStorage.setItem("neon_db_connection", "your-connection-string")');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        alert('❌ Passwords do not match');
+        return;
+    }
+    if (password.length < 6) {
+        alert('❌ Password must be at least 6 characters');
+        return;
+    }
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Sign Up';
+    if (submitBtn) submitBtn.innerText = 'Creating account...';
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                name, 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            })
+        });
+        const data = await response.json();
+        console.log("📡 Signup response:", data);
+        
+        if (data.success) {
+            alert('✅ Account created successfully! You can now log in.');
+            form.reset();
+            setTimeout(() => {
+                const loginLink = document.querySelector('a[href="/login"]');
+                if (loginLink && typeof showPage === 'function') {
+                    showPage('login');
+                }
+            }, 1500);
+        } else if (data.requires_db) {
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        } else {
+            alert('❌ ' + (data.error || 'Signup failed'));
+        }
+    } catch (error) {
+        console.error('Signup error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    } finally {
+        if (submitBtn) submitBtn.innerText = originalText;
+    }
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const form = event.target;
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    if (!dbConnection) {
+        alert('❌ Database not connected. Please add your Neon DB connection string first.');
+        return;
+    }
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Login';
+    if (submitBtn) submitBtn.innerText = 'Logging in...';
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            alert('✅ Login successful! Welcome ' + (data.user.name || data.user.email));
+            setTimeout(() => {
+                if (typeof showPage === 'function') showPage('home');
+            }, 1000);
+        } else if (data.requires_db) {
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        } else {
+            alert('❌ ' + (data.error || 'Login failed'));
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    } finally {
+        if (submitBtn) submitBtn.innerText = originalText;
+    }
+}
+
+// Listen for database connection from parent window (for iframe preview)
+window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'SET_DB_CONNECTION') {
+        localStorage.setItem('neon_db_connection', event.data.db_connection);
+        console.log('✅ DB Connection received from parent');
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Request connection string from parent if not present
+    if (!getDbConnection() && window.parent !== window) {
+        window.parent.postMessage({ type: 'GET_DB_CONNECTION' }, '*');
+    }
+    
+    document.querySelectorAll('form').forEach(form => {
+        const hasPassword = form.querySelector('[type="password"]');
+        const hasEmail = form.querySelector('[type="email"]');
+        const submitText = form.querySelector('[type="submit"]')?.innerText?.toLowerCase() || '';
+        const formId = form.id?.toLowerCase() || '';
+        
+        const isSignupForm = formId.includes('signup') || submitText.includes('sign') || submitText.includes('up') || (form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        const isLoginForm = formId.includes('login') || submitText.includes('log') || submitText.includes('in') || (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        
+        if ((isSignupForm || isLoginForm) && !form.onsubmit) {
+            if (isSignupForm) form.onsubmit = handleSignup;
+            else if (isLoginForm) form.onsubmit = handleLogin;
+        }
+    });
+});
+</script>
+
+
+    <!-- Reservation Success Modal -->
+    <div id="reservationModal" class="reservation-modal">
+        <div class="reservation-modal-content">
+            <div class="reservation-success-icon">
+                <i class="fas fa-check"></i>
+            </div>
+            <h3>Table Reserved! 🎉</h3>
+            <p>Your table has been successfully booked for <strong><span id="reservationDate"></span></strong> at <strong><span id="reservationTime"></span></strong> for <strong><span id="reservationGuests"></span></strong> guest(s).</p>
+            <p class="text-gray-400 text-sm mt-2">A confirmation has been sent to your email.</p>
+            <button class="modal-close-btn" onclick="closeReservationModal()" style="margin-top: 1rem; background: linear-gradient(135deg, #8b5cf6, #ec4899); color: white; border: none; padding: 0.75rem 2rem; border-radius: 9999px; font-weight: 600; cursor: pointer;">Wonderful!</button>
+        </div>
+    </div>
+    
+    <!-- Quick Reservation Button (Floating) -->
+    <button id="quickReserveBtn" class="fixed bottom-8 right-8 z-50 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-6 py-3 rounded-full shadow-lg shadow-amber-500/30 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+        <i class="fas fa-calendar-check"></i>
+        Book a Table
+    </button>
+    
+
+    <script>
+    // Restaurant Reservation Functions
+    function openReservationModal() {
+        const modal = document.getElementById('reservationModal');
+        if (modal) modal.classList.add('active');
+    }
+    
+    function closeReservationModal() {
+        const modal = document.getElementById('reservationModal');
+        if (modal) modal.classList.remove('active');
+    }
+    
+    function showReservationSuccess(date, time, guests, name, email) {
+        const modal = document.getElementById('reservationModal');
+        const dateSpan = document.getElementById('reservationDate');
+        const timeSpan = document.getElementById('reservationTime');
+        const guestsSpan = document.getElementById('reservationGuests');
+        
+        if (dateSpan) dateSpan.textContent = date;
+        if (timeSpan) timeSpan.textContent = time;
+        if (guestsSpan) guestsSpan.textContent = guests;
+        
+        if (modal) modal.classList.add('active');
+        
+        // Save to localStorage
+        const reservation = {
+            id: Date.now(),
+            name: name,
+            email: email,
+            guests: guests,
+            date: date,
+            time: time,
+            createdAt: new Date().toISOString()
+        };
+        
+        let reservations = JSON.parse(localStorage.getItem('restaurant_reservations') || '[]');
+        reservations.push(reservation);
+        localStorage.setItem('restaurant_reservations', JSON.stringify(reservations));
+        
+        console.log('✅ Reservation saved:', reservation);
+    }
+    
+    // Handle booking form submission
+    function handleRestaurantBooking(event) {
+        event.preventDefault();
+        
+        const name = document.getElementById('reservationName')?.value;
+        const email = document.getElementById('reservationEmail')?.value;
+        const guests = document.getElementById('reservationGuestsSelect')?.value;
+        const date = document.getElementById('reservationDateSelect')?.value;
+        const time = document.getElementById('reservationTimeSelect')?.value;
+        
+        if (!name || !email || !guests || !date || !time) {
+            alert('Please fill in all required fields.');
+            return;
+        }
+        
+        if (!email.includes('@')) {
+            alert('Please enter a valid email address.');
+            return;
+        }
+        
+        const today = new Date().toISOString().split('T')[0];
+        if (date < today) {
+            alert('Please select a future date.');
+            return;
+        }
+        
+        // Format date for display
+        const formattedDate = new Date(date).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        
+        showReservationSuccess(formattedDate, time, guests, name, email);
+        
+        // Reset form
+        const form = document.getElementById('restaurantBookingForm');
+        if (form) form.reset();
+    }
+    
+    // Quick reserve button
+    document.addEventListener('DOMContentLoaded', function() {
+        const quickBtn = document.getElementById('quickReserveBtn');
+        if (quickBtn) {
+            quickBtn.addEventListener('click', function() {
+                const reservationsSection = document.getElementById('page_reservations');
+                if (reservationsSection) {
+                    reservationsSection.scrollIntoView({ behavior: 'smooth' });
+                    // Also try to show the page
+                    if (typeof showPage === 'function') {
+                        showPage('reservations');
+                    }
+                }
+            });
+        }
+        
+        // Set minimum date for date pickers
+        const today = new Date().toISOString().split('T')[0];
+        document.querySelectorAll('input[type="date"]').forEach(input => {
+            if (!input.value) {
+                input.min = today;
+            }
+        });
+        
+        // Initialize booking form
+        const bookingForm = document.getElementById('restaurantBookingForm');
+        if (bookingForm && !bookingForm.onsubmit) {
+            bookingForm.onsubmit = handleRestaurantBooking;
+        }
+    });
+    
+    // Close modal on escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('reservationModal');
+            if (modal && modal.classList.contains('active')) {
+                closeReservationModal();
+            }
+        }
+    });
+    
+    // Close modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('reservationModal');
+        if (event.target === modal) {
+            closeReservationModal();
+        }
+    });
+    </script>
+    
+</body>
+</html>

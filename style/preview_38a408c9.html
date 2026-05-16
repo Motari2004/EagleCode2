@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanctuary Stream Campus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #0f0f12 0%, #1a1a2e 100%);
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        header {
+            background: rgba(10, 10, 12, 0.75);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            height: 72px;
+        }
+        .nav-container { max-width: 1280px; margin: 0 auto; height: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 1.5rem; }
+        .brand { font-size: 1.5rem; font-weight: 800; text-decoration: none; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: white; }
+        .nav-links { display: flex; gap: 1rem; align-items: center; }
+        .nav-link { color: #94a3b8; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; }
+        .nav-link:hover { color: #ffffff; background: rgba(255, 255, 255, 0.05); }
+        .nav-link.active { color: #ffffff; background: rgba(139, 92, 246, 0.15); }
+        .page { display: none; min-height: calc(100vh - 72px); padding-top: 72px; }
+        .page.active { display: block; }
+        #page_home { padding-top: 0 !important; }
+        .gradient-text { background: linear-gradient(135deg, #c084fc, #f472b6); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .faq-answer { transition: all 0.3s ease; }
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ========== FEATURES - CLEAN CYBERPUNK (SCOPED TO #page_home) ========== */
+#page_home section.py-20.px-4.bg-gradient-to-br.from-purple-950\/20 {
+    background: #09090b;
+    position: relative;
+}
+
+/* Remove the grid overlay completely */
+#page_home section.py-20.px-4.bg-gradient-to-br.from-purple-950\/20::before {
+    display: none;
+}
+
+/* Feature cards - clean cyberpunk (ONLY in #page_home) */
+#page_home .grid.md\:grid-cols-4 > div {
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid #c084fc;
+    box-shadow: 0 0 10px rgba(192, 132, 252, 0.2);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+#page_home .grid.md\:grid-cols-4 > div:hover {
+    box-shadow: 0 0 20px rgba(192, 132, 252, 0.4);
+    transform: translateY(-5px);
+    border-color: #f472b6;
+}
+
+/* Feature icons */
+#page_home .grid.md\:grid-cols-4 > div i {
+    color: #c084fc;
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+#page_home .grid.md\:grid-cols-4 > div:hover i {
+    color: #f472b6;
+    transform: scale(1.1);
+}
+
+/* Feature titles */
+#page_home .grid.md\:grid-cols-4 > div h3 {
+    color: #ffffff;
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+/* Feature descriptions */
+#page_home .grid.md\:grid-cols-4 > div p {
+    color: #9ca3af;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* ========== FAQ - CLEAN CYBERPUNK (SCOPED TO #page_home) ========== */
+#page_home .space-y-4 > div {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #c084fc;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+#page_home .space-y-4 > div:hover {
+    border-color: #f472b6;
+    box-shadow: 0 0 15px rgba(192, 132, 252, 0.3);
+    transform: translateY(-2px);
+}
+
+/* FAQ buttons */
+#page_home .faq-btn {
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 1.25rem 1.5rem;
+    color: #ffffff;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+#page_home .faq-btn:hover {
+    color: #c084fc;
+}
+
+/* FAQ icons */
+#page_home .faq-btn i {
+    color: #c084fc;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+#page_home .faq-btn:hover i {
+    color: #f472b6;
+    transform: scale(1.1);
+}
+
+/* Rotate icon when open */
+#page_home .faq-btn i.fa-minus {
+    transform: rotate(180deg);
+    color: #f472b6;
+}
+
+/* FAQ answers */
+#page_home .faq-answer {
+    color: #9ca3af;
+    line-height: 1.6;
+    font-size: 0.875rem;
+    padding: 0 1.5rem 1.25rem 1.5rem;
+    border-top: 1px solid rgba(192, 132, 252, 0.2);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+    #page_home .grid.md\:grid-cols-4 {
+        gap: 1rem;
+    }
+    
+    #page_home .grid.md\:grid-cols-4 > div,
+    #page_home .space-y-4 > div {
+        border-radius: 10px;
+    }
+    
+    #page_home .faq-btn {
+        padding: 1rem 1.25rem;
+        font-size: 0.875rem;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    /* Push hero content below fixed header */
+    .relative.z-10 {
+        padding-top: 100px;
+    }
+    
+    @media (max-width: 768px) {
+        .relative.z-10 {
+            padding-top: 72px;
+        }
+    }
+    
+    /* Trust Badges Styles */
+    .trust-badges-container {
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+    }
+    
+    .trust-badges-flex {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badges-flex {
+            gap: 1.5rem;
+        }
+    }
+    
+    @media (min-width: 768px) {
+        .trust-badges-flex {
+            gap: 2rem;
+        }
+    }
+    
+    .trust-badge-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-item {
+            gap: 0.75rem;
+        }
+    }
+    
+    .trust-badge-icon {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-icon {
+            width: 2.5rem;
+            height: 2.5rem;
+        }
+    }
+    
+    .trust-badge-value {
+        font-weight: bold;
+        font-size: 1rem;
+        line-height: 1;
+        color: white;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-value {
+            font-size: 1.125rem;
+        }
+    }
+    
+    .trust-badge-label {
+        color: #9ca3af;
+        font-size: 0.625rem;
+    }
+    
+    @media (min-width: 640px) {
+        .trust-badge-label {
+            font-size: 0.75rem;
+        }
+    }
+    
+    .trust-badge-separator {
+        display: none;
+        width: 1px;
+        height: 1.5rem;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    @media (min-width: 768px) {
+        .trust-badge-separator {
+            display: block;
+            height: 2rem;
+        }
+    }
+    
+</style>
+</head>
+<body>
+
+<header>
+    <nav class="nav-container">
+        <a href="#" class="brand" onclick="handleBrandClick(event)">Sanctuary Stream Campus</a>
+        <div class="nav-links">
+            <a href="#" class="nav-link" data-page="features">Features</a>
+            <a href="#" class="nav-link" data-page="pricing">Pricing</a>
+            <a href="#" class="nav-link" data-page="about">About</a>
+            <a href="#" class="nav-link" data-page="contact">Contact</a>
+        </div>
+    </nav>
+</header>
+
+<div id="page_home" class="page active">
+    <section class="relative h-screen flex items-center justify-center overflow-hidden">
+        <img src="https://res.cloudinary.com/djrxuieyu/image/upload/v1778475724/preview_images/preview_74ff7fc5e0b34dad.jpg" alt="Hero" class="absolute inset-0 w-full h-full object-cover" onerror="this.style.display='none'; this.parentElement.classList.add('bg-gradient-to-br', 'from-purple-950', 'to-pink-950');" />
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="relative z-10 text-center px-4 max-w-4xl mx-auto">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 backdrop-blur-sm border border-amber-500/30 mb-6">
+                <i class="fas fa-sparkles w-4 h-4 text-amber-400"></i>
+                <span class="text-amber-400 text-sm font-medium uppercase tracking-wider">Next-Gen SaaS</span>
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold text-white mb-4 drop-shadow-2xl">Sanctuary Stream Campus</h1>
+            <p class="text-xl md:text-2xl text-amber-400 font-semibold mb-3">Scale your operations with intelligent automation.</p>
+            <p class="text-base md:text-lg text-gray-300 mb-8 max-w-2xl mx-auto">Empowering modern teams with robust tools for growth and efficiency. Built for the future of work.</p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-10">
+                <a href="#" onclick="showPage('features')" class="px-8 py-3 bg-purple-600 rounded-full font-bold text-white hover:bg-purple-700 transition">Get Started</a>
+                <a href="#" onclick="showPage('pricing')" class="px-8 py-3 bg-white/10 rounded-full font-bold text-white hover:bg-white/20 transition">View Plans</a>
+            </div>
+
+            <!-- Trust Badges -->
+            <div class="trust-badges-container">
+                <div class="container mx-auto px-4">
+                    <div class="trust-badges-flex">
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-star text-yellow-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">4.9/5</div>
+                                <div class="trust-badge-label">Rating</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-users text-cyan-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">10k+</div>
+                                <div class="trust-badge-label">Diners</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-shield-alt text-green-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">Fresh</div>
+                                <div class="trust-badge-label">Ingredients</div>
+                            </div>
+                        </div>
+                        <div class="trust-badge-separator"></div>
+                        <div class="trust-badge-item">
+                            <div class="trust-badge-icon">
+                                <i class="fas fa-utensils text-blue-400"></i>
+                            </div>
+                            <div>
+                                <div class="trust-badge-value">Award</div>
+                                <div class="trust-badge-label">Winning</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    
+        </div>
+    </section>
+
+    <section class="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
+        <div class="container mx-auto">
+            <div class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold gradient-text">Features</h2></div>
+            <div class="grid md:grid-cols-4 gap-6">
+                <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+                    <i data-lucide="cpu" class="w-10 h-10 mb-4 text-purple-400"></i>
+                    <h3 class="text-xl font-bold mb-2">AI-Powered Analytics</h3>
+                    <p class="text-gray-400 text-sm">Real-time insights with predictive modeling.</p>
+                </div>
+                <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+                    <i data-lucide="shield" class="w-10 h-10 mb-4 text-purple-400"></i>
+                    <h3 class="text-xl font-bold mb-2">Enterprise Security</h3>
+                    <p class="text-gray-400 text-sm">Bank-grade encryption for your data.</p>
+                </div>
+                <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+                    <i data-lucide="users" class="w-10 h-10 mb-4 text-purple-400"></i>
+                    <h3 class="text-xl font-bold mb-2">Team Collaboration</h3>
+                    <p class="text-gray-400 text-sm">Seamless workflows for distributed teams.</p>
+                </div>
+                <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+                    <i data-lucide="sparkles" class="w-10 h-10 mb-4 text-purple-400"></i>
+                    <h3 class="text-xl font-bold mb-2">Automated Scaling</h3>
+                    <p class="text-gray-400 text-sm">Infrastructure that grows with your needs.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-20 px-4">
+        <div class="container mx-auto max-w-3xl">
+            <div class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold gradient-text">Frequently Asked Questions</h2></div>
+            <div class="space-y-4">
+                <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors"><span class="font-semibold text-white">How do I get started?</span><i class="fas fa-plus text-purple-400"></i></button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">Simply sign up for a free trial and follow our onboarding wizard.</div>
+                </div>
+                <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors"><span class="font-semibold text-white">Is my data secure?</span><i class="fas fa-plus text-purple-400"></i></button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">We use AES-256 encryption and SOC2 compliant infrastructure.</div>
+                </div>
+                <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors"><span class="font-semibold text-white">Can I cancel anytime?</span><i class="fas fa-plus text-purple-400"></i></button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">Yes, our plans are month-to-month with no long-term contracts.</div>
+                </div>
+                <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+                    <button class="faq-btn w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors"><span class="font-semibold text-white">Do you offer support?</span><i class="fas fa-plus text-purple-400"></i></button>
+                    <div class="faq-answer hidden px-6 pb-4 text-gray-400">We provide 24/7 priority support for all enterprise customers.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<div id="page_features" class="page"><div class="container mx-auto px-4 py-20"><h1 class="text-4xl font-bold mb-8">Our Features</h1><p class="text-gray-400">Explore the powerful tools we offer to help your team succeed.</p></div></div>
+<div id="page_pricing" class="page"><div class="container mx-auto px-4 py-20"><h1 class="text-4xl font-bold mb-8">Pricing Plans</h1><p class="text-gray-400">Choose the plan that fits your business needs.</p></div></div>
+<div id="page_about" class="page"><div class="container mx-auto px-4 py-20"><h1 class="text-4xl font-bold mb-8">About Us</h1><p class="text-gray-400">Learn more about our mission and the team behind Sanctuary Stream Campus.</p></div></div>
+<div id="page_contact" class="page"><div class="container mx-auto px-4 py-20"><h1 class="text-4xl font-bold mb-8">Contact Us</h1><p class="text-gray-400">Get in touch with our team for any inquiries.</p></div></div>
+
+<footer class="bg-black py-12 border-t border-white/10">
+    <div class="container mx-auto px-4 grid md:grid-cols-4 gap-8">
+        <div class="space-y-4"><div class="flex items-center gap-2"><i class="fas fa-sparkles text-purple-400"></i> <span class="font-bold">Sanctuary Stream Campus</span></div><p class="text-sm text-gray-400">Premium SaaS solutions for modern teams.</p></div>
+        <div><h4 class="font-bold mb-4">Links</h4><ul class="space-y-2 text-sm text-gray-400"><li><a href="#" onclick="showPage('features')">Features</a></li><li><a href="#" onclick="showPage('pricing')">Pricing</a></li></ul></div>
+        <div><h4 class="font-bold mb-4">Contact</h4><ul class="space-y-2 text-sm text-gray-400"><li class="flex items-center gap-2"><i class="fas fa-envelope"></i> support@sanctuary.com</li><li class="flex items-center gap-2"><i class="fas fa-phone"></i> +1 555 123 4567</li></ul></div>
+        <div><h4 class="font-bold mb-4">Social</h4><div class="flex gap-4"><i class="fab fa-facebook-f"></i><i class="fab fa-twitter"></i><i class="fab fa-instagram"></i></div></div>
+    </div>
+</footer>
+
+<script>
+    function showPage(pageId) {
+        document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
+        const target = document.getElementById('page_' + pageId);
+        if (target) { target.classList.add('active'); target.style.display = 'block'; }
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        const activeLink = document.querySelector(`[data-page="${pageId}"]`);
+        if (activeLink) activeLink.classList.add('active');
+    }
+    function handleBrandClick(e) { e.preventDefault(); showPage('home'); }
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', (e) => { e.preventDefault(); showPage(link.getAttribute('data-page')); });
+    });
+    document.querySelectorAll('.faq-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const answer = btn.nextElementSibling;
+            answer.classList.toggle('hidden');
+            const icon = btn.querySelector('i');
+            icon.classList.toggle('fa-plus');
+            icon.classList.toggle('fa-minus');
+        });
+    });
+    lucide.createIcons();
+</script>
+
+
+<script>
+const BACKEND_URL = "http://localhost:8000";
+
+// Get connection string directly from localStorage
+function getDbConnection() {
+    let conn = localStorage.getItem("neon_db_connection");
+    if (!conn) {
+        conn = sessionStorage.getItem("neon_db_connection");
+    }
+    return conn;
+}
+
+async function handleSignup(event) {
+    event.preventDefault();
+    const form = event.target;
+    const name = form.querySelector('[name="name"], [name="fullName"]')?.value || '';
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    const confirmPassword = form.querySelector('[name="confirmPassword"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    console.log("🔑 DB Connection found:", dbConnection ? "Yes ✅" : "No ❌");
+    
+    if (!dbConnection) {
+        alert('❌ Database not connected. Please add your Neon DB connection string first.\n\nOpen console and run:\nlocalStorage.setItem("neon_db_connection", "your-connection-string")');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        alert('❌ Passwords do not match');
+        return;
+    }
+    if (password.length < 6) {
+        alert('❌ Password must be at least 6 characters');
+        return;
+    }
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Sign Up';
+    if (submitBtn) submitBtn.innerText = 'Creating account...';
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/auth/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                name, 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            })
+        });
+        const data = await response.json();
+        console.log("📡 Signup response:", data);
+        
+        if (data.success) {
+            alert('✅ Account created successfully! You can now log in.');
+            form.reset();
+            setTimeout(() => {
+                const loginLink = document.querySelector('a[href="/login"]');
+                if (loginLink && typeof showPage === 'function') {
+                    showPage('login');
+                }
+            }, 1500);
+        } else if (data.requires_db) {
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        } else {
+            alert('❌ ' + (data.error || 'Signup failed'));
+        }
+    } catch (error) {
+        console.error('Signup error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    } finally {
+        if (submitBtn) submitBtn.innerText = originalText;
+    }
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const form = event.target;
+    const email = form.querySelector('[name="email"]')?.value;
+    const password = form.querySelector('[name="password"]')?.value;
+    
+    // Get connection string directly
+    const dbConnection = getDbConnection();
+    if (!dbConnection) {
+        alert('❌ Database not connected. Please add your Neon DB connection string first.');
+        return;
+    }
+    
+    const submitBtn = form.querySelector('[type="submit"]');
+    const originalText = submitBtn?.innerText || 'Login';
+    if (submitBtn) submitBtn.innerText = 'Logging in...';
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                email, 
+                password, 
+                db_connection_string: dbConnection 
+            })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            alert('✅ Login successful! Welcome ' + (data.user.name || data.user.email));
+            setTimeout(() => {
+                if (typeof showPage === 'function') showPage('home');
+            }, 1000);
+        } else if (data.requires_db) {
+            alert('❌ Database not configured. Please add your Neon DB connection string first.');
+        } else {
+            alert('❌ ' + (data.error || 'Login failed'));
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('❌ Network error. Make sure backend is running');
+    } finally {
+        if (submitBtn) submitBtn.innerText = originalText;
+    }
+}
+
+// Listen for database connection from parent window (for iframe preview)
+window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'SET_DB_CONNECTION') {
+        localStorage.setItem('neon_db_connection', event.data.db_connection);
+        console.log('✅ DB Connection received from parent');
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Request connection string from parent if not present
+    if (!getDbConnection() && window.parent !== window) {
+        window.parent.postMessage({ type: 'GET_DB_CONNECTION' }, '*');
+    }
+    
+    document.querySelectorAll('form').forEach(form => {
+        const hasPassword = form.querySelector('[type="password"]');
+        const hasEmail = form.querySelector('[type="email"]');
+        const submitText = form.querySelector('[type="submit"]')?.innerText?.toLowerCase() || '';
+        const formId = form.id?.toLowerCase() || '';
+        
+        const isSignupForm = formId.includes('signup') || submitText.includes('sign') || submitText.includes('up') || (form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        const isLoginForm = formId.includes('login') || submitText.includes('log') || submitText.includes('in') || (!form.querySelector('[name="name"]') && hasPassword && hasEmail);
+        
+        if ((isSignupForm || isLoginForm) && !form.onsubmit) {
+            if (isSignupForm) form.onsubmit = handleSignup;
+            else if (isLoginForm) form.onsubmit = handleLogin;
+        }
+    });
+});
+</script>
+
+</body>
+</html>
