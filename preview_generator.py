@@ -18,6 +18,115 @@ from styles import (
 
 
 
+
+
+
+
+
+
+
+def generate_navigation_html(brand_name: str, nav_links: list) -> str:
+    """
+    Generate navigation HTML based on nav_links.
+    NO hardcoded Shop/Cart - only what's in nav_links.
+    """
+    
+    # Generate desktop navigation links
+    desktop_links = ""
+    mobile_links = ""
+    
+    for href, label in nav_links:
+        page_id = href.replace('/', '').replace('-', '_')
+        
+        # Check if this is a cart link
+        is_cart = 'cart' in label.lower() or href == '/cart'
+        
+        if is_cart:
+            # Cart link with badge
+            desktop_links += f'''
+                        <a href="{href}" class="nav-link relative flex items-center gap-2 group" data-page="{page_id}">
+                            <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400 group-hover:text-purple-600 transition-all duration-300"></i>
+                            <span class="text-gray-300 group-hover:text-purple-400">{label}</span>
+                            <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
+                        </a>'''
+            
+            mobile_links += f'''
+                        <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
+                            <a href="{href}" class="mobile-nav-link flex items-center gap-3" data-page="{page_id}">
+                                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>
+                                <span class="text-gray-300">{label}</span>
+                            </a>
+                            <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+                        </div>'''
+        else:
+            # Regular link (no icon)
+            desktop_links += f'''
+                        <a href="{href}" class="nav-link group" data-page="{page_id}">
+                            <span class="text-gray-300 group-hover:text-purple-400 transition-colors duration-300">{label}</span>
+                        </a>'''
+            
+            mobile_links += f'''
+                        <a href="{href}" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{page_id}">
+                            <span class="text-gray-300">{label}</span>
+                        </a>'''
+    
+    # Return complete navigation HTML
+    return f'''
+<header>
+    <nav class="nav-container">
+        <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+            <i data-lucide="sparkles" class="w-8 h-8" style="color: #d8a219;"></i>
+            <span class="text-white text-xl font-bold">{brand_name}</span>
+        </a>
+        <div class="hidden md:flex space-x-2 items-center">
+            {desktop_links}
+        </div>
+        <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
+        </button>
+    </nav>
+    
+    <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+        {mobile_links}
+    </div>
+</header>
+
+<script>
+    // Mobile menu toggle
+    const mobileMenuBtn = document.getElementById('mobile-menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    if (mobileMenuBtn && mobileMenu) {{
+        mobileMenuBtn.addEventListener('click', () => {{
+            mobileMenu.classList.toggle('hidden');
+        }});
+    }}
+    
+    // Close mobile menu when clicking a link
+    document.querySelectorAll('.mobile-nav-link').forEach(link => {{
+        link.addEventListener('click', () => {{
+            mobileMenu.classList.add('hidden');
+        }});
+    }});
+</script>
+'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def preserve_faq_count(original_html: str, new_html: str) -> str:
     """Preserve the original FAQ count when regenerating preview"""
     import re
@@ -746,289 +855,14 @@ def preserve_dashboard_content(extracted: str, route_name: str) -> str:
 
 
 
-
-
-
-
-
-def inject_restaurant_features(html_content: str, brand_name: str, user_prompt: str = "") -> str:
+def inject_restaurant_features(html_content: str, brand_name: str, user_prompt: str = "", force_skip: bool = False) -> str:
     """Inject restaurant-specific features like booking modal, menu cards, etc."""
     
-    # ========== SKIP FOR DASHBOARD PROJECTS ==========
-    dashboard_keywords = ['dashboard', 'analytics', 'admin', 'metrics', 'statistics', 'insights', 'overview', 'reports', 'monitoring', 'kpi']
-    if any(keyword in user_prompt.lower() for keyword in dashboard_keywords):
-        print("📊 Dashboard detected - skipping restaurant features injection")
+    # Force skip if requested
+    if force_skip:
+        print("🚫 Force skip - restaurant features injection disabled")
         return html_content
     
-    # Detect if this is a restaurant website
-    restaurant_keywords = ['restaurant', 'cafe', 'dining', 'menu', 'culinary', 'chef', 'bistro', 'cuisine', 'fine dining']
-    is_restaurant = any(keyword in user_prompt.lower() for keyword in restaurant_keywords)
-    
-    # Also check HTML content for restaurant indicators
-    if not is_restaurant:
-        restaurant_html_indicators = ['menu', 'reservation', 'booking', 'table', 'dining', 'chef']
-        is_restaurant = any(indicator in html_content.lower() for indicator in restaurant_html_indicators)
-    
-    if not is_restaurant:
-        print("🍽️ Not a restaurant website - skipping restaurant features injection")
-        return html_content
-    
-
-    
-    print("🍽️ Restaurant detected - injecting restaurant features...")
-    
-    # ========== 1. INJECT RESERVATION MODAL CSS ==========
-    restaurant_css = '''
-    /* Restaurant Reservation Modal Styles */
-    .reservation-modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.85);
-        backdrop-filter: blur(12px);
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    .reservation-modal.active {
-        display: flex;
-    }
-    
-    .reservation-modal-content {
-        background: linear-gradient(135deg, #1a1a2e, #0f0f12);
-        border-radius: 28px;
-        padding: 2rem;
-        max-width: 500px;
-        width: 90%;
-        text-align: center;
-        border: 1px solid rgba(139, 92, 246, 0.3);
-        animation: modalSlideIn 0.3s ease-out;
-    }
-    
-    @keyframes modalSlideIn {
-        from {
-            transform: translateY(-50px);
-            opacity: 0;
-        }
-        to {
-            transform: translateY(0);
-            opacity: 1;
-        }
-    }
-    
-    .reservation-success-icon {
-        width: 80px;
-        height: 80px;
-        background: linear-gradient(135deg, #10b981, #059669);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 1.5rem;
-    }
-    
-    .reservation-success-icon i {
-        font-size: 40px;
-        color: white;
-    }
-    
-    .reservation-modal h3 {
-        font-size: 1.8rem;
-        margin-bottom: 1rem;
-        background: linear-gradient(135deg, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-    }
-    '''
-    
-    # Inject CSS into style tag
-    if '<style>' in html_content:
-        html_content = html_content.replace('</style>', restaurant_css + '\n</style>', 1)
-    else:
-        html_content = html_content.replace('<head>', f'<head><style>{restaurant_css}</style>', 1)
-    
-    # ========== 2. INJECT RESERVATION MODAL HTML ==========
-    reservation_modal = f'''
-    <!-- Reservation Success Modal -->
-    <div id="reservationModal" class="reservation-modal">
-        <div class="reservation-modal-content">
-            <div class="reservation-success-icon">
-                <i class="fas fa-check"></i>
-            </div>
-            <h3>Table Reserved! 🎉</h3>
-            <p>Your table has been successfully booked for <strong><span id="reservationDate"></span></strong> at <strong><span id="reservationTime"></span></strong> for <strong><span id="reservationGuests"></span></strong> guest(s).</p>
-            <p class="text-gray-400 text-sm mt-2">A confirmation has been sent to your email.</p>
-            <button class="modal-close-btn" onclick="closeReservationModal()" style="margin-top: 1rem; background: linear-gradient(135deg, #8b5cf6, #ec4899); color: white; border: none; padding: 0.75rem 2rem; border-radius: 9999px; font-weight: 600; cursor: pointer;">Wonderful!</button>
-        </div>
-    </div>
-    
-    <!-- Quick Reservation Button (Floating) -->
-    <button id="quickReserveBtn" class="fixed bottom-8 right-8 z-50 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-6 py-3 rounded-full shadow-lg shadow-amber-500/30 hover:scale-105 transition-all duration-300 flex items-center gap-2">
-        <i class="fas fa-calendar-check"></i>
-        Book a Table
-    </button>
-    '''
-    
-    # Inject modal before closing body
-    if '</body>' in html_content:
-        html_content = html_content.replace('</body>', reservation_modal + '\n</body>', 1)
-    
-    # ========== 3. INJECT RESTAURANT JAVASCRIPT ==========
-    restaurant_js = '''
-    <script>
-    // Restaurant Reservation Functions
-    function openReservationModal() {
-        const modal = document.getElementById('reservationModal');
-        if (modal) modal.classList.add('active');
-    }
-    
-    function closeReservationModal() {
-        const modal = document.getElementById('reservationModal');
-        if (modal) modal.classList.remove('active');
-    }
-    
-    function showReservationSuccess(date, time, guests, name, email) {
-        const modal = document.getElementById('reservationModal');
-        const dateSpan = document.getElementById('reservationDate');
-        const timeSpan = document.getElementById('reservationTime');
-        const guestsSpan = document.getElementById('reservationGuests');
-        
-        if (dateSpan) dateSpan.textContent = date;
-        if (timeSpan) timeSpan.textContent = time;
-        if (guestsSpan) guestsSpan.textContent = guests;
-        
-        if (modal) modal.classList.add('active');
-        
-        // Save to localStorage
-        const reservation = {
-            id: Date.now(),
-            name: name,
-            email: email,
-            guests: guests,
-            date: date,
-            time: time,
-            createdAt: new Date().toISOString()
-        };
-        
-        let reservations = JSON.parse(localStorage.getItem('restaurant_reservations') || '[]');
-        reservations.push(reservation);
-        localStorage.setItem('restaurant_reservations', JSON.stringify(reservations));
-        
-        console.log('✅ Reservation saved:', reservation);
-    }
-    
-    // Handle booking form submission
-    function handleRestaurantBooking(event) {
-        event.preventDefault();
-        
-        const name = document.getElementById('reservationName')?.value;
-        const email = document.getElementById('reservationEmail')?.value;
-        const guests = document.getElementById('reservationGuestsSelect')?.value;
-        const date = document.getElementById('reservationDateSelect')?.value;
-        const time = document.getElementById('reservationTimeSelect')?.value;
-        
-        if (!name || !email || !guests || !date || !time) {
-            alert('Please fill in all required fields.');
-            return;
-        }
-        
-        if (!email.includes('@')) {
-            alert('Please enter a valid email address.');
-            return;
-        }
-        
-        const today = new Date().toISOString().split('T')[0];
-        if (date < today) {
-            alert('Please select a future date.');
-            return;
-        }
-        
-        // Format date for display
-        const formattedDate = new Date(date).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-        
-        showReservationSuccess(formattedDate, time, guests, name, email);
-        
-        // Reset form
-        const form = document.getElementById('restaurantBookingForm');
-        if (form) form.reset();
-    }
-    
-    // Quick reserve button
-    document.addEventListener('DOMContentLoaded', function() {
-        const quickBtn = document.getElementById('quickReserveBtn');
-        if (quickBtn) {
-            quickBtn.addEventListener('click', function() {
-                const reservationsSection = document.getElementById('page_reservations');
-                if (reservationsSection) {
-                    reservationsSection.scrollIntoView({ behavior: 'smooth' });
-                    // Also try to show the page
-                    if (typeof showPage === 'function') {
-                        showPage('reservations');
-                    }
-                }
-            });
-        }
-        
-        // Set minimum date for date pickers
-        const today = new Date().toISOString().split('T')[0];
-        document.querySelectorAll('input[type="date"]').forEach(input => {
-            if (!input.value) {
-                input.min = today;
-            }
-        });
-        
-        // Initialize booking form
-        const bookingForm = document.getElementById('restaurantBookingForm');
-        if (bookingForm && !bookingForm.onsubmit) {
-            bookingForm.onsubmit = handleRestaurantBooking;
-        }
-    });
-    
-    // Close modal on escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            const modal = document.getElementById('reservationModal');
-            if (modal && modal.classList.contains('active')) {
-                closeReservationModal();
-            }
-        }
-    });
-    
-    // Close modal when clicking outside
-    window.addEventListener('click', function(event) {
-        const modal = document.getElementById('reservationModal');
-        if (event.target === modal) {
-            closeReservationModal();
-        }
-    });
-    </script>
-    '''
-    
-    # Inject JavaScript
-    if '</body>' in html_content:
-        html_content = html_content.replace('</body>', restaurant_js + '\n</body>', 1)
-    
-    print(f"🍽️ Injected restaurant features: modal, floating button, and JavaScript")
-    
-    return html_content
-
-
-
-
-
-
-
-
 
 
 
@@ -1850,13 +1684,11 @@ def fix_duplicate_functions(html: str) -> str:
 
 
 
-
-
-
-
 def replace_map_block(content: str, array_name: str, replacement: str) -> str:
     """Replace {arrayName.map(...)} block by counting braces - handles nested JSX"""
     import re
+    
+    # First, find the map block
     start_pattern = rf'\{{\s*{array_name}\.map\('
     match = re.search(start_pattern, content)
     if not match:
@@ -1874,6 +1706,56 @@ def replace_map_block(content: str, array_name: str, replacement: str) -> str:
             brace_count -= 1
             if brace_count == 0:
                 end = i + 1
+                
+                # Now look for the parent grid container that contains this map block
+                # Search backwards for the opening grid div
+                grid_start = -1
+                search_pos = start - 1
+                nested_count = 0
+                
+                while search_pos >= 0:
+                    # Look for grid container opening
+                    if content[search_pos:search_pos+5] == '<div ':
+                        # Check if this div has grid classes
+                        div_end = content.find('>', search_pos)
+                        if div_end != -1:
+                            div_content = content[search_pos:div_end]
+                            if 'grid' in div_content and 'md:grid-cols' in div_content:
+                                # Found a grid container
+                                if nested_count == 0:
+                                    grid_start = search_pos
+                                    break
+                                else:
+                                    nested_count -= 1
+                    # Check for closing div to handle nesting
+                    elif content[search_pos:search_pos+6] == '</div>':
+                        nested_count += 1
+                    search_pos -= 1
+                
+                # If we found a grid container, find its closing tag
+                if grid_start != -1:
+                    # Find the matching closing </div> for this grid
+                    div_count = 1
+                    search_pos = grid_start
+                    grid_end = -1
+                    
+                    while search_pos < len(content):
+                        if content[search_pos:search_pos+5] == '<div ' and search_pos != grid_start:
+                            div_count += 1
+                        elif content[search_pos:search_pos+6] == '</div>':
+                            div_count -= 1
+                            if div_count == 0:
+                                grid_end = search_pos + 6
+                                break
+                        search_pos += 1
+                    
+                    if grid_end != -1:
+                        # Replace the entire grid container
+                        content = content[:grid_start] + replacement + content[grid_end:]
+                        print(f"  ✅ Replaced entire grid container with {replacement.count('bg-white/5')} cards")
+                        return content
+                
+                # Fallback: just replace the map block
                 content = content[:start] + replacement + content[end:]
                 print(f"  ✅ Replaced {array_name}.map() block (pos {start}→{end})")
                 return content
@@ -2054,9 +1936,6 @@ def render_array_to_html(content: str) -> str:
 
 
 
-
-
-
     # ========== STEP 3: FEATURES ARRAY ==========
     features_html = None
     
@@ -2070,13 +1949,31 @@ def render_array_to_html(content: str) -> str:
 
     if features_match:
         features_content = features_match.group(1)
-        feature_pattern = r'\{\s*icon:\s*(\w+)\s*,\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']'
-        features = re.findall(feature_pattern, features_content)
+        
+        # Try pattern WITHOUT icon (title, desc) - most common
+        feature_pattern_no_icon = r'\{\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']'
+        features = re.findall(feature_pattern_no_icon, features_content)
+        
+        # If not found, try with icon (icon, title, desc)
+        if not features:
+            feature_pattern_with_icon = r'\{\s*icon:\s*(\w+)\s*,\s*title:\s*["\']([^"\']+)["\']\s*,\s*desc:\s*["\']([^"\']+)["\']'
+            features = re.findall(feature_pattern_with_icon, features_content)
+        
+        # If still not found, try with name/description (for projects, etc.)
+        if not features:
+            feature_pattern_name_desc = r'\{\s*name:\s*["\']([^"\']+)["\']\s*,\s*description:\s*["\']([^"\']+)["\']'
+            features = re.findall(feature_pattern_name_desc, features_content)
 
         if features:
             features_html = '<div class="grid md:grid-cols-4 gap-6">\n'
-            for icon_name, title, desc in features:
-                lucide_icon = ICON_MAP.get(icon_name, 'sparkles')
+            for match in features:
+                if len(match) == 2:  # title, desc format
+                    title, desc = match
+                    lucide_icon = 'sparkles'
+                else:  # icon, title, desc format
+                    icon_name, title, desc = match
+                    lucide_icon = ICON_MAP.get(icon_name, 'sparkles')
+                
                 features_html += f'''
     <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
         <i data-lucide="{lucide_icon}" class="w-10 h-10 mb-4 text-purple-400"></i>
@@ -2087,12 +1984,13 @@ def render_array_to_html(content: str) -> str:
             print(f"  ✅ Rendered {len(features)} features from source array")
         else:
             print(f"  ⚠️ Features array found but no items extracted")
+            # Debug: print first 200 chars of features content
+            print(f"  📄 Features content preview: {features_content[:200]}...")
     else:
         print(f"  ⚠️ No features array found in source")
 
     if features_html:
         content = replace_map_block(content, 'features', features_html)
-
 
 
 
@@ -2760,9 +2658,6 @@ async def generate_preview_internal(
 
 
 
-
-
-
         def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
             """Convert Next.js Navigation component to HTML with Lucide icons - with cart badge support"""
             
@@ -2817,10 +2712,17 @@ async def generate_preview_internal(
             if text_match:
                 brand_text_class = text_match.group(1)
             
-            # ========== BUILD NAVIGATION BUTTONS WITH CART BADGE SUPPORT ==========
+            # ========== CHECK IF CART EXISTS IN NAV_LINKS ==========
+            has_cart = any('cart' in label.lower() or href == '/cart' for href, label in nav_links)
+            
+            # ========== BUILD NAVIGATION BUTTONS ==========
             nav_buttons_html = ""
-            cart_link_html = ""  # Store cart link separately for badge
+            cart_link_html = ""
+            mobile_nav_html = ""
+            mobile_cart_html = ""
+            
             print(f"📋 Building navigation for {len(nav_links)} links: {nav_links}")
+            print(f"   Has cart: {has_cart}")
             
             # E-commerce keywords that should have icons
             ECOMMERCE_KEYWORDS = ["shop", "store", "catalog", "catalogue", "cart", "basket", "products", "checkout"]
@@ -2836,13 +2738,7 @@ async def generate_preview_internal(
                 
                 if is_cart:
                     # Special cart link WITH badge
-                    if "shop" in label_lower or "store" in label_lower:
-                        item_icon = "shopping-bag"
-                    elif "catalog" in label_lower or "catalogue" in label_lower:
-                        item_icon = "grid"
-                    else:
-                        item_icon = "shopping-cart"
-                    
+                    item_icon = "shopping-cart"
                     base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
                     hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
                     
@@ -2852,6 +2748,16 @@ async def generate_preview_internal(
                             <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
                             <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
                         </a>'''
+                    
+                    # Mobile cart link
+                    mobile_cart_html = f'''
+                        <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
+                            <a href="{href}" class="mobile-nav-link flex items-center gap-3" data-page="{href.replace('/', '')}">
+                                <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
+                                <span class="text-gray-300">{label}</span>
+                            </a>
+                            <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+                        </div>'''
                 elif is_ecommerce:
                     # Regular e-commerce link WITH icon (no badge)
                     if "shop" in label_lower or "store" in label_lower:
@@ -2873,41 +2779,31 @@ async def generate_preview_internal(
                             <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
                             <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
                         </a>'''
+                    
+                    # Mobile version
+                    mobile_nav_html += f'''
+                        <a href="{href}" class="mobile-nav-link flex items-center gap-3 w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{href.replace('/', '')}">
+                            <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
+                            <span class="text-gray-300">{label}</span>
+                        </a>'''
                 else:
                     # Build non-e-commerce link WITHOUT icon (text only)
                     nav_buttons_html += f'''
                         <a href="{href}" class="nav-link group" data-page="{href.replace('/', '')}">
                             <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
                         </a>'''
+                    
+                    # Mobile version
+                    mobile_nav_html += f'''
+                        <a href="{href}" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{href.replace('/', '')}">
+                            <span class="text-gray-300">{label}</span>
+                        </a>'''
             
-            # ========== GENERATE MOBILE NAV BUTTONS WITH CART BADGE ==========
-            mobile_nav_html = nav_buttons_html.replace('class="nav-link flex items-center gap-2 group"', 'class="mobile-nav-link flex items-center gap-3 group w-full px-4 py-2 rounded-lg hover:bg-white/10"')
-            mobile_nav_html = mobile_nav_html.replace('class="nav-link group"', 'class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10"')
+            # ========== GENERATE FINAL NAVIGATION HTML ==========
+            # Only include cart elements if cart exists
+            cart_desktop_html = cart_link_html if has_cart else ""
+            cart_mobile_html = mobile_cart_html if has_cart else ""
             
-            # Add mobile cart link with badge
-            mobile_cart_html = f'''
-                        <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
-                            <a href="/cart" class="mobile-nav-link flex items-center gap-3" data-page="cart">
-                                <i data-lucide="shopping-cart" class="w-4 h-4 {icon_color}"></i>
-                                <span class="text-gray-300">Cart</span>
-                            </a>
-                            <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
-                        </div>'''
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-# ========== GENERATE FINAL NAVIGATION HTML ==========
-# CRITICAL FIX: Brand link uses href="#" with onclick handler (prevents page refresh)
             return f'''
             <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
                 <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
@@ -2915,8 +2811,8 @@ async def generate_preview_internal(
                     <span class="text-white text-xl font-bold">{brand_name}</span>
                 </a>
                 <div class="hidden md:flex space-x-2 items-center">
-                    {nav_buttons_html}
-                    {cart_link_html}
+                    {navigation_html}
+                    {cart_desktop_html}
                 </div>
                 <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
                     <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
@@ -2924,8 +2820,8 @@ async def generate_preview_internal(
             </nav>
 
             <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
-                {mobile_nav_html}
-                {mobile_cart_html}
+                {navigation_html}
+                {cart_mobile_html}
             </div>
 
             <style>
@@ -2948,9 +2844,6 @@ async def generate_preview_internal(
                 lucide.createIcons();
             </script>
             '''
-                    
-                    
-                    
                     
                     
                     
@@ -3160,6 +3053,11 @@ async def generate_preview_internal(
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
         
+        
+        # Generate navigation HTML using the function
+        navigation_html = generate_navigation_html(brand_name, nav_links)
+        print(f"✅ Generated navigation HTML with {len(nav_links)} links")
+        
         # ========== CONVERT NAVIGATION TO HTML ==========
         navigation_html = convert_navigation_to_html(nav_content, brand_name, nav_links)
         navigation_html_for_prompt = navigation_html
@@ -3356,6 +3254,53 @@ async def generate_preview_internal(
 
         def render_arrays_from_source(extracted: str, content: str) -> str:
             """Render JavaScript arrays from source into HTML - handles filtered arrays and nested menu items"""
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            # ========== HANDLE PROJECTS ARRAY (for portfolio/agency sites) ==========
+            projects_pattern = r'(?:const|let)\s+projects\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
+            projects_match = re.search(projects_pattern, content, re.DOTALL)
+            
+            if projects_match and 'projects' in extracted.lower():
+                print("   📁 Rendering projects array from source...")
+                projects_content = projects_match.group(1)
+                
+                # Extract projects - match title/name and desc/description
+                project_pattern = r'\{\s*(?:title|name):\s*["\']([^"\']+)["\']\s*,\s*(?:desc|description):\s*["\']([^"\']+)["\']'
+                projects = re.findall(project_pattern, projects_content)
+                
+                if projects:
+                    projects_html = '<div class="grid md:grid-cols-3 gap-8">\n'
+                    for title, desc in projects:
+                        projects_html += f'''
+            <div class="bg-white/5 p-6 rounded-2xl border border-white/10 hover:border-purple-500/50 transition-all">
+                <h3 class="text-xl font-bold mb-2">{title}</h3>
+                <p class="text-gray-400">{desc}</p>
+            </div>'''
+                    projects_html += '\n        </div>'
+                    print(f"   ✅ Rendered {len(projects)} projects from source array")
+                    
+                    # Replace the projects map block
+                    projects_map_pattern = r'\{projects\.map\(\([^)]+\)\s*=>\s*\(?\s*<div[^>]*>[\s\S]*?</div>\s*\)?\s*\}'
+                    extracted = re.sub(projects_map_pattern, projects_html, extracted, flags=re.DOTALL)
+        
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
             
             # ========== SPECIAL HANDLING FOR MENU ITEMS (nested structure) ==========
             menu_pattern = r'(?:const|let)\s+menuItems\s*=\s*\[\s*((?:[^\[\]]*?\{[^}]*\}[^\[\]]*?)*?)\s*\]'
@@ -3940,6 +3885,9 @@ async def generate_preview_internal(
                   
                   
                   
+                  
+                  
+                  
                   # ========== PRESERVE HERO BADGE FROM SOURCE ==========
                   # Extract the badge from original content (not extracted)
                   badge_match = re.search(
@@ -3951,100 +3899,49 @@ async def generate_preview_internal(
                   if badge_match:
                       badge_text = badge_match.group(2).strip()
                       badge_html = f'''
-          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 mb-6">
-            <i class="fas fa-sparkles text-amber-400 w-4 h-4"></i>
-            <span class="text-amber-400 text-sm uppercase tracking-wider">{badge_text}</span>
+          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 backdrop-blur-sm border border-amber-500/30 mb-6">
+            <i class="fas fa-sparkles w-4 h-4 text-amber-400"></i>
+            <span class="text-amber-400 text-sm font-medium uppercase tracking-wider">{badge_text}</span>
           </div>'''
-            
                       
-                      # Inject badge into hero section
-                      if '<div class="relative z-10 text-center px-4">' in extracted:
-                          extracted = extracted.replace(
-                              '<div class="relative z-10 text-center px-4">',
-                              '<div class="relative z-10 text-center px-4">' + badge_html
-                          )
-                          print(f"  ✅ Injected hero badge: {badge_text}")                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                  
-                                   # ========== PRESERVE CTA BUTTONS AND TRUST BADGES WITH CORRECT ORDER ==========
-                  
-                  # Extract CTA buttons from source
-                  cta_pattern = r'<div\s+className="flex\s+flex-col\s+sm:flex-row\s+gap-4\s+justify-center\s+mb-10">(.*?)</div>'
-                  cta_match = re.search(cta_pattern, content, re.DOTALL)
-                  
-                  # Extract trust badges from source
-                  trust_pattern = r'<div\s+className="absolute\s+bottom-8\s+left-0\s+right-0\s+z-10">(.*?)</div>\s*</div>\s*</section>'
-                  trust_match = re.search(trust_pattern, content, re.DOTALL)
-                  
-                  if cta_match and trust_match:
-                      cta_html = cta_match.group(1)
-                      # Convert React Links to HTML
-                      cta_html = re.sub(r'<Link\s+href="([^"]+)"', r'<a href="\1"', cta_html)
-                      cta_html = re.sub(r'</Link>', '</a>', cta_html)
-                      # Add proper button styling
-                      cta_html = re.sub(r'View Work', r'View Work', cta_html)
-                      
-                      trust_html = trust_match.group(1)
-                      # Convert JSX to HTML
-                      trust_html = re.sub(r'className=', 'class=', trust_html)
-                      # Convert Lucide icons to Font Awesome
-                      trust_html = trust_html.replace('<Star', '<i class="fas fa-star')
-                      trust_html = trust_html.replace('</Star>', '</i>')
-                      trust_html = trust_html.replace('<Users', '<i class="fas fa-users')
-                      trust_html = trust_html.replace('</Users>', '</i>')
-                      trust_html = trust_html.replace('<Shield', '<i class="fas fa-shield-alt')
-                      trust_html = trust_html.replace('</Shield>', '</i>')
-                      trust_html = re.sub(r'className="([^"]*)"', r'class="\1"', trust_html)
-                      trust_html = re.sub(r'fill-yellow-400', '', trust_html)
-                      # Update text for agency
-                      trust_html = trust_html.replace('Diners', 'Clients')
-                      trust_html = trust_html.replace('Fresh', '100%')
-                      trust_html = trust_html.replace('Ingredients', 'Secure')
-                      trust_html = trust_html.replace('Award', 'Trusted')
-                      trust_html = trust_html.replace('Winning', 'Partner')
-                      
-                      print(f"  ✅ Extracted CTA buttons and trust badges")
-                      
-                      # Find the hero content div
-                      hero_content_pattern = r'(<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">)'
-                      hero_match = re.search(hero_content_pattern, extracted)
-                      
-                      if hero_match:
-                          # Build the correct hero structure
-                          correct_hero = f'''{hero_match.group(1)}
-            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/30 mb-6">
-                <i class="fas fa-sparkles text-amber-400 w-4 h-4"></i>
-                <span class="text-amber-400 text-sm font-medium uppercase tracking-wider">Elite Development</span>
-            </div>
-            <h1 class="text-5xl md:text-7xl font-bold text-white mb-4 drop-shadow-2xl">Estate Palace Agency</h1>
-            <p class="text-xl md:text-2xl text-amber-400 font-semibold mb-3">Crafting Digital Excellence for Modern Brands</p>
-            <p class="text-base md:text-lg text-gray-300 mb-8 max-w-2xl mx-auto">We build high-performance digital products that define the future of your industry. Let's create something extraordinary together.</p>
-            {cta_html}
-            {trust_html}
-        </div>'''
-                          
-                          # Replace the entire hero content
-                          extracted = re.sub(
-                              r'<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">.*?</div>',
-                              correct_hero,
-                              extracted,
-                              flags=re.DOTALL
-                          )
-                          print(f"  ✅ Rebuilt hero section with correct order")
+                      # Check if badge already exists in extracted
+                      if '<div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20' in extracted:
+                          print(f"  ✅ Hero badge already present")
                       else:
-                          print(f"  ⚠️ Could not find hero container")
-                  else:
-                      print(f"  ⚠️ Could not extract CTA buttons or trust badges")
+                          # Inject badge into hero section - look for the hero content div
+                          if '<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">' in extracted:
+                              extracted = extracted.replace(
+                                  '<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">',
+                                  '<div class="relative z-10 text-center px-4 max-w-4xl mx-auto">' + badge_html
+                              )
+                              print(f"  ✅ Injected hero badge: {badge_text}")
+                          elif '<div class="relative z-10 text-center px-4">' in extracted:
+                              extracted = extracted.replace(
+                                  '<div class="relative z-10 text-center px-4">',
+                                  '<div class="relative z-10 text-center px-4">' + badge_html
+                              )
+                              print(f"  ✅ Injected hero badge: {badge_text}")
+                          else:
+                              print(f"  ⚠️ Could not find hero container to inject badge")
                   
                   
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+                  
+          
                   
                   
                   
@@ -5139,15 +5036,31 @@ Create a BEAUTIFUL, COMPLETE HTML preview for "{brand_name}".
 </head>
 <body>
 
+
+
+
 <header>
     <nav class="nav-container">
-        <a href="#" class="brand" onclick="handleBrandClick(event)">[BRAND_NAME]</a>
-        <div class="nav-links">
-            <a href="#" class="nav-link" data-page="shop">Shop</a>
-            <a href="#" class="nav-link" data-page="cart">Cart</a>
+        <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+            <i data-lucide="sparkles" class="w-8 h-8" style="color: #d8a219;"></i>
+            <span class="text-white text-xl font-bold">{brand_name}</span>
+        </a>
+        <div class="hidden md:flex space-x-2 items-center" id="nav-links-container">
+            <!-- Navigation links will be dynamically inserted here -->
+            {navigation_html}
         </div>
+        <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
+        </button>
     </nav>
+    
+    <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+        {navigation_html}
+    </div>
 </header>
+
+
+
 
 <div id="page_home" class="page active">
     <!-- COMPLETE HOME PAGE CONTENT -->
@@ -5221,6 +5134,65 @@ CART PAGE (page_cart) MUST contain:
 
 
 
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 CRITICAL: PRESERVE ALL EXTRACTED CONTENT - NO GENERATION 🚨🚨🚨
+================================================================================
+
+The HTML content below has been EXTRACTED DIRECTLY from your source files.
+You MUST use this EXACT content. DO NOT generate your own content.
+
+================================================================================
+✅ CONTENT YOU MUST PRESERVE (COPY EXACTLY AS SHOWN):
+================================================================================
+
+1. **HERO BADGE** - The badge with EST. 2024 and Sparkles icon
+2. **HERO TITLE** - The main h1 heading
+3. **HERO TAGLINE** - The amber-colored description
+4. **HERO DESCRIPTION** - The longer paragraph text
+5. **CTA BUTTONS** - "Book a Table" and "View Menu" with their icons
+6. **TRUST BADGES** - The 4 badges at the bottom (4.9/5, 10k+ Diners, Fresh Ingredients, Award Winning)
+7. **FEATURES SECTION** - ALL 4 feature cards with their titles and descriptions
+8. **FAQ SECTION** - ALL 4 FAQ items with questions and answers
+
+================================================================================
+❌ FORBIDDEN - DO NOT:
+================================================================================
+
+1. ❌ DO NOT generate your own feature cards - use the EXACT ones from extraction
+2. ❌ DO NOT change the badge text "EST. 2024" to something else
+3. ❌ DO NOT remove the trust badges
+4. ❌ DO NOT change the CTA button text or styling
+5. ❌ DO NOT add extra sections that don't exist in the extraction
+6. ❌ DO NOT simplify or truncate any content
+
+================================================================================
+✅ VERIFICATION CHECKLIST BEFORE OUTPUT:
+=========================================================-=======================
+
+[ ] Hero badge (EST. 2024 with Sparkles) is present
+[ ] H1 title matches: "{brand_name}"
+[ ] Both CTA buttons are present
+[ ] Trust badges (4 items) are present
+[ ] Features section has EXACTLY 4 cards
+[ ] FAQ section has EXACTLY 4 items
+[ ] No content has been replaced with placeholders
+
+================================================================================
+EXTRACTED CONTENT TO USE (COPY THIS EXACTLY):
+================================================================================
+
+{page_contents.get('page', '')}
+
+================================================================================
+IF ANY OF THE ABOVE IS MISSING, REGENERATE USING THE EXTRACTED CONTENT ABOVE.
+================================================================================
 
 
 
@@ -7194,35 +7166,38 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
 
 
 
-
-
 ## CRITICAL: NAVIGATION STRUCTURE - NO "HOME" BUTTON
 
 **The brand/logo IS the home button. There is NO separate "Home" link in the navigation.**
 
-### Correct Navigation Structure:
+### Dynamic Navigation Template:
 
 ```html
 <header>
     <nav class="nav-container">
         <!-- Brand/Logo - THIS IS THE HOME LINK -->
         <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
-            <i data-lucide="sparkles" class="w-8 h-8 text-purple-500"></i>
-            <span>[BRAND_NAME]</span>
+            <i data-lucide="[DYNAMIC_ICON]" class="w-8 h-8" style="color: #d8a219;"></i>
+            <span class="text-white text-xl font-bold">[BRAND_NAME]</span>
         </a>
         
-        <!-- Navigation Links - NO "Home" link here -->
+        <!-- Navigation Links - Dynamically generated from nav_links -->
         <div class="hidden md:flex space-x-2 items-center">
-            <a href="#" class="nav-link" data-page="shop">Shop</a>
-            <a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">
-                <i data-lucide="shopping-cart" class="w-4 h-4 text-purple-400"></i>
-                <span class="text-gray-300 group-hover:text-purple-400">Cart</span>
-                <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
-            </a>
+            <!-- For each link in nav_links, generate appropriate HTML -->
+            {navigation_html}
         </div>
+        
+        <!-- Mobile Menu Button -->
+        <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
+        </button>
     </nav>
+    
+    <!-- Mobile Menu - Dynamically generated -->
+    <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+        {navigation_html}
+    </div>
 </header>
-
 
 
 
@@ -11480,17 +11455,31 @@ document.addEventListener('DOMContentLoaded', function() {{
         
         
         
+        # ⭐⭐⭐ INJECT RESTAURANT FEATURES (ONLY FOR RESTAURANT WEBSITES) ⭐⭐⭐
+        # Use STRICT detection - require explicit restaurant indicators
+        should_inject_restaurant = False
         
+        # Method 1: Check user prompt for explicit restaurant keywords
+        explicit_restaurant_keywords = ['restaurant', 'cafe', 'bistro', 'eatery', 'steakhouse', 'food truck', 'diner', 'fine dining']
+        if any(keyword in user_prompt.lower() for keyword in explicit_restaurant_keywords):
+            should_inject_restaurant = True
+            print("🍽️ Explicit restaurant keywords found in prompt")
+        # Method 2: Check for restaurant-specific page IDs (strong indicator)
+        elif is_restaurant_detected and ('page_reservations' in preview_html or 'page_menu' in preview_html):
+            should_inject_restaurant = True
+            print("🍽️ Restaurant pages detected in HTML")
+        # Method 3: Check for reservation form elements
+        elif 'reservation-form' in preview_html or 'restaurantBookingForm' in preview_html:
+            should_inject_restaurant = True
+            print("🍽️ Reservation form detected in HTML")
         
-          # ⭐⭐⭐ INJECT RESTAURANT FEATURES (ONLY FOR RESTAURANT WEBSITES) ⭐⭐⭐
-        if not is_dashboard_detected and is_restaurant_detected:
+        if should_inject_restaurant and not is_dashboard_detected:
             preview_html = inject_restaurant_features(preview_html, brand_name, user_prompt)
             print("🍽️ Restaurant features injected")
         elif is_dashboard_detected:
             print("📊 Dashboard detected - skipping restaurant features injection")
         else:
             print("🚫 Not a restaurant website - skipping restaurant features injection")
-            
             
             
             

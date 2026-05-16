@@ -8308,7 +8308,7 @@ Component:
                     {project_name}
                 </div>
                 <div class="hidden md:flex items-center space-x-2" id="nav-links">
-                    {nav_buttons_html}
+                    {navigation_html}
                 </div>
                 <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8588,7 +8588,7 @@ async def generate_static_html(request: Dict[str, Any]):
                     {project_name}
                 </div>
                 <div class="hidden md:flex items-center space-x-2" id="nav-links">
-                    {nav_buttons_html}
+                    {navigation_html}
                 </div>
                 <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8597,7 +8597,7 @@ async def generate_static_html(request: Dict[str, Any]):
                 </button>
             </div>
             <div id="mobile-menu" class="hidden md:hidden pb-4 space-y-2">
-                {mobile_nav_html}
+                {navigation_html}
             </div>
         </div>
     </nav>
