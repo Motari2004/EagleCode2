@@ -10,6 +10,179 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 ================================================================================
+🚨🚨🚨 CRITICAL: JSON OUTPUT FORMAT - MUST FOLLOW EXACTLY 🚨🚨🚨
+================================================================================
+
+You MUST output a valid JSON object. Follow these rules STRICTLY:
+
+1. ✅ The entire response MUST be a SINGLE JSON object
+2. ✅ DO NOT add any text before or after the JSON object
+3. ✅ The JSON MUST start with {{ and end with }}
+4. ✅ Use double quotes for ALL strings (no single quotes)
+5. ✅ Escape ALL double quotes inside string values with \\"
+6. ✅ Escape ALL backslashes with \\
+7. ✅ NO trailing commas in objects or arrays
+
+================================================================================
+SPECIAL RULE FOR package.json VALUE:
+================================================================================
+
+The value for "package.json" is a STRING that contains JSON.
+You MUST escape all quotes inside this string:
+
+❌ WRONG (causes JSON parse error):
+"package.json": "{{"name": "my-app"}}"
+
+✅ CORRECT (properly escaped):
+"package.json": "{{\\"name\\": \\"my-app\\"}}"
+
+Notice the double backslashes and escaped quotes: \\"name\\"
+
+================================================================================
+CORRECT EXAMPLE:
+================================================================================
+{{
+  "package.json": "{{\\n  \\"name\\": \\"my-app\\",\\n  \\"version\\": \\"0.1.0\\"\\n}}",
+  "app/page.tsx": "export default function Home() {{\\n  return <div>Hello</div>;\\n}}",
+  "components/Navigation.tsx": "'use client';\\n\\nimport Link from 'next/link';\\n\\nexport default function Navigation() {{\\n  return <nav>...</nav>;\\n}}"
+}}
+
+================================================================================
+FORBIDDEN - NEVER DO THESE:
+================================================================================
+
+❌ Never add text before the JSON: "Here is your code: {{...}}"
+❌ Never add text after the JSON: "{{...}} That's all folks!"
+❌ Never use single quotes: '{{"key": "value"}}'
+❌ Never leave quotes unescaped inside strings
+
+================================================================================
+REMEMBER: Your ENTIRE response must be valid JSON that can be parsed by
+json.loads() in Python. Test your output mentally before sending.
+================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 MANDATORY: TRUST INDICATORS - MUST BE IN EVERY WEBSITE 🚨🚨🚨
+================================================================================
+
+EVERY website you generate MUST include trust indicators (social proof badges)
+in the hero section. This is NOT optional.
+
+================================================================================
+REQUIRED TRUST INDICATORS STRUCTURE:
+================================================================================
+
+Add this EXACT code after the CTA buttons in the hero section of app/page.tsx:
+
+```tsx
+<div className="absolute bottom-8 left-0 right-0 z-10">
+  <div className="container mx-auto px-4">
+    <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12">
+      
+      {/* Badge 1: Rating */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">4.9/5</div>
+          <div className="text-gray-400 text-xs">Rating</div>
+        </div>
+      </div>
+      
+      <div className="hidden md:block w-px h-8 bg-white/10" />
+      
+      {/* Badge 2: Customers/Users - Customize by project type */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Users className="w-5 h-5 text-cyan-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">10k+</div>
+          <div className="text-gray-400 text-xs">Customers</div>
+        </div>
+      </div>
+      
+      <div className="hidden md:block w-px h-8 bg-white/10" />
+      
+      {/* Badge 3: Satisfaction/Trust */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Shield className="w-5 h-5 text-green-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">100%</div>
+          <div className="text-gray-400 text-xs">Secure</div>
+        </div>
+      </div>
+      
+      <div className="hidden md:block w-px h-8 bg-white/10" />
+      
+      {/* Badge 4: Support/Delivery - Customize by project type */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Truck className="w-5 h-5 text-blue-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">Free</div>
+          <div className="text-gray-400 text-xs">Delivery</div>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+================================================================================
+🚨 CRITICAL: HOW TO WRITE package.json VALUE 🚨
+================================================================================
+
+When writing the package.json file content as a string value, you MUST:
+
+1. Start with a double quote: "
+2. Write the JSON content with escaped characters
+3. End with a double quote: "
+
+Example of CORRECT package.json string:
+
+"package.json": "{{\\n  \\"name\\": \\"my-app\\",\\n  \\"version\\": \\"0.1.0\\",\\n  \\"scripts\\": {{\\n    \\"dev\\": \\"next dev\\"\\n  }}\\n}}",
+
+Notice:
+- Outer double quotes: "{{...}}"
+- Inner JSON uses \\" for quotes
+- Newlines use \\n
+- Curly braces are doubled: {{ and }}
+
+If you don't escape properly, the JSON will be invalid and the build will fail.
+================================================================================
+
+
+
+
+
+
+
+
+================================================================================
 🚨🚨🚨 CRITICAL JSON FORMATTING RULES - MUST FOLLOW 🚨🚨🚨
 ================================================================================
 
@@ -48,6 +221,210 @@ REMEMBER:
 - NO trailing commas
 - NO comments
 ================================================================================
+
+
+
+
+
+
+================================================================================
+🚨🚨🚨 MANDATORY SECTIONS FOR EVERY WEBSITE 🚨🚨🚨
+================================================================================
+
+The home page (app/page.tsx) MUST include ALL of these sections in EXACT order:
+
+================================================================================
+SECTION 1: HERO WITH TRUST BADGES (MANDATORY)
+================================================================================
+
+The hero section MUST include 4 trust badges at the bottom:
+
+```tsx
+<div className="absolute bottom-8 left-0 right-0 z-10">
+  <div className="container mx-auto px-4">
+    <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12">
+      
+      {/* Badge 1: Rating */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">4.9/5</div>
+          <div className="text-gray-400 text-xs">Rating</div>
+        </div>
+      </div>
+      
+      <div className="hidden md:block w-px h-8 bg-white/10" />
+      
+      {/* Badge 2: Customers/Users */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Users className="w-5 h-5 text-cyan-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">10k+</div>
+          <div className="text-gray-400 text-xs">Customers</div>
+        </div>
+      </div>
+      
+      <div className="hidden md:block w-px h-8 bg-white/10" />
+      
+      {/* Badge 3: Guarantee */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Shield className="w-5 h-5 text-green-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">100%</div>
+          <div className="text-gray-400 text-xs">Guaranteed</div>
+        </div>
+      </div>
+      
+      <div className="hidden md:block w-px h-8 bg-white/10" />
+      
+      {/* Badge 4: Support/Service */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+          <Truck className="w-5 h-5 text-blue-400" />
+        </div>
+        <div>
+          <div className="text-white font-bold text-lg leading-none">Free</div>
+          <div className="text-gray-400 text-xs">Delivery</div>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</div>
+
+================================================================================
+SECTION 2: FEATURES SECTION (MANDATORY - 4 CARDS)
+================================================================================
+
+<section className="py-20 px-4 bg-gradient-to-br from-purple-950/20 via-transparent to-pink-950/20">
+  <div className="container mx-auto">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        Why Choose Us
+      </h2>
+      <p className="text-gray-400 mt-4">Experience excellence with our premium features</p>
+    </div>
+    
+    <div className="grid md:grid-cols-4 gap-6">
+      {[
+        { icon: Star, title: "Premium Quality", desc: "Handpicked premium materials", color: "from-yellow-500 to-orange-500" },
+        { icon: Shield, title: "Secure Payment", desc: "100% secure transactions", color: "from-green-500 to-emerald-500" },
+        { icon: Truck, title: "Free Shipping", desc: "On orders over $50", color: "from-blue-500 to-cyan-500" },
+        { icon: Headphones, title: "24/7 Support", desc: "Round-the-clock assistance", color: "from-purple-500 to-pink-500" }
+      ].map((feature, idx) => (
+        <div key={idx} className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1">
+          <div className={`w-14 h-14 rounded-xl bg-gradient-to-r ${feature.color} flex items-center justify-center mb-4`}>
+            <feature.icon className="w-7 h-7 text-white" />
+          </div>
+          <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
+          <p className="text-gray-400 text-sm">{feature.desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+
+================================================================================
+SECTION 3: TESTIMONIALS SECTION (MANDATORY - 3 CARDS)
+================================================================================
+
+<section className="py-20 px-4">
+  <div className="container mx-auto">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        What Our Customers Say
+      </h2>
+      <p className="text-gray-400 mt-4">Trusted by thousands of happy customers</p>
+    </div>
+    
+    <div className="grid md:grid-cols-3 gap-6">
+      {[
+        { name: "Sarah Johnson", role: "Verified Buyer", quote: "Absolutely love this product! The quality is exceptional and delivery was super fast.", rating: 5, initial: "S" },
+        { name: "Michael Chen", role: "Repeat Customer", quote: "Great experience from start to finish. Will definitely be ordering again!", rating: 5, initial: "M" },
+        { name: "Emily Rodriguez", role: "Happy Customer", quote: "Outstanding customer service and premium quality products. Highly recommend!", rating: 5, initial: "E" }
+      ].map((testimonial, idx) => (
+        <div key={idx} className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 hover:border-purple-500/50 transition-all duration-300">
+          <div className="flex gap-1 mb-4">
+            {[...Array(5)].map((_, i) => (
+              <Star key={i} className={`w-4 h-4 ${i < testimonial.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />
+            ))}
+          </div>
+          <p className="text-gray-300 mb-6 italic">"{testimonial.quote}"</p>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <span className="text-white font-bold">{testimonial.initial}</span>
+            </div>
+            <div>
+              <h4 className="font-semibold text-white">{testimonial.name}</h4>
+              <p className="text-xs text-purple-400">{testimonial.role}</p>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+
+================================================================================
+SECTION 4: FAQ SECTION (MANDATORY - 4 QUESTIONS WITH ACCORDION)
+================================================================================
+
+<section className="py-20 px-4">
+  <div className="container mx-auto max-w-3xl">
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        Frequently Asked Questions
+      </h2>
+      <p className="text-gray-400 mt-4">Everything you need to know</p>
+    </div>
+    
+    <div className="space-y-4">
+      {[
+        { q: "What is your return policy?", a: "We offer a 30-day money-back guarantee on all purchases. Simply contact our support team to initiate a return." },
+        { q: "How long does shipping take?", a: "Standard shipping takes 3-5 business days. Express shipping is available for 1-2 business days." },
+        { q: "Do you ship internationally?", a: "Yes, we ship to over 50 countries worldwide. Shipping times and costs vary by location." },
+        { q: "Is my payment information secure?", a: "Absolutely! We use industry-standard SSL encryption and never store your payment details." }
+      ].map((faq, idx) => (
+        <div key={idx} className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
+          <button
+            onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
+            className="w-full px-6 py-4 flex justify-between items-center text-left hover:bg-white/5 transition-colors"
+          >
+            <span className="font-semibold text-white">{faq.q}</span>
+            {openIndex === idx ? <Minus className="w-5 h-5 text-purple-400" /> : <Plus className="w-5 h-5 text-purple-400" />}
+          </button>
+          {openIndex === idx && (
+            <div className="px-6 pb-4 text-gray-400 border-t border-white/10 pt-3">
+              {faq.a}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4801,14 +5178,15 @@ export default function Projects() {
 ✅ REQUIRED - COMPLETE PAGE WITH RICH CONTENT
 // ✅ CORRECT - Complete projects page with real content
 // ✅ CORRECT - Complete projects page with real content
+
 'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
 import { 
-  ArrowRight, Star, Users, Calendar, Tag, 
+  ArrowRight, Star, Users, Shield, Truck, Calendar, Tag, 
   Filter, Search, Code, Palette, Megaphone, 
-  Globe, Heart, Eye, Clock, CheckCircle 
+  Globe, Heart, Eye, Clock, CheckCircle, Sparkles 
 } from 'lucide-react';
 
 export default function ProjectsPage() {
@@ -4900,10 +5278,16 @@ export default function ProjectsPage() {
 
   return (
     <div className="min-h-screen pt-32 pb-20">
-      {/* Hero Section */}
-      <section className="relative py-20 bg-gradient-to-r from-purple-950/50 to-pink-950/50 mb-12">
-        <div className="container mx-auto px-4 text-center">
-          <span className="text-purple-400 text-sm uppercase tracking-wider">Our Work</span>
+      {/* Hero Section with Badge and Trust Indicators */}
+      <section className="relative py-20 bg-gradient-to-r from-purple-950/50 to-pink-950/50 mb-12 overflow-hidden">
+        <div className="container mx-auto px-4 text-center relative z-10">
+          
+          {/* ✅ MANDATORY HERO BADGE - ADDED HERE */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 backdrop-blur-sm border border-amber-500/30 mb-6">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span className="text-amber-400 text-sm font-medium uppercase tracking-wider">CREATIVE PORTFOLIO</span>
+          </div>
+          
           <h1 className="text-4xl md:text-5xl font-bold mt-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             Featured Projects
           </h1>
@@ -4918,6 +5302,65 @@ export default function ProjectsPage() {
           </div>
         </div>
       </section>
+
+      {/* Trust Indicators Section */}
+      <div className="relative -mt-16 mb-12 z-20">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12 bg-black/40 backdrop-blur-sm rounded-2xl py-4 px-6 border border-white/10">
+            
+            {/* Badge 1: Rating */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold text-lg leading-none">4.9/5</div>
+                <div className="text-gray-400 text-xs">Client Rating</div>
+              </div>
+            </div>
+            
+            <div className="hidden md:block w-px h-8 bg-white/10" />
+            
+            {/* Badge 2: Projects Completed */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <CheckCircle className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold text-lg leading-none">100+</div>
+                <div className="text-gray-400 text-xs">Projects Delivered</div>
+              </div>
+            </div>
+            
+            <div className="hidden md:block w-px h-8 bg-white/10" />
+            
+            {/* Badge 3: Satisfaction Guarantee */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <Shield className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold text-lg leading-none">100%</div>
+                <div className="text-gray-400 text-xs">Satisfaction</div>
+              </div>
+            </div>
+            
+            <div className="hidden md:block w-px h-8 bg-white/10" />
+            
+            {/* Badge 4: Support */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <Truck className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold text-lg leading-none">Fast</div>
+                <div className="text-gray-400 text-xs">Turnaround</div>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+      </div>
 
       <div className="container mx-auto px-4">
         {/* Featured Projects Section */}
@@ -5077,9 +5520,6 @@ export default function ProjectsPage() {
     </div>
   );
 }
-
-
-
 
 
 

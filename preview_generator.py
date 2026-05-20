@@ -14,6 +14,262 @@ from styles import (
 
 
 
+def extract_trust_indicators_from_source(source_content: str) -> list:
+    """
+    Extract trust badge data directly from raw TSX/JSX source.
+    Returns list of dicts: [{icon, value, label}]
+    Works on the raw source BEFORE any array processing.
+    """
+    import re
+
+    indicators = []
+
+    # ========== PATTERN 1: Direct React component structure ==========
+    trust_pattern = r'<div className="flex items-center gap-3">\s*<([A-Z][a-zA-Z]+)\s+className="[^"]*"[^>]*/?>\s*<div>\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>\s*</div>\s*</div>'
+    
+    matches = re.findall(trust_pattern, source_content, re.DOTALL)
+    for match in matches:
+        icon_name = match[0]
+        value = match[1].strip()
+        label = match[2].strip()
+        if value and label:
+            indicators.append({'icon': icon_name, 'value': value, 'label': label})
+            print(f"  ✅ Extracted trust indicator: {icon_name} = {value} {label}")
+
+    if indicators:
+        return indicators
+
+    # ========== PATTERN 2: With fill attribute ==========
+    trust_pattern2 = r'<([A-Z][a-zA-Z]+)\s+className="[^"]*"\s*/>\s*<div>\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>'
+    matches = re.findall(trust_pattern2, source_content, re.DOTALL)
+    for match in matches:
+        icon_name = match[0]
+        value = match[1].strip()
+        label = match[2].strip()
+        if value and label and '{' not in value:
+            indicators.append({'icon': icon_name, 'value': value, 'label': label})
+
+    if indicators:
+        return indicators
+
+    # ========== PATTERN 3: w-10 h-10 icon wrapper + value + label ==========
+    stat_block_pattern = (
+        r'<div[^>]*className="[^"]*w-10 h-10[^"]*"[^>]*>\s*'
+        r'<(\w+)[^/]*/?\s*>\s*</div>\s*'
+        r'<div>\s*<div[^>]*>([^<]+)</div>\s*<div[^>]*>([^<]+)</div>'
+    )
+    for match in re.finditer(stat_block_pattern, source_content, re.DOTALL):
+        icon_name = match.group(1)
+        value = match.group(2).strip()
+        label = match.group(3).strip()
+        if value and label and '{' not in value:
+            indicators.append({'icon': icon_name, 'value': value, 'label': label})
+
+    if indicators:
+        return indicators
+
+    # ========== PATTERN 4: const stats/badges/trustBadges array ==========
+    stats_array_pattern = (
+        r'const\s+(?:stats|badges|indicators|trustBadges)\s*=\s*\[([\s\S]*?)\]'
+    )
+    array_match = re.search(stats_array_pattern, source_content)
+    if array_match:
+        array_content = array_match.group(1)
+        item_pattern = (
+            r'\{\s*icon:\s*(\w+)\s*,\s*'
+            r'(?:label|title|name):\s*["\']([^"\']+)["\']\s*,\s*'
+            r'(?:value|count|stat):\s*["\']([^"\']+)["\']\s*\}'
+        )
+        for match in re.finditer(item_pattern, array_content):
+            indicators.append({
+                'icon': match.group(1),
+                'value': match.group(3).strip(),
+                'label': match.group(2).strip()
+            })
+
+    # ========== PATTERN 5: Direct JSX with nested divs ==========
+    if not indicators:
+        section_pattern = r'<div className="absolute bottom-8 left-0 right-0 z-10">(.*?)</div>\s*</section>'
+        section_match = re.search(section_pattern, source_content, re.DOTALL)
+        if section_match:
+            section_content = section_match.group(1)
+            indicator_pattern = r'<div className="flex items-center gap-3">.*?<([A-Z][a-zA-Z]+).*?<div[^>]*>([^<]+)</div>.*?<div[^>]*>([^<]+)</div>'
+            for match in re.finditer(indicator_pattern, section_content, re.DOTALL):
+                icon_name = match.group(1)
+                value = match.group(2).strip()
+                label = match.group(3).strip()
+                if value and label:
+                    indicators.append({'icon': icon_name, 'value': value, 'label': label})
+
+    return indicators
+
+
+def build_trust_indicators_html(indicators: list) -> str:
+    """
+    Build trust indicators HTML - FLEXBOX VERSION with NO absolute positioning.
+    Uses simple margin-top for spacing directly after CTA buttons.
+    """
+    ICON_MAP = {
+        'Star': 'star', 'Users': 'users', 'Shield': 'shield-alt',
+        'Truck': 'truck', 'Sparkles': 'sparkles', 'Heart': 'heart',
+        'Award': 'award', 'Check': 'check', 'CheckCircle': 'check-circle',
+        'Utensils': 'utensils', 'Coffee': 'coffee', 'Clock': 'clock',
+        'Phone': 'phone', 'Globe': 'globe', 'Zap': 'zap',
+        'TrendingUp': 'trending-up', 'ThumbsUp': 'thumbs-up',
+        'DollarSign': 'dollar-sign', 'Package': 'package',
+    }
+    
+    COLOR_MAP = {
+        'Star': 'text-yellow-400', 'Users': 'text-cyan-400',
+        'Shield': 'text-green-400', 'ShieldAlt': 'text-green-400',
+        'Truck': 'text-blue-400', 'Award': 'text-amber-400', 
+        'Heart': 'text-red-400', 'Zap': 'text-purple-400',
+        'Sparkles': 'text-amber-400', 'Utensils': 'text-blue-400',
+    }
+
+    if not indicators:
+        return ''
+
+    items = []
+    for ind in indicators:
+        icon_name = ind.get('icon', 'star')
+        if icon_name == 'Shield':
+            lucide_icon = 'shield-alt'
+        else:
+            lucide_icon = ICON_MAP.get(icon_name, icon_name.lower())
+        color = COLOR_MAP.get(icon_name, 'text-purple-400')
+        value = ind.get('value', '')
+        label = ind.get('label', '')
+        
+        star_class = 'text-yellow-400' if icon_name == 'Star' else color
+        
+        items.append(f'''
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-{lucide_icon} {star_class} text-xl"></i>
+                    <span class="text-white font-bold">{value}</span>
+                    <span class="text-gray-400 text-sm">{label}</span>
+                </div>''')
+
+    items_html = '\n                '.join(items)
+
+    # mt-6 creates tight spacing (1.5rem) between CTA buttons and indicators
+    return f'''
+        <div class="mt-6 pb-6">
+            <div class="flex flex-wrap items-center justify-center gap-6">
+                {items_html}
+            </div>
+        </div>'''
+
+
+def inject_trust_indicators(preview_html: str, files: dict, user_prompt: str = '') -> str:
+    """
+    Extracts trust badges from raw source and injects them into the hero section.
+    Uses FLEXBOX layout with proper spacing - NO absolute positioning for indicators.
+    """
+    import re
+
+    # ── Skip for dashboards ───────────────────────────────────────────────────
+    if any(k in user_prompt.lower() for k in
+           ['dashboard', 'analytics', 'admin panel', 'kpi']):
+        print('📊 Dashboard — skipping trust indicators')
+        return preview_html
+
+    # ── Get raw source ────────────────────────────────────────────────────────
+    homepage_source = (
+        files.get('app/page.tsx', '')
+        or files.get('app/page.jsx', '')
+        or files.get('pages/index.tsx', '')
+        or files.get('pages/index.jsx', '')
+        or ''
+    )
+    if not homepage_source:
+        print('⚠️ No homepage source — skipping trust indicators')
+        return preview_html
+
+    # ── Extract trust indicators from source ───────────────────────────────────
+    indicators = extract_trust_indicators_from_source(homepage_source)
+    if not indicators:
+        print('⚠️ No trust indicators found in source')
+        return preview_html
+
+    print(f'✅ Extracted {len(indicators)} trust indicators')
+
+    # ── Build trust indicators HTML ───────────────────────────────────────────
+    trust_html = build_trust_indicators_html(indicators)
+    
+    # ── Extract hero content from preview HTML ────────────────────────────────
+    # Get image URL
+    img_match = re.search(r'<img[^>]*src="([^"]+)"[^>]*>', preview_html)
+    img_url = img_match.group(1) if img_match else "https://placehold.co/1920x1080"
+    
+    # Get title
+    title_match = re.search(r'<h1[^>]*>([^<]+)</h1>', preview_html)
+    title = title_match.group(1) if title_match else "Artisan Castle"
+    
+    # Get subtitle
+    subtitle_match = re.search(r'<p[^>]*class="[^"]*text-2xl[^"]*"[^>]*>([^<]+)</p>', preview_html)
+    subtitle = subtitle_match.group(1) if subtitle_match else "Exquisite Culinary Excellence"
+    
+    # ── Build the complete new hero section ────────────────────────────────────
+    new_hero_section = f'''<section class="relative h-screen overflow-hidden">
+    <img src="{img_url}" alt="Hero" class="absolute inset-0 w-full h-full object-cover" />
+    <div class="absolute inset-0 bg-black/50"></div>
+    
+    <div class="relative z-10 h-full flex flex-col pt-20">
+        <div class="flex-1"></div>
+        
+        <div class="text-center px-4">
+            <h1 class="text-6xl md:text-7xl font-bold text-white">{title}</h1>
+            <p class="text-xl md:text-2xl text-amber-400 mt-4">{subtitle}</p>
+            <div class="mt-8 flex flex-wrap gap-4 justify-center">
+                <a href="#" onclick="showPage('reservations'); return false;" class="px-8 py-3 bg-amber-500 text-black font-bold rounded-full hover:bg-amber-600 transition">Book Now</a>
+                <a href="#" onclick="showPage('menu'); return false;" class="px-8 py-3 border border-white text-white font-bold rounded-full hover:bg-white/10 transition">View Menu</a>
+            </div>
+        </div>
+        
+        {trust_html}
+        
+        <div class="flex-1"></div>
+    </div>
+</section>'''
+
+    # ── Replace the entire page_home content ───────────────────────────────────
+    # Find the page_home div and replace its content
+    page_home_pattern = r'(<div id="page_home"[^>]*>)(.*?)(</div>\s*(?=<div id="page_|$|<footer|</body>))'
+    
+    def replace_home_content(match):
+        opening = match.group(1)
+        closing = match.group(3)
+        # Find features and FAQ sections to preserve them
+        rest_content = match.group(2)
+        
+        # Extract features section if it exists
+        features_match = re.search(r'(<section class="py-20 px-4">.*?<div class="grid md:grid-cols-4 gap-6">.*?</div>\s*</section>)', rest_content, re.DOTALL)
+        features_section = features_match.group(0) if features_match else ""
+        
+        # Extract FAQ section if it exists
+        faq_match = re.search(r'(<section class="py-20 px-4">.*?<div class="container mx-auto max-w-2xl">.*?<div class="space-y-4">.*?</div>\s*</div>\s*</section>)', rest_content, re.DOTALL)
+        faq_section = faq_match.group(0) if faq_match else ""
+        
+        # Return new hero section + features + FAQ
+        return opening + new_hero_section + features_section + faq_section + closing
+    
+    preview_html = re.sub(page_home_pattern, replace_home_content, preview_html, flags=re.DOTALL)
+
+    # ── Clean up any remaining absolute positioned indicators ─────────────────
+    preview_html = re.sub(
+        r'<div class="absolute bottom-8 left-0 right-0 z-10">.*?</div>',
+        '',
+        preview_html,
+        flags=re.DOTALL
+    )
+
+    print('✅ Trust indicators injected with flexbox layout (NO absolute positioning)')
+    print('✅ Trust indicators now appear directly below CTA buttons with mt-6 spacing')
+    return preview_html
+
+
+
 
 
 
@@ -850,11 +1106,6 @@ def preserve_dashboard_content(extracted: str, route_name: str) -> str:
 
 
 
-
-
-
-
-
 def inject_restaurant_features(html_content: str, brand_name: str, user_prompt: str = "", force_skip: bool = False) -> str:
     """Inject restaurant-specific features like booking modal, menu cards, etc."""
     
@@ -863,190 +1114,271 @@ def inject_restaurant_features(html_content: str, brand_name: str, user_prompt: 
         print("🚫 Force skip - restaurant features injection disabled")
         return html_content
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def inject_reservation_form(html_content: str) -> str:
-    """Inject complete reservation form HTML into the reservations page"""
-    
-    # Check if reservations page exists
-    if 'page_reservations' not in html_content:
+    # ========== SKIP FOR DASHBOARD PROJECTS ==========
+    dashboard_keywords = ['dashboard', 'analytics', 'admin', 'metrics', 'statistics', 'insights', 'overview', 'reports', 'monitoring', 'kpi']
+    if any(keyword in user_prompt.lower() for keyword in dashboard_keywords):
+        print("📊 Dashboard detected - skipping restaurant features injection")
         return html_content
     
-    # Check if the COMPLETE form already exists (has all required IDs)
-    if 'id="restaurantBookingForm"' in html_content and 'id="reservationName"' in html_content:
-        print("✅ Complete reservation form already exists")
+    # Detect if this is a restaurant website
+    restaurant_keywords = ['restaurant', 'cafe', 'dining', 'menu', 'culinary', 'chef', 'bistro', 'cuisine', 'fine dining']
+    is_restaurant = any(keyword in user_prompt.lower() for keyword in restaurant_keywords)
+    
+    # Also check HTML content for restaurant indicators
+    if not is_restaurant:
+        restaurant_html_indicators = ['menu', 'reservation', 'booking', 'table', 'dining', 'chef']
+        is_restaurant = any(indicator in html_content.lower() for indicator in restaurant_html_indicators)
+    
+    if not is_restaurant:
+        print("🍽️ Not a restaurant website - skipping restaurant features injection")
         return html_content
     
-    # Check if there's a simple form that needs replacement (the one without IDs)
-    if 'placeholder="Full Name"' in html_content and 'id="' not in html_content:
-        print("🔧 Simple form without IDs detected - injecting complete form...")
+    print("🍽️ Restaurant detected - injecting restaurant features...")
+    
+    # ========== 1. INJECT RESERVATION MODAL CSS ==========
+    restaurant_css = '''
+    /* Restaurant Reservation Modal Styles */
+    .reservation-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(12px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .reservation-modal.active {
+        display: flex;
+    }
+    
+    .reservation-modal-content {
+        background: linear-gradient(135deg, #1a1a2e, #0f0f12);
+        border-radius: 28px;
+        padding: 2rem;
+        max-width: 500px;
+        width: 90%;
+        text-align: center;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        animation: modalSlideIn 0.3s ease-out;
+    }
+    
+    @keyframes modalSlideIn {
+        from {
+            transform: translateY(-50px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+    
+    .reservation-success-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #10b981, #059669);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem;
+    }
+    
+    .reservation-success-icon i {
+        font-size: 40px;
+        color: white;
+    }
+    
+    .reservation-modal h3 {
+        font-size: 1.8rem;
+        margin-bottom: 1rem;
+        background: linear-gradient(135deg, #c084fc, #f472b6);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    '''
+    
+    # Inject CSS into style tag
+    if '<style>' in html_content:
+        html_content = html_content.replace('</style>', restaurant_css + '\n</style>', 1)
     else:
-        # Also check for the specific HTML structure from your output
-        if '<input type="text" placeholder="Full Name"' in html_content and 'restaurantBookingForm' not in html_content:
-            print("🔧 Detected minimal form - injecting complete form...")
-        else:
-            print("⚠️ No reservation form pattern found - skipping injection")
-            return html_content
+        html_content = html_content.replace('<head>', f'<head><style>{restaurant_css}</style>', 1)
     
-    # Complete reservation form HTML with proper IDs
-    complete_form = '''
-    <div class="container mx-auto px-4 py-12 max-w-6xl">
-        <section class="relative py-20 overflow-hidden mb-12 rounded-3xl" style="background: linear-gradient(135deg, rgba(120,53,15,0.4) 0%, rgba(154,52,18,0.4) 100%)">
-            <div class="container mx-auto px-4 text-center relative z-10">
-                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border mb-6" style="background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3)">
-                    <i data-lucide="calendar" class="w-4 h-4 text-amber-400"></i>
-                    <span class="text-amber-400 text-sm font-medium uppercase tracking-wider">Reserve Your Table</span>
-                </div>
-                <h1 class="text-4xl md:text-5xl font-bold mb-4" style="background: linear-gradient(135deg, #fbbf24, #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Book a Table</h1>
-                <p class="text-gray-400 max-w-2xl mx-auto">Secure your dining experience. Walk-ins welcome, but reservations are recommended.</p>
+    # ========== 2. INJECT RESERVATION MODAL HTML ==========
+    reservation_modal = f'''
+    <!-- Reservation Success Modal -->
+    <div id="reservationModal" class="reservation-modal">
+        <div class="reservation-modal-content">
+            <div class="reservation-success-icon">
+                <i class="fas fa-check"></i>
             </div>
-        </section>
-
-        <div class="grid md:grid-cols-3 gap-8">
-            <div class="md:col-span-1 space-y-4">
-                <div class="rounded-2xl p-6 border border-white/10" style="background: rgba(255,255,255,0.04)">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: rgba(245,158,11,0.2)">
-                            <i data-lucide="clock" class="w-5 h-5 text-amber-400"></i>
-                        </div>
-                        <h3 class="font-bold text-white">Opening Hours</h3>
-                    </div>
-                    <div class="space-y-2 text-sm">
-                        <div class="flex justify-between"><span class="text-gray-400">Mon - Thu</span><span class="text-white">5:00 PM - 10:00 PM</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">Fri - Sat</span><span class="text-white">5:00 PM - 11:00 PM</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">Sunday</span><span class="text-white">4:00 PM - 9:00 PM</span></div>
-                    </div>
-                </div>
-                <div class="rounded-2xl p-6 border border-white/10" style="background: rgba(255,255,255,0.04)">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: rgba(245,158,11,0.2)">
-                            <i data-lucide="map-pin" class="w-5 h-5 text-amber-400"></i>
-                        </div>
-                        <h3 class="font-bold text-white">Location</h3>
-                    </div>
-                    <p class="text-gray-400 text-sm leading-relaxed">123 Gourmet Avenue<br>New York, NY 10001</p>
-                </div>
-                <div class="rounded-2xl p-6 border border-white/10" style="background: rgba(255,255,255,0.04)">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: rgba(245,158,11,0.2)">
-                            <i data-lucide="phone" class="w-5 h-5 text-amber-400"></i>
-                        </div>
-                        <h3 class="font-bold text-white">Contact</h3>
-                    </div>
-                    <div class="space-y-3">
-                        <div class="flex items-center gap-2 text-sm text-gray-300"><i data-lucide="phone" class="w-4 h-4 text-amber-400"></i><span>(555) 123-4567</span></div>
-                        <div class="flex items-center gap-2 text-sm text-gray-300"><i data-lucide="mail" class="w-4 h-4 text-amber-400"></i><span>reservations@restaurant.com</span></div>
-                    </div>
-                </div>
-                <div class="rounded-2xl p-6 border border-amber-500/20" style="background: rgba(245,158,11,0.08)">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: rgba(245,158,11,0.2)">
-                            <i data-lucide="users" class="w-5 h-5 text-amber-400"></i>
-                        </div>
-                        <h3 class="font-bold text-white">Private Dining</h3>
-                    </div>
-                    <p class="text-gray-400 text-sm mb-3">Hosting 12+ guests? We offer exclusive private dining rooms for special occasions.</p>
-                    <a href="mailto:events@restaurant.com" class="text-amber-400 text-sm font-medium hover:text-amber-300 transition-colors">Contact our events team →</a>
-                </div>
-            </div>
-
-            <div class="md:col-span-2">
-                <form id="restaurantBookingForm" onsubmit="handleRestaurantBooking(event); return false;" class="rounded-2xl p-6 md:p-8 border border-white/10" style="background: rgba(255,255,255,0.04)">
-                    <h2 class="text-2xl font-bold mb-6 gradient-text">Make a Reservation</h2>
-                    <div class="space-y-4">
-                        <div class="grid md:grid-cols-2 gap-4">
-                            <div><label class="block text-sm font-medium text-gray-300 mb-1">Full Name *</label><input type="text" id="reservationName" required placeholder="John Doe" class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white"></div>
-                            <div><label class="block text-sm font-medium text-gray-300 mb-1">Email Address *</label><input type="email" id="reservationEmail" required placeholder="john@example.com" class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white"></div>
-                        </div>
-                        <div class="grid md:grid-cols-2 gap-4">
-                            <div><label class="block text-sm font-medium text-gray-300 mb-1">Date *</label><input type="date" id="reservationDateSelect" required class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white"></div>
-                            <div><label class="block text-sm font-medium text-gray-300 mb-1">Time *</label>
-                                <select id="reservationTimeSelect" required class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white">
-                                    <option value="">Select Time</option>
-                                    <option value="5:00 PM">5:00 PM</option>
-                                    <option value="5:30 PM">5:30 PM</option>
-                                    <option value="6:00 PM">6:00 PM</option>
-                                    <option value="6:30 PM">6:30 PM</option>
-                                    <option value="7:00 PM">7:00 PM</option>
-                                    <option value="7:30 PM">7:30 PM</option>
-                                    <option value="8:00 PM">8:00 PM</option>
-                                    <option value="8:30 PM">8:30 PM</option>
-                                    <option value="9:00 PM">9:00 PM</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="grid md:grid-cols-2 gap-4">
-                            <div><label class="block text-sm font-medium text-gray-300 mb-1">Number of Guests *</label>
-                                <select id="reservationGuestsSelect" required class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white">
-                                    <option value="1">1 Guest</option><option value="2">2 Guests</option><option value="3">3 Guests</option>
-                                    <option value="4">4 Guests</option><option value="5">5 Guests</option><option value="6">6 Guests</option>
-                                    <option value="7">7 Guests</option><option value="8">8+ Guests</option>
-                                </select>
-                            </div>
-                            <div><label class="block text-sm font-medium text-gray-300 mb-1">Occasion</label>
-                                <select id="reservationOccasion" class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white">
-                                    <option value="dinner">🍽️ Dinner</option><option value="birthday">🎂 Birthday</option>
-                                    <option value="anniversary">💕 Anniversary</option><option value="date">🌹 Date Night</option>
-                                    <option value="business">💼 Business Dinner</option><option value="family">👨‍👩‍👧‍👦 Family Gathering</option>
-                                    <option value="other">✨ Other</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div><label class="block text-sm font-medium text-gray-300 mb-1">Phone Number</label><input type="tel" id="reservationPhone" class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white"></div>
-                        <div><label class="block text-sm font-medium text-gray-300 mb-1">Special Requests</label><textarea id="reservationRequests" rows="3" class="w-full px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white" placeholder="Dietary restrictions, seating preferences, allergies, celebrations..."></textarea></div>
-                        <div class="p-4 rounded-xl border" style="background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.25)">
-                            <div class="flex items-start gap-2"><i data-lucide="info" class="w-4 h-4 text-amber-400 mt-0.5"></i><div class="text-xs text-gray-400"><p class="font-semibold text-amber-400 mb-1">Cancellation Policy</p><p>Free cancellation up to 2 hours before your reservation. Late cancellations incur a $25/person fee. No-shows are charged the full meal price.</p></div></div>
-                        </div>
-                        <button type="submit" class="w-full py-3.5 rounded-xl font-bold text-white text-base hover:opacity-90 transition-all duration-300 flex items-center justify-center gap-2" style="background: linear-gradient(135deg, #f59e0b, #ea580c); box-shadow: 0 8px 25px rgba(245,158,11,0.3)">
-                            <i data-lucide="check-circle" class="w-5 h-5"></i>Confirm Reservation
-                        </button>
-                    </div>
-                </form>
-            </div>
+            <h3>Table Reserved! 🎉</h3>
+            <p>Your table has been successfully booked for <strong><span id="reservationDate"></span></strong> at <strong><span id="reservationTime"></span></strong> for <strong><span id="reservationGuests"></span></strong> guest(s).</p>
+            <p class="text-gray-400 text-sm mt-2">A confirmation has been sent to your email.</p>
+            <button class="modal-close-btn" onclick="closeReservationModal()" style="margin-top: 1rem; background: linear-gradient(135deg, #8b5cf6, #ec4899); color: white; border: none; padding: 0.75rem 2rem; border-radius: 9999px; font-weight: 600; cursor: pointer;">Wonderful!</button>
         </div>
-    </div>'''
+    </div>
     
-    # Find the reservations page div and replace its entire content
-    pattern = r'(<div id="page_reservations"[^>]*>)([\s\S]*?)(</div>)'
+    <!-- Quick Reservation Button (Floating) -->
+    <button id="quickReserveBtn" class="fixed bottom-8 right-8 z-50 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-6 py-3 rounded-full shadow-lg shadow-amber-500/30 hover:scale-105 transition-all duration-300 flex items-center gap-2">
+        <i class="fas fa-calendar-check"></i>
+        Book a Table
+    </button>
+    '''
     
-    def replace_content(match):
-        opening = match.group(1)
-        closing = match.group(3)
-        return opening + complete_form + closing
+    # Inject modal before closing body
+    if '</body>' in html_content:
+        html_content = html_content.replace('</body>', reservation_modal + '\n</body>', 1)
     
-    updated_html = re.sub(pattern, replace_content, html_content, flags=re.DOTALL)
+    # ========== 3. INJECT RESTAURANT JAVASCRIPT ==========
+    restaurant_js = '''
+    <script>
+    // Restaurant Reservation Functions
+    function openReservationModal() {
+        const modal = document.getElementById('reservationModal');
+        if (modal) modal.classList.add('active');
+    }
     
-    if updated_html != html_content:
-        print("✅ Successfully injected complete reservation form with proper IDs")
-    else:
-        print("⚠️ Could not find page_reservations div")
+    function closeReservationModal() {
+        const modal = document.getElementById('reservationModal');
+        if (modal) modal.classList.remove('active');
+    }
     
-    return updated_html
-
-
-
-
+    function showReservationSuccess(date, time, guests, name, email) {
+        const modal = document.getElementById('reservationModal');
+        const dateSpan = document.getElementById('reservationDate');
+        const timeSpan = document.getElementById('reservationTime');
+        const guestsSpan = document.getElementById('reservationGuests');
+        
+        if (dateSpan) dateSpan.textContent = date;
+        if (timeSpan) timeSpan.textContent = time;
+        if (guestsSpan) guestsSpan.textContent = guests;
+        
+        if (modal) modal.classList.add('active');
+        
+        // Save to localStorage
+        const reservation = {
+            id: Date.now(),
+            name: name,
+            email: email,
+            guests: guests,
+            date: date,
+            time: time,
+            createdAt: new Date().toISOString()
+        };
+        
+        let reservations = JSON.parse(localStorage.getItem('restaurant_reservations') || '[]');
+        reservations.push(reservation);
+        localStorage.setItem('restaurant_reservations', JSON.stringify(reservations));
+        
+        console.log('✅ Reservation saved:', reservation);
+    }
+    
+    // Handle booking form submission
+    function handleRestaurantBooking(event) {
+        event.preventDefault();
+        
+        const name = document.getElementById('reservationName')?.value;
+        const email = document.getElementById('reservationEmail')?.value;
+        const guests = document.getElementById('reservationGuestsSelect')?.value;
+        const date = document.getElementById('reservationDateSelect')?.value;
+        const time = document.getElementById('reservationTimeSelect')?.value;
+        
+        if (!name || !email || !guests || !date || !time) {
+            alert('Please fill in all required fields.');
+            return;
+        }
+        
+        if (!email.includes('@')) {
+            alert('Please enter a valid email address.');
+            return;
+        }
+        
+        const today = new Date().toISOString().split('T')[0];
+        if (date < today) {
+            alert('Please select a future date.');
+            return;
+        }
+        
+        // Format date for display
+        const formattedDate = new Date(date).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        
+        showReservationSuccess(formattedDate, time, guests, name, email);
+        
+        // Reset form
+        const form = document.getElementById('restaurantBookingForm');
+        if (form) form.reset();
+    }
+    
+    // Quick reserve button
+    document.addEventListener('DOMContentLoaded', function() {
+        const quickBtn = document.getElementById('quickReserveBtn');
+        if (quickBtn) {
+            quickBtn.addEventListener('click', function() {
+                const reservationsSection = document.getElementById('page_reservations');
+                if (reservationsSection) {
+                    reservationsSection.scrollIntoView({ behavior: 'smooth' });
+                    if (typeof showPage === 'function') {
+                        showPage('reservations');
+                    }
+                }
+            });
+        }
+        
+        // Set minimum date for date pickers
+        const today = new Date().toISOString().split('T')[0];
+        document.querySelectorAll('input[type="date"]').forEach(input => {
+            if (!input.value) {
+                input.min = today;
+            }
+        });
+        
+        // Initialize booking form
+        const bookingForm = document.getElementById('restaurantBookingForm');
+        if (bookingForm && !bookingForm.onsubmit) {
+            bookingForm.onsubmit = handleRestaurantBooking;
+        }
+    });
+    
+    // Close modal on escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('reservationModal');
+            if (modal && modal.classList.contains('active')) {
+                closeReservationModal();
+            }
+        }
+    });
+    
+    // Close modal when clicking outside
+    window.addEventListener('click', function(event) {
+        const modal = document.getElementById('reservationModal');
+        if (event.target === modal) {
+            closeReservationModal();
+        }
+    });
+    </script>
+    '''
+    
+    # Inject JavaScript
+    if '</body>' in html_content:
+        html_content = html_content.replace('</body>', restaurant_js + '\n</body>', 1)
+    
+    print(f"🍽️ Injected restaurant features: modal, floating button, and JavaScript")
+    
+    # CRITICAL: Return the modified html_content
+    return html_content
 
 
 
@@ -1310,239 +1642,6 @@ def fix_restaurant_reservation_form(html_content: str) -> str:
 
 
 
-def extract_and_inject_trust_indicators(source_content: str, html_content: str) -> str:
-    """Extract trust indicators and inject them AFTER CTA buttons - removes existing duplicates first"""
-    import re
-
-    print("🔧 EXTRACTING AND INJECTING TRUST INDICATORS...")
-
-    # ========== FIRST, REMOVE ANY EXISTING TRUST BADGES (both formats) ==========
-    
-    # Pattern 1: Remove the absolute bottom positioned badges (original source format)
-    original_badge_pattern = r'<div class="absolute bottom-8 left-0 right-0 z-10">[\s\S]*?<div class="flex flex-wrap items-center justify-center gap-6 md:gap-12">[\s\S]*?</div>\s*</div>\s*</div>'
-    html_content = re.sub(original_badge_pattern, '', html_content, flags=re.DOTALL)
-    
-    # Pattern 2: Remove our injected format if it exists (to avoid duplicates)
-    injected_badge_pattern = r'<!-- Trust Badges -->\s*<div class="trust-badges-container">[\s\S]*?</div>\s*</div>\s*</div>'
-    html_content = re.sub(injected_badge_pattern, '', html_content, flags=re.DOTALL)
-    
-    # Pattern 3: Remove the specific leftover badge remnants (Fresh, Ingredients, Award, Winning)
-    leftover_badge_pattern = r'<div>\s*<div class="text-white font-bold text-lg leading-none">[^<]+</div>\s*<div class="text-gray-400 text-xs">[^<]+</div>\s*</div>\s*</div>\s*</div>\s*</div>'
-    html_content = re.sub(leftover_badge_pattern, '', html_content, flags=re.DOTALL)
-    
-    # Pattern 4: Remove individual orphaned badge divs
-    orphaned_badge_pattern = r'<div>\s*<div class="text-white font-bold text-lg leading-none">[^<]+</div>\s*<div class="text-gray-400 text-xs">[^<]+</div>\s*</div>'
-    html_content = re.sub(orphaned_badge_pattern, '', html_content, flags=re.DOTALL)
-    
-    # Pattern 5: Remove any malformed badge sections
-    malformed_patterns = [
-        r'<div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-12">[\s\S]*?</div>',
-        r'<div class="hidden md:block w-px h-8 bg-white/10"></div>\s*<div class="flex items-center gap-3">[\s\S]*?</div>',
-    ]
-    for pattern in malformed_patterns:
-        html_content = re.sub(pattern, '', html_content, flags=re.DOTALL)
-    
-    print("  🗑️ Removed existing trust badges")
-
-    # ========== INJECT CSS ==========
-    trust_badges_css = '''
-    /* Push hero content below fixed header */
-    .relative.z-10 {
-        padding-top: 100px;
-    }
-    
-    @media (max-width: 768px) {
-        .relative.z-10 {
-            padding-top: 72px;
-        }
-    }
-    
-    /* Trust Badges Styles */
-    .trust-badges-container {
-        margin-top: 0.5rem;
-        margin-bottom: 0;
-    }
-    
-    .trust-badges-flex {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: center;
-        gap: 1rem;
-    }
-    
-    @media (min-width: 640px) {
-        .trust-badges-flex {
-            gap: 1.5rem;
-        }
-    }
-    
-    @media (min-width: 768px) {
-        .trust-badges-flex {
-            gap: 2rem;
-        }
-    }
-    
-    .trust-badge-item {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    
-    @media (min-width: 640px) {
-        .trust-badge-item {
-            gap: 0.75rem;
-        }
-    }
-    
-    .trust-badge-icon {
-        width: 2rem;
-        height: 2rem;
-        border-radius: 9999px;
-        background: rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(4px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    @media (min-width: 640px) {
-        .trust-badge-icon {
-            width: 2.5rem;
-            height: 2.5rem;
-        }
-    }
-    
-    .trust-badge-value {
-        font-weight: bold;
-        font-size: 1rem;
-        line-height: 1;
-        color: white;
-    }
-    
-    @media (min-width: 640px) {
-        .trust-badge-value {
-            font-size: 1.125rem;
-        }
-    }
-    
-    .trust-badge-label {
-        color: #9ca3af;
-        font-size: 0.625rem;
-    }
-    
-    @media (min-width: 640px) {
-        .trust-badge-label {
-            font-size: 0.75rem;
-        }
-    }
-    
-    .trust-badge-separator {
-        display: none;
-        width: 1px;
-        height: 1.5rem;
-        background: rgba(255, 255, 255, 0.1);
-    }
-    
-    @media (min-width: 768px) {
-        .trust-badge-separator {
-            display: block;
-            height: 2rem;
-        }
-    }
-    '''
-    
-    # Remove any existing broken CSS
-    html_content = re.sub(r'\.relative\.z-3\s*\{\s*padding-top:\s*72px;\s*\}', '', html_content)
-    
-    # Inject CSS
-    if '<style>' in html_content:
-        if '.trust-badges-container' not in html_content:
-            html_content = html_content.replace('</style>', trust_badges_css + '\n</style>', 1)
-            print("  ✅ Injected trust badges CSS")
-
-    # ========== BUILD TRUST BADGES HTML ==========
-    trust_badges_html = '''
-            <!-- Trust Badges -->
-            <div class="trust-badges-container">
-                <div class="container mx-auto px-4">
-                    <div class="trust-badges-flex">
-                        <div class="trust-badge-item">
-                            <div class="trust-badge-icon">
-                                <i class="fas fa-star text-yellow-400"></i>
-                            </div>
-                            <div>
-                                <div class="trust-badge-value">4.9/5</div>
-                                <div class="trust-badge-label">Rating</div>
-                            </div>
-                        </div>
-                        <div class="trust-badge-separator"></div>
-                        <div class="trust-badge-item">
-                            <div class="trust-badge-icon">
-                                <i class="fas fa-users text-cyan-400"></i>
-                            </div>
-                            <div>
-                                <div class="trust-badge-value">10k+</div>
-                                <div class="trust-badge-label">Diners</div>
-                            </div>
-                        </div>
-                        <div class="trust-badge-separator"></div>
-                        <div class="trust-badge-item">
-                            <div class="trust-badge-icon">
-                                <i class="fas fa-shield-alt text-green-400"></i>
-                            </div>
-                            <div>
-                                <div class="trust-badge-value">Fresh</div>
-                                <div class="trust-badge-label">Ingredients</div>
-                            </div>
-                        </div>
-                        <div class="trust-badge-separator"></div>
-                        <div class="trust-badge-item">
-                            <div class="trust-badge-icon">
-                                <i class="fas fa-utensils text-blue-400"></i>
-                            </div>
-                            <div>
-                                <div class="trust-badge-value">Award</div>
-                                <div class="trust-badge-label">Winning</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-    '''
-
-    # ========== FIND CTA BUTTONS AND INJECT AFTER ==========
-    
-    # Pattern 1: Look for the CTA div with mb-10
-    cta_pattern1 = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center mb-10">.*?</div>)'
-    
-    match = re.search(cta_pattern1, html_content, re.DOTALL)
-    if match:
-        html_content = html_content.replace(
-            match.group(0),
-            match.group(0) + '\n' + trust_badges_html
-        )
-        print("  ✅ Injected trust badges after CTA buttons (Pattern 1)")
-        return html_content
-    
-    # Pattern 2: Look for CTA div without mb-10
-    cta_pattern2 = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center">.*?</div>)'
-    
-    match = re.search(cta_pattern2, html_content, re.DOTALL)
-    if match:
-        html_content = html_content.replace(
-            match.group(0),
-            match.group(0) + '\n' + trust_badges_html
-        )
-        print("  ✅ Injected trust badges after CTA buttons (Pattern 2)")
-        return html_content
-    
-    print("  ⚠️ Could not find CTA buttons - trust badges not injected")
-    return html_content
-    
-    
-    
-    
 
 
 
@@ -1562,19 +1661,6 @@ def extract_and_inject_trust_indicators(source_content: str, html_content: str) 
 
 
 
-def extract_indicator(icon_name: str, icon_class: str, text: str) -> dict:
-    """Helper to extract a single trust indicator"""
-    icon_map = {
-        'Star': 'fa-star', 'Users': 'fa-users', 'Shield': 'fa-shield-alt',
-        'Truck': 'fa-truck', 'Cpu': 'fa-microchip', 'Sparkles': 'fa-sparkles',
-        'Utensils': 'fa-utensils', 'Coffee': 'fa-coffee', 'Heart': 'fa-heart','Code': 'fa-code'
-    }
-    fa_icon = icon_map.get(icon_name, 'fa-circle')
-    
-    color_match = re.search(r'text-(\w+-\d+)', icon_class)
-    color = f"text-{color_match.group(1)}" if color_match else "text-purple-400"
-    
-    return {'icon': fa_icon, 'color': color, 'text': text}
 
 
 
@@ -3047,9 +3133,27 @@ async def generate_preview_internal(
             elif detected_as_dashboard:
                 nav_links = [("analytics", "Analytics"), ("settings", "Settings")]
                 print(f"📍 Using dashboard default nav_links: {nav_links}")
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
             else:
                 nav_links = [("shop", "Shop"), ("cart", "Cart")]
                 print("🔍 Using e-commerce default nav_links")
+                
+                
+                
+                
+                
+                
+                
 
         print(f"📍 Navigation: {brand_name} -> {nav_links}")
         
@@ -4004,6 +4108,10 @@ async def generate_preview_internal(
                         print(f"   ✅ Image present in final output!")
                   else:
                         print(f"   ⚠️ Image missing from final output!")
+                  
+                  
+                  
+                  
                   
                   print(f"\n✅ Extraction complete for {route_name}")
                   print(f"{'='*60}\n")
@@ -11484,19 +11592,9 @@ document.addEventListener('DOMContentLoaded', function() {{
             
             
             
-            
-            # ⭐⭐⭐ INJECT RESERVATION FORM (ONLY FOR RESTAURANTS) ⭐⭐⭐
+
         if not is_dashboard_detected and is_restaurant_detected:
-            preview_html = inject_reservation_form(preview_html)
-            print("📅 Reservation form injected")
-        elif is_dashboard_detected:
-            print("📊 Dashboard detected - skipping reservation form injection")
-        else:
-            print("🚫 Not a restaurant - skipping reservation form injection")
-
-
-
-
+            print("📅 Reservation features already handled by inject_restaurant_features()")
 
 
 
@@ -11513,7 +11611,7 @@ document.addEventListener('DOMContentLoaded', function() {{
         print(f"   FAQ in source: {has_faq}")
         
         # Only inject trust badges (these sometimes get lost in conversion)
-        preview_html = extract_and_inject_trust_indicators(homepage_source, preview_html)
+        preview_html = inject_trust_indicators(preview_html, files, user_prompt)
         
         
         # Inject hero padding fix to prevent header overlap
