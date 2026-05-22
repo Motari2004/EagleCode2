@@ -16,27 +16,25 @@ from styles import (
 
 
 
-
 def fix_hero_navigation_overlap(html_content: str) -> str:
     """
     Fix hero section to not overlap fixed navigation header
-    Adds pt-[72px] to container and changes h-screen to h-[calc(100vh-72px)]
+    Uses margin instead of padding to preserve absolute positioning
     """
     import re
     
     print("🔧 Fixing hero navigation overlap...")
     
-    # Step 1: Fix the page_home div - add pt-[72px] to existing class
-    # Find the div and add pt-[72px] to its class attribute
+    # Step 1: Fix the page_home div - add proper class
     def fix_page_home(match):
         full_tag = match.group(0)
         class_match = re.search(r'class="([^"]*)"', full_tag)
         if class_match:
             existing_classes = class_match.group(1)
-            # Add pt-[72px] if not already there
-            if 'pt-[72px]' not in existing_classes:
-                new_classes = f'class="{existing_classes} pt-[72px]"'
-                full_tag = full_tag.replace(class_match.group(0), new_classes)
+            # Ensure no conflicting padding classes
+            existing_classes = re.sub(r'\bpt-\[?\d+px?\]?\b', '', existing_classes)
+            new_classes = f'class="{existing_classes}"'
+            full_tag = full_tag.replace(class_match.group(0), new_classes)
         return full_tag
     
     html_content = re.sub(
@@ -46,28 +44,31 @@ def fix_hero_navigation_overlap(html_content: str) -> str:
         flags=re.DOTALL
     )
     
-    # Step 2: Find the hero section and change h-screen to h-[calc(100vh-72px)]
-    # Only modify the section tag, not the entire content
+    # Step 2: Ensure hero section has proper classes for centering
     def fix_hero_section(match):
         full_tag = match.group(0)
-        # Replace h-screen with h-[calc(100vh-72px)]
-        if 'h-screen' in full_tag:
-            full_tag = full_tag.replace('h-screen', 'h-[calc(100vh-72px)]')
         # Ensure flex centering classes exist
         if 'flex items-center justify-center' not in full_tag:
+            # Add flex centering without changing height
             full_tag = full_tag.replace('relative', 'relative flex items-center justify-center')
         return full_tag
     
     html_content = re.sub(
-        r'<section[^>]*class="[^"]*relative[^"]*h-screen[^"]*"[^>]*>',
+        r'<section[^>]*class="[^"]*relative[^"]*"[^>]*>',
         fix_hero_section,
         html_content,
         count=1,
         flags=re.DOTALL
     )
     
-    print("  ✅ Added pt-[72px] to #page_home container")
-    print("  ✅ Changed hero section height to h-[calc(100vh-72px)]")
+    # Step 3: Remove any conflicting padding from hero content container
+    html_content = re.sub(
+        r'class="relative z-10[^"]*pt-\[?\d+px?\]?[^"]*"',
+        'class="relative z-10"',
+        html_content
+    )
+    
+    print("  ✅ Fixed hero navigation overlap without breaking trust indicators")
     
     return html_content
 
@@ -765,47 +766,89 @@ def remove_hero_image_from_html(html_content: str) -> str:
 
 
 
-
-
 def inject_hero_padding_fix(html_content: str) -> str:
-    """Inject CSS to push hero content below fixed header"""
+    """Inject CSS to push hero content below fixed header - FIXED for trust indicators"""
     import re
     
     print("🔧 INJECTING HERO PADDING FIX...")
     
+    # FIXED CSS - Removes conflicting padding and uses proper z-index
     hero_padding_css = '''
     
+    /* Fix for fixed header - prevents overlap without breaking absolute positioning */
+    body {
+        padding-top: 0;
+        margin: 0;
+    }
+    
+    /* Push hero content below fixed header using margin, not padding */
+    #page_home section.relative {
+        margin-top: 0;
+        padding-top: 0;
+    }
+    
+    /* Ensure trust indicators stay at bottom of hero section */
+    .absolute.bottom-8 {
+        bottom: 1.5rem !important;
+        z-index: 20 !important;
+        pointer-events: auto !important;
+    }
     
     
-    /* Push hero content below fixed header */
-.relative.z-10 {
-    padding-top: 110px;
+    
+    
+    
+    /* Hero content container - proper spacing from header */
+#page_home .relative.z-10 {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 120px;
 }
     
     
     
     
     
+    
     @media (max-width: 768px) {
-        .relative.z-10 {
-            padding-top: 72px;
+        .absolute.bottom-8 {
+            bottom: 1rem !important;
         }
     }
     '''
     
     # Check if the CSS already exists
-    if 'Push hero content below fixed header' in html_content:
+    if 'Fix for fixed header - prevents overlap without breaking absolute positioning' in html_content:
         print("  ✅ Hero padding fix already exists - skipping injection")
         return html_content
+    
+    # Remove conflicting CSS first
+    # Remove any existing padding-top on relative.z-10
+    html_content = re.sub(
+        r'\.relative\.z-10\s*\{\s*padding-top:\s*[^;]+;?\s*\}',
+        '',
+        html_content,
+        flags=re.DOTALL
+    )
+    
+    # Remove any margin-top on hero section
+    html_content = re.sub(
+        r'#page_home\s+section\.relative\s*\{\s*margin-top:\s*[^;]+;?\s*\}',
+        '',
+        html_content,
+        flags=re.DOTALL
+    )
     
     # Inject into existing style tag
     if '<style>' in html_content:
         html_content = html_content.replace('</style>', hero_padding_css + '\n</style>', 1)
-        print("  ✅ Injected hero padding fix into style tag")
+        print("  ✅ Injected fixed hero padding fix into style tag")
     else:
         # Create style tag if doesn't exist
         html_content = html_content.replace('<head>', f'<head><style>{hero_padding_css}</style>', 1)
-        print("  ✅ Created style tag with hero padding fix")
+        print("  ✅ Created style tag with fixed hero padding fix")
     
     return html_content
 
@@ -2997,8 +3040,18 @@ async def generate_preview_internal(
 
 
 
+
+
+
+
+
+
+
+
         def convert_navigation_to_html(nav_content: str, brand_name: str, nav_links: list) -> str:
             """Convert Next.js Navigation component to HTML with Lucide icons - with cart badge support"""
+            
+            import re
             
             # ========== DYNAMIC ICON EXTRACTION ==========
             icon_name = "Sparkles"  # default
@@ -3008,16 +3061,20 @@ async def generate_preview_internal(
             # Method 1: Extract from JSX with any className pattern
             jsx_pattern = r'<(\w+)\s+className="([^"]*)"'
             jsx_matches = re.findall(jsx_pattern, nav_content)
+            
             for match in jsx_matches:
                 potential_icon = match[0]
                 class_str = match[1]
+                
                 # Check if it's likely an icon (not a div or span)
                 if potential_icon[0].isupper() and len(potential_icon) > 1:
                     icon_name = potential_icon
+                    
                     # Extract size from className
                     size_match = re.search(r'w-(\d+)\s+h-(\d+)', class_str)
                     if size_match:
                         icon_size = f"w-{size_match.group(1)} h-{size_match.group(2)}"
+                    
                     # Extract color from className
                     color_match = re.search(r'text-(\w+-\d+)', class_str)
                     if color_match:
@@ -3036,6 +3093,7 @@ async def generate_preview_internal(
             
             # Map icon name to Lucide data-lucide attribute
             lucide_icon = icon_name.lower()
+            
             special_mappings = {
                 "graduationcap": "graduation-cap",
                 "shoppingbag": "shopping-bag",
@@ -3048,11 +3106,15 @@ async def generate_preview_internal(
             # Extract brand text gradient className
             brand_text_class = "text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"
             text_match = re.search(r'<span[^>]*className="([^"]*)"[^>]*>[^<]*</span>', nav_content)
+            
             if text_match:
                 brand_text_class = text_match.group(1)
             
             # ========== CHECK IF CART EXISTS IN NAV_LINKS ==========
-            has_cart = any('cart' in label.lower() or href == '/cart' for href, label in nav_links)
+            has_cart_in_links = any('cart' in label.lower() or href == '/cart' for href, label in nav_links)
+            
+            # ========== DETECT SHOP (to force cart link) ==========
+            has_shop = any('shop' in label.lower() or href == '/shop' for href, label in nav_links)
             
             # ========== BUILD NAVIGATION BUTTONS ==========
             nav_buttons_html = ""
@@ -3061,7 +3123,6 @@ async def generate_preview_internal(
             mobile_cart_html = ""
             
             print(f"📋 Building navigation for {len(nav_links)} links: {nav_links}")
-            print(f"   Has cart: {has_cart}")
             
             # E-commerce keywords that should have icons
             ECOMMERCE_KEYWORDS = ["shop", "store", "catalog", "catalogue", "cart", "basket", "products", "checkout"]
@@ -3082,21 +3143,22 @@ async def generate_preview_internal(
                     hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
                     
                     cart_link_html = f'''
-                        <a href="{href}" class="nav-link relative flex items-center gap-2 group" data-page="{href.replace('/', '')}">
-                            <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
-                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
-                            <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
-                        </a>'''
+                                <a href="{href}" class="nav-link relative flex items-center gap-2 group" data-page="{href.replace('/', '')}">
+                                    <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                                    <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                                    <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
+                                </a>'''
                     
                     # Mobile cart link
                     mobile_cart_html = f'''
-                        <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
-                            <a href="{href}" class="mobile-nav-link flex items-center gap-3" data-page="{href.replace('/', '')}">
-                                <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
-                                <span class="text-gray-300">{label}</span>
-                            </a>
-                            <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
-                        </div>'''
+                                <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
+                                    <a href="{href}" class="mobile-nav-link flex items-center gap-3" data-page="{href.replace('/', '')}">
+                                        <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
+                                        <span class="text-gray-300">{label}</span>
+                                    </a>
+                                    <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+                                </div>'''
+                
                 elif is_ecommerce:
                     # Regular e-commerce link WITH icon (no badge)
                     if "shop" in label_lower or "store" in label_lower:
@@ -3114,75 +3176,99 @@ async def generate_preview_internal(
                     hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
                     
                     nav_buttons_html += f'''
-                        <a href="{href}" class="nav-link flex items-center gap-2 group" data-page="{href.replace('/', '')}">
-                            <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
-                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
-                        </a>'''
+                                <a href="{href}" class="nav-link flex items-center gap-2 group" data-page="{href.replace('/', '')}">
+                                    <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                                    <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                                </a>'''
                     
                     # Mobile version
                     mobile_nav_html += f'''
-                        <a href="{href}" class="mobile-nav-link flex items-center gap-3 w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{href.replace('/', '')}">
-                            <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
-                            <span class="text-gray-300">{label}</span>
-                        </a>'''
+                                <a href="{href}" class="mobile-nav-link flex items-center gap-3 w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{href.replace('/', '')}">
+                                    <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
+                                    <span class="text-gray-300">{label}</span>
+                                </a>'''
+                
                 else:
                     # Build non-e-commerce link WITHOUT icon (text only)
                     nav_buttons_html += f'''
-                        <a href="{href}" class="nav-link group" data-page="{href.replace('/', '')}">
-                            <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
-                        </a>'''
+                                <a href="{href}" class="nav-link group" data-page="{href.replace('/', '')}">
+                                    <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">{label}</span>
+                                </a>'''
                     
                     # Mobile version
                     mobile_nav_html += f'''
-                        <a href="{href}" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{href.replace('/', '')}">
-                            <span class="text-gray-300">{label}</span>
-                        </a>'''
+                                <a href="{href}" class="mobile-nav-link block w-full px-4 py-2 rounded-lg hover:bg-white/10" data-page="{href.replace('/', '')}">
+                                    <span class="text-gray-300">{label}</span>
+                                </a>'''
+            
+            # ========== FORCE CART LINK IF SHOP EXISTS BUT CART MISSING ==========
+            if has_shop and not has_cart_in_links:
+                print("🛒 Adding forced cart link (e-commerce detected)")
+                item_icon = "shopping-cart"
+                base_color = icon_color.replace('500', '400') if '500' in icon_color else icon_color
+                hover_color = icon_color.replace('500', '600') if '500' in icon_color else icon_color
+                
+                cart_link_html = f'''
+                                <a href="cart" class="nav-link relative flex items-center gap-2 group" data-page="cart">
+                                    <i data-lucide="{item_icon}" class="w-4 h-4 {base_color} group-hover:{hover_color} group-hover:scale-110 transition-all duration-300"></i>
+                                    <span class="text-gray-300 group-hover:{icon_color} transition-colors duration-300">Cart</span>
+                                    <span data-cart-count class="cart-count-badge hidden absolute -top-2 -right-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1 shadow-lg shadow-purple-500/25">0</span>
+                                </a>'''
+                
+                mobile_cart_html = f'''
+                                <div class="flex items-center justify-between w-full px-4 py-2 rounded-lg hover:bg-white/10">
+                                    <a href="cart" class="mobile-nav-link flex items-center gap-3" data-page="cart">
+                                        <i data-lucide="{item_icon}" class="w-4 h-4 {icon_color}"></i>
+                                        <span class="text-gray-300">Cart</span>
+                                    </a>
+                                    <span data-cart-count class="cart-count-badge hidden bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full items-center justify-center px-1">0</span>
+                                </div>'''
             
             # ========== GENERATE FINAL NAVIGATION HTML ==========
-            # Only include cart elements if cart exists
-            cart_desktop_html = cart_link_html if has_cart else ""
-            cart_mobile_html = mobile_cart_html if has_cart else ""
+            cart_desktop_html = cart_link_html if (has_cart_in_links or has_shop) else ""
+            cart_mobile_html = mobile_cart_html if (has_cart_in_links or has_shop) else ""
             
             return f'''
-            <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
-                <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
-                    <i data-lucide="{lucide_icon}" class="w-8 h-8" style="color: #d8a219;"></i>
-                    <span class="text-white text-xl font-bold">{brand_name}</span>
-                </a>
-                <div class="hidden md:flex space-x-2 items-center">
-                    {navigation_html}
-                    {cart_desktop_html}
-                </div>
-                <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
-                    <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
-                </button>
-            </nav>
+                    <nav class="flex justify-between items-center p-6 container mx-auto sticky top-0 z-50 bg-black/80 backdrop-blur-lg border-b border-white/10">
+                        <a href="#" class="brand flex items-center gap-2 group" onclick="handleBrandClick(event); return false;">
+                            <i data-lucide="{lucide_icon}" class="w-8 h-8" style="color: #d8a219;"></i>
+                            <span class="text-white text-xl font-bold">{brand_name}</span>
+                        </a>
+                        <div class="hidden md:flex space-x-2 items-center">
+                            {nav_buttons_html}
+                            {cart_desktop_html}
+                        </div>
+                        <button id="mobile-menu-button" class="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors">
+                            <i data-lucide="menu" class="w-6 h-6" style="color: #d8a219;"></i>
+                        </button>
+                    </nav>
 
-            <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
-                {navigation_html}
-                {cart_mobile_html}
-            </div>
+                    <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-lg p-4 space-y-2 border-t border-white/10">
+                        {mobile_nav_html}
+                        {cart_mobile_html}
+                    </div>
 
-            <style>
-                /* Cart Badge Animation */
-                .cart-count-badge {{
-                    animation: bounceIn 0.3s ease-out;
-                }}
-                @keyframes bounceIn {{
-                    0% {{ transform: scale(0); opacity: 0; }}
-                    50% {{ transform: scale(1.2); }}
-                    100% {{ transform: scale(1); opacity: 1; }}
-                }}
-            </style>
+                    <style>
+                        /* Cart Badge Animation */
+                        .cart-count-badge {{
+                            animation: bounceIn 0.3s ease-out;
+                        }}
+                        @keyframes bounceIn {{
+                            0% {{ transform: scale(0); opacity: 0; }}
+                            50% {{ transform: scale(1.2); }}
+                            100% {{ transform: scale(1); opacity: 1; }}
+                        }}
+                    </style>
 
-            <script>
-                document.getElementById('mobile-menu-button')?.addEventListener('click', function() {{
-                    const menu = document.getElementById('mobile-menu');
-                    if (menu) menu.classList.toggle('hidden');
-                }});
-                lucide.createIcons();
-            </script>
-            '''
+                    <script>
+                        document.getElementById('mobile-menu-button')?.addEventListener('click', function() {{
+                            const menu = document.getElementById('mobile-menu');
+                            if (menu) menu.classList.toggle('hidden');
+                        }});
+                        lucide.createIcons();
+                    </script>
+                    '''
+
                     
                     
                     
