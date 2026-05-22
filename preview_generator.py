@@ -14,6 +14,68 @@ from styles import (
 
 
 
+
+
+
+def fix_hero_navigation_overlap(html_content: str) -> str:
+    """
+    Fix hero section to not overlap fixed navigation header
+    Adds pt-[72px] to container and changes h-screen to h-[calc(100vh-72px)]
+    """
+    import re
+    
+    print("🔧 Fixing hero navigation overlap...")
+    
+    # Step 1: Fix the page_home div - add pt-[72px] to existing class
+    # Find the div and add pt-[72px] to its class attribute
+    def fix_page_home(match):
+        full_tag = match.group(0)
+        class_match = re.search(r'class="([^"]*)"', full_tag)
+        if class_match:
+            existing_classes = class_match.group(1)
+            # Add pt-[72px] if not already there
+            if 'pt-[72px]' not in existing_classes:
+                new_classes = f'class="{existing_classes} pt-[72px]"'
+                full_tag = full_tag.replace(class_match.group(0), new_classes)
+        return full_tag
+    
+    html_content = re.sub(
+        r'<div id="page_home"[^>]*class="[^"]*"[^>]*>',
+        fix_page_home,
+        html_content,
+        flags=re.DOTALL
+    )
+    
+    # Step 2: Find the hero section and change h-screen to h-[calc(100vh-72px)]
+    # Only modify the section tag, not the entire content
+    def fix_hero_section(match):
+        full_tag = match.group(0)
+        # Replace h-screen with h-[calc(100vh-72px)]
+        if 'h-screen' in full_tag:
+            full_tag = full_tag.replace('h-screen', 'h-[calc(100vh-72px)]')
+        # Ensure flex centering classes exist
+        if 'flex items-center justify-center' not in full_tag:
+            full_tag = full_tag.replace('relative', 'relative flex items-center justify-center')
+        return full_tag
+    
+    html_content = re.sub(
+        r'<section[^>]*class="[^"]*relative[^"]*h-screen[^"]*"[^>]*>',
+        fix_hero_section,
+        html_content,
+        count=1,
+        flags=re.DOTALL
+    )
+    
+    print("  ✅ Added pt-[72px] to #page_home container")
+    print("  ✅ Changed hero section height to h-[calc(100vh-72px)]")
+    
+    return html_content
+
+
+
+
+
+
 def extract_trust_indicators_from_source(source_content: str) -> list:
     """
     Extract trust badge data directly from raw TSX/JSX source.
@@ -101,7 +163,185 @@ def extract_trust_indicators_from_source(source_content: str) -> list:
                 if value and label:
                     indicators.append({'icon': icon_name, 'value': value, 'label': label})
 
+    # ========== PATTERN 6: Simple inline trust indicators ==========
+    if not indicators:
+        print("  🔍 Trying Pattern 6: Simple inline trust indicators...")
+        
+        container_pattern = r'<div\s+className="flex flex-wrap gap-6 justify-center[^"]*"[^>]*>(.*?)</div>\s*(?:</div>)?\s*(?:\))?\s*;?'
+        container_match = re.search(container_pattern, source_content, re.DOTALL)
+        
+        if container_match:
+            container_content = container_match.group(1)
+            item_pattern = r'<div\s+className="flex items-center gap-2">\s*<([A-Z][a-zA-Z]+)\s+className="[^"]*"[^>]*/>\s*([^<]+?)\s*</div>'
+            matches = re.findall(item_pattern, container_content, re.DOTALL)
+            
+            for match in matches:
+                icon_name = match[0]
+                full_text = match[1].strip()
+                
+                parts = full_text.split()
+                if len(parts) >= 2:
+                    first_part = parts[0]
+                    if re.match(r'^[\d\./\+k\+]+$', first_part) or '4.9' in first_part or '10k' in first_part:
+                        value = first_part
+                        label = ' '.join(parts[1:])
+                    else:
+                        value = full_text
+                        label = ""
+                else:
+                    value = full_text
+                    label = ""
+                
+                if value:
+                    indicators.append({
+                        'icon': icon_name,
+                        'value': value,
+                        'label': label
+                    })
+                    print(f"  ✅ Extracted trust indicator (Pattern 6): {icon_name} = {value} {label}")
+
+    # ========== PATTERN 7: Direct span text extraction ==========
+    if not indicators:
+        print("  🔍 Trying Pattern 7: Direct span text extraction...")
+        
+        # Look for pattern: <Icon /> <span>Text</span>
+        direct_pattern = r'<([A-Z][a-zA-Z]+)\s+className="[^"]*"(?:\s+fill="[^"]*")?\s*/>\s*<span[^>]*>([^<]+)</span>'
+        matches = re.findall(direct_pattern, source_content, re.DOTALL)
+        
+        for icon_name, full_text in matches:
+            full_text = full_text.strip()
+            parts = full_text.split(maxsplit=1)
+            if len(parts) == 2:
+                value = parts[0]
+                label = parts[1]
+            else:
+                # Try to detect if it's a number or rating
+                if re.match(r'^[\d\./\+k\+]+$', full_text):
+                    value = full_text
+                    label = ""
+                else:
+                    value = full_text
+                    label = ""
+            
+            indicators.append({
+                'icon': icon_name,
+                'value': value,
+                'label': label
+            })
+            print(f"  ✅ Extracted trust indicator (Pattern 7): {icon_name} = {value} {label}")
+
+    # ========== PATTERN 8: Map array trust indicators ==========
+    if not indicators:
+        print("  🔍 Trying Pattern 8: Map array trust indicators...")
+        
+        array_def_pattern = r'\[\s*\{\s*icon:\s*(\w+)\s*,\s*val:\s*["\']([^"\']+)["\']\s*,\s*label:\s*["\']([^"\']+)["\']\s*\},?\s*\]'
+        
+        trust_section_pattern = r'<div\s+className="absolute bottom-8 left-0 right-0 z-10">\s*<div\s+className="container mx-auto px-4 flex flex-wrap justify-center gap-12">\s*\{([\s\S]*?)\.map\([^)]*\)\s*=>\s*\([\s\S]*?\)\s*\)\s*\}'
+        trust_section_match = re.search(trust_section_pattern, source_content, re.DOTALL)
+        
+        if trust_section_match:
+            array_content = trust_section_match.group(1)
+            item_pattern = r'\{\s*icon:\s*(\w+)\s*,\s*val:\s*["\']([^"\']+)["\']\s*,\s*label:\s*["\']([^"\']+)["\']\s*\}'
+            items = re.findall(item_pattern, array_content)
+            
+            for icon_name, value, label in items:
+                indicators.append({
+                    'icon': icon_name,
+                    'value': value.strip(),
+                    'label': label.strip()
+                })
+                print(f"  ✅ Extracted trust indicator (Pattern 8): {icon_name} = {value} {label}")
+        
+        if not indicators:
+            array_only_pattern = r'\[\s*\{\s*icon:\s*(\w+)\s*,\s*val:\s*["\']([^"\']+)["\']\s*,\s*label:\s*["\']([^"\']+)["\']\s*\},?\s*\]'
+            matches = re.findall(array_only_pattern, source_content, re.DOTALL)
+            
+            for icon_name, value, label in matches:
+                indicators.append({
+                    'icon': icon_name,
+                    'value': value.strip(),
+                    'label': label.strip()
+                })
+                print(f"  ✅ Extracted trust indicator (Pattern 8 fallback): {icon_name} = {value} {label}")
+
+    # ========== PATTERN 9: Direct bottom-8 flex gap-12 pattern (YOUR REACT STRUCTURE) ==========
+    if not indicators:
+        print("  🔍 Trying Pattern 9: Direct bottom-8 flex gap-12 pattern...")
+        
+        # Find the bottom-8 div with flex justify-center gap-12
+        bottom_div_pattern = r'<div\s+className="absolute bottom-8 left-0 right-0 flex justify-center gap-12"\s*>(.*?)</div>\s*(?:</div>)?\s*(?:\))?\s*;?'
+        bottom_match = re.search(bottom_div_pattern, source_content, re.DOTALL)
+        
+        if bottom_match:
+            bottom_content = bottom_match.group(1)
+            
+            # Match each trust item: <div className="flex items-center gap-2">...content...</div>
+            item_pattern = r'<div\s+className="flex items-center gap-2"\s*>(.*?)</div>'
+            items = re.findall(item_pattern, bottom_content, re.DOTALL)
+            
+            for item in items:
+                # Extract icon component (Star, Users, Shield, Truck, etc.)
+                icon_pattern = r'<([A-Z][a-zA-Z]+)\s+className="[^"]*"(?:\s+fill="[^"]*")?\s*/>'
+                icon_match = re.search(icon_pattern, item)
+                
+                # Extract text content from span
+                span_pattern = r'<span[^>]*>([^<]+)</span>'
+                span_match = re.search(span_pattern, item)
+                
+                if icon_match and span_match:
+                    icon_name = icon_match.group(1)
+                    full_text = span_match.group(1).strip()
+                    
+                    # Split into value and label (e.g., "4.9/5 Rating" -> value="4.9/5", label="Rating")
+                    parts = full_text.split(maxsplit=1)
+                    if len(parts) == 2:
+                        value = parts[0]
+                        label = parts[1]
+                    else:
+                        value = full_text
+                        label = ""
+                    
+                    indicators.append({
+                        'icon': icon_name,
+                        'value': value,
+                        'label': label
+                    })
+                    print(f"  ✅ Extracted trust indicator (Pattern 9): {icon_name} = {value} {label}")
+        
+        # If still not found, try a more lenient pattern for React components
+        if not indicators:
+            # Look for the pattern: <Icon className="..." /> <span>text</span>
+            react_pattern = r'<div\s+className="flex items-center gap-2">\s*<([A-Z][a-zA-Z]+)\s+className="[^"]*"\s*/>\s*<span[^>]*>([^<]+)</span>\s*</div>'
+            matches = re.findall(react_pattern, source_content, re.DOTALL)
+            
+            for icon_name, full_text in matches:
+                full_text = full_text.strip()
+                parts = full_text.split(maxsplit=1)
+                if len(parts) == 2:
+                    value = parts[0]
+                    label = parts[1]
+                else:
+                    value = full_text
+                    label = ""
+                
+                indicators.append({
+                    'icon': icon_name,
+                    'value': value,
+                    'label': label
+                })
+                print(f"  ✅ Extracted trust indicator (Pattern 9 fallback): {icon_name} = {value} {label}")
+
     return indicators
+
+
+
+
+
+
+
+
+
+
 
 
 def build_trust_indicators_html(indicators: list) -> str:
@@ -161,10 +401,14 @@ def build_trust_indicators_html(indicators: list) -> str:
         </div>'''
 
 
+
+
+
+
 def inject_trust_indicators(preview_html: str, files: dict, user_prompt: str = '') -> str:
     """
     Extracts trust badges from raw source and injects them into the hero section.
-    Uses FLEXBOX layout with proper spacing - NO absolute positioning for indicators.
+    PRESERVES original hero content - only adds trust indicators if missing.
     """
     import re
 
@@ -197,77 +441,47 @@ def inject_trust_indicators(preview_html: str, files: dict, user_prompt: str = '
     # ── Build trust indicators HTML ───────────────────────────────────────────
     trust_html = build_trust_indicators_html(indicators)
     
-    # ── Extract hero content from preview HTML ────────────────────────────────
-    # Get image URL
-    img_match = re.search(r'<img[^>]*src="([^"]+)"[^>]*>', preview_html)
-    img_url = img_match.group(1) if img_match else "https://placehold.co/1920x1080"
+    # ── CHECK IF TRUST INDICATORS ALREADY EXIST ────────────────────────────────
+    if 'flex flex-wrap items-center justify-center gap-6' in preview_html:
+        print("  ✅ Trust indicators already present - skipping injection")
+        return preview_html
     
-    # Get title
-    title_match = re.search(r'<h1[^>]*>([^<]+)</h1>', preview_html)
-    title = title_match.group(1) if title_match else "Artisan Castle"
+    # ── FIND THE CTA BUTTONS SECTION AND ADD TRUST INDICATORS AFTER IT ─────────
+    # Pattern for your CTA buttons (Get Started and Learn More)
+    cta_pattern = r'(<div class="flex flex-col sm:flex-row gap-4 justify-center mb-10">.*?</div>)'
     
-    # Get subtitle
-    subtitle_match = re.search(r'<p[^>]*class="[^"]*text-2xl[^"]*"[^>]*>([^<]+)</p>', preview_html)
-    subtitle = subtitle_match.group(1) if subtitle_match else "Exquisite Culinary Excellence"
+    def add_trust_indicators(match):
+        cta_div = match.group(1)
+        return cta_div + trust_html
     
-    # ── Build the complete new hero section ────────────────────────────────────
-    new_hero_section = f'''<section class="relative h-screen overflow-hidden">
-    <img src="{img_url}" alt="Hero" class="absolute inset-0 w-full h-full object-cover" />
-    <div class="absolute inset-0 bg-black/50"></div>
+    if re.search(cta_pattern, preview_html, re.DOTALL):
+        preview_html = re.sub(cta_pattern, add_trust_indicators, preview_html, flags=re.DOTALL)
+        print('✅ Trust indicators injected after CTA buttons')
+        return preview_html
     
-    <div class="relative z-10 h-full flex flex-col pt-20">
-        <div class="flex-1"></div>
-        
-        <div class="text-center px-4">
-            <h1 class="text-6xl md:text-7xl font-bold text-white">{title}</h1>
-            <p class="text-xl md:text-2xl text-amber-400 mt-4">{subtitle}</p>
-            <div class="mt-8 flex flex-wrap gap-4 justify-center">
-                <a href="#" onclick="showPage('reservations'); return false;" class="px-8 py-3 bg-amber-500 text-black font-bold rounded-full hover:bg-amber-600 transition">Book Now</a>
-                <a href="#" onclick="showPage('menu'); return false;" class="px-8 py-3 border border-white text-white font-bold rounded-full hover:bg-white/10 transition">View Menu</a>
-            </div>
-        </div>
-        
-        {trust_html}
-        
-        <div class="flex-1"></div>
-    </div>
-</section>'''
+    # ── ALTERNATIVE: Find any div containing buttons in hero ───────────────────
+    alt_cta_pattern = r'(<div class="flex[^>]*gap-4[^>]*justify-center[^>]*>.*?</div>)'
+    
+    if re.search(alt_cta_pattern, preview_html[:5000], re.DOTALL):
+        preview_html = re.sub(alt_cta_pattern, add_trust_indicators, preview_html, count=1, flags=re.DOTALL)
+        print('✅ Trust indicators injected after alternative CTA div')
+        return preview_html
+    
+    # ── LAST RESORT: Find the hero content div and append trust indicators ─────
+    hero_content_pattern = r'(<div class="relative z-10 text-center px-4[^>]*>.*?)(</div>\s*</div>\s*</section>)'
+    
+    def append_to_hero(match):
+        hero_content = match.group(1)
+        closing = match.group(2)
+        # Check if trust indicators already exist in this section
+        if 'flex flex-wrap' in hero_content:
+            return match.group(0)
+        return hero_content + trust_html + closing
+    
+    preview_html = re.sub(hero_content_pattern, append_to_hero, preview_html, flags=re.DOTALL)
+    print('✅ Trust indicators appended to hero section')
 
-    # ── Replace the entire page_home content ───────────────────────────────────
-    # Find the page_home div and replace its content
-    page_home_pattern = r'(<div id="page_home"[^>]*>)(.*?)(</div>\s*(?=<div id="page_|$|<footer|</body>))'
-    
-    def replace_home_content(match):
-        opening = match.group(1)
-        closing = match.group(3)
-        # Find features and FAQ sections to preserve them
-        rest_content = match.group(2)
-        
-        # Extract features section if it exists
-        features_match = re.search(r'(<section class="py-20 px-4">.*?<div class="grid md:grid-cols-4 gap-6">.*?</div>\s*</section>)', rest_content, re.DOTALL)
-        features_section = features_match.group(0) if features_match else ""
-        
-        # Extract FAQ section if it exists
-        faq_match = re.search(r'(<section class="py-20 px-4">.*?<div class="container mx-auto max-w-2xl">.*?<div class="space-y-4">.*?</div>\s*</div>\s*</section>)', rest_content, re.DOTALL)
-        faq_section = faq_match.group(0) if faq_match else ""
-        
-        # Return new hero section + features + FAQ
-        return opening + new_hero_section + features_section + faq_section + closing
-    
-    preview_html = re.sub(page_home_pattern, replace_home_content, preview_html, flags=re.DOTALL)
-
-    # ── Clean up any remaining absolute positioned indicators ─────────────────
-    preview_html = re.sub(
-        r'<div class="absolute bottom-8 left-0 right-0 z-10">.*?</div>',
-        '',
-        preview_html,
-        flags=re.DOTALL
-    )
-
-    print('✅ Trust indicators injected with flexbox layout (NO absolute positioning)')
-    print('✅ Trust indicators now appear directly below CTA buttons with mt-6 spacing')
     return preview_html
-
 
 
 
@@ -560,10 +774,17 @@ def inject_hero_padding_fix(html_content: str) -> str:
     print("🔧 INJECTING HERO PADDING FIX...")
     
     hero_padding_css = '''
+    
+    
+    
     /* Push hero content below fixed header */
-    .relative.z-3 {
-        padding-top: 72px;  /* 72px header + 28px extra */
-    }
+.relative.z-10 {
+    padding-top: 110px;
+}
+    
+    
+    
+    
     
     @media (max-width: 768px) {
         .relative.z-10 {
@@ -2510,24 +2731,56 @@ async def generate_preview_internal(
     if not project_type:
         project_type = files.get("__project_type__", "")
     
-    # If still no project_type, detect from navigation
+    # If still no project_type, detect from navigation and content
     if not project_type:
         nav_content = files.get("components/Navigation.tsx", "")
-        if "shop" in nav_content.lower() or "cart" in nav_content.lower():
-            project_type = "ecommerce"
-        elif "classes" in nav_content.lower() or "trainers" in nav_content.lower():
-            project_type = "gym"
-        elif "menu" in nav_content.lower() or "reservations" in nav_content.lower():
-            project_type = "restaurant"
-        elif "features" in nav_content.lower() and "pricing" in nav_content.lower():
+        homepage_content = files.get("app/page.tsx", "")
+        all_content = nav_content + homepage_content
+        
+        # ========== CHECK FOR SAAS FIRST (MOST SPECIFIC) ==========
+        saas_keywords = ['features', 'pricing', 'saas', 'platform', 'analytics', 'ai', 'cloud', 
+                        'software', 'academy', 'learning', 'subscription', 'enterprise']
+        if any(keyword in all_content.lower() for keyword in saas_keywords):
             project_type = "saas"
-        elif "programs" in nav_content.lower() or "admissions" in nav_content.lower():
+            print(f"📌 Detected SaaS project type from content")
+        
+        # ========== CHECK FOR DASHBOARD ==========
+        elif any(keyword in all_content.lower() for keyword in ['dashboard', 'analytics', 'kpi', 'metrics', 'recharts']):
+            project_type = "dashboard"
+            print(f"📌 Detected Dashboard project type")
+        
+        # ========== CHECK FOR E-COMMERCE ==========
+        elif "shop" in nav_content.lower() or "cart" in nav_content.lower() or "products" in all_content.lower():
+            project_type = "ecommerce"
+            print(f"📌 Detected E-commerce project type")
+        
+        # ========== CHECK FOR GYM/FITNESS ==========
+        elif "classes" in nav_content.lower() or "trainers" in nav_content.lower() or "workout" in all_content.lower():
+            project_type = "gym"
+            print(f"📌 Detected Gym/Fitness project type")
+        
+        # ========== CHECK FOR RESTAURANT (LAST - LEAST SPECIFIC) ==========
+        elif "menu" in nav_content.lower() or "reservations" in nav_content.lower() or "restaurant" in all_content.lower():
+            project_type = "restaurant"
+            print(f"📌 Detected Restaurant project type")
+        
+        # ========== CHECK FOR SCHOOL/EDUCATION ==========
+        elif "programs" in nav_content.lower() or "admissions" in nav_content.lower() or "courses" in all_content.lower():
             project_type = "school"
+            print(f"📌 Detected School/Education project type")
+        
+        # ========== DEFAULT ==========
         else:
             project_type = "general"
+            print(f"📌 Using General project type")
     
     print(f"📌 Generating preview for project type: {project_type}")
     # ========== END PROJECT TYPE DETECTION ==========
+    
+    
+    
+    
+    
     
     
     
@@ -10358,6 +10611,7 @@ RETURN ONLY COMPLETE HTML starting with <!DOCTYPE html>. NO explanations.
         
         preview_html = smart_style_conditional(preview_html, user_prompt)
         
+        preview_html = fix_hero_navigation_overlap(preview_html)
         
         
         # ADD THIS LINE - Remove React onError handlers

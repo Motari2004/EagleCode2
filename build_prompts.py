@@ -9,6 +9,38 @@ Generate a COMPLETE Next.js 14 + React 18 project as a single FLAT JSON object b
 
 
 
+
+
+
+
+
+Return ONLY valid JSON with this exact structure. Do not wrap values in nested JSON strings.
+
+Example format:
+{
+  "filename1": "actual file content here",
+  "filename2": "actual file content here"
+}
+
+Rules:
+- NO nested JSON strings
+- NO escaped JSON inside values
+- Use raw file content directly
+- Ensure all strings are properly terminated
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 🚨🚨🚨 CRITICAL: JSON OUTPUT FORMAT - MUST FOLLOW EXACTLY 🚨🚨🚨
 ================================================================================
